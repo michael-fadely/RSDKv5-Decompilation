@@ -2,6 +2,8 @@
 
 using namespace RSDK;
 
+// DCFIXME: fixes build for now
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 FileInfo VideoManager::file;
 
 ogg_sync_state VideoManager::oy;
@@ -17,9 +19,14 @@ th_setup_info *VideoManager::ts = NULL;
 th_pixel_fmt VideoManager::pixelFormat;
 ogg_int64_t VideoManager::granulePos = 0;
 bool32 VideoManager::initializing    = false;
+#endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 
 bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCallback)())
 {
+    // DCFIXME: fixes build for now
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return false;
+#else  // RETRO_PLATFORM == RETRO_KALLISTIOS
     if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)
         return false;
 #if RETRO_REV0U
@@ -191,10 +198,13 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
     }
 
     return false;
+#endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 }
 
 void RSDK::ProcessVideo()
 {
+    // DCFIXME: fixes build for now
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     bool32 finished = false;
     double curTime  = 0;
     if (!VideoManager::initializing) {
@@ -283,4 +293,5 @@ void RSDK::ProcessVideo()
             RSDK::Legacy::gameMode = engine.storedState;
 #endif
     }
+#endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 }

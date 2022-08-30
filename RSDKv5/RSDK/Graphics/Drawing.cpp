@@ -129,6 +129,11 @@ const RenderVertex rsdkVertexBuffer[24] =
 #endif
 // clang-format on
 
+// DCFIXME: should define some RETRO_RENDERDEVICE_*
+#if defined(_arch_dreamcast)
+#include "KallistiOS/KallistiOSRenderDevice.cpp"
+#else  // defined(_arch_dreamcast)
+
 #if RETRO_RENDERDEVICE_DIRECTX9
 #include "DX9/DX9RenderDevice.cpp"
 #elif RETRO_RENDERDEVICE_DIRECTX11
@@ -142,6 +147,8 @@ const RenderVertex rsdkVertexBuffer[24] =
 #elif RETRO_RENDERDEVICE_EGL
 #include "EGL/EGLRenderDevice.cpp"
 #endif
+
+#endif  // !defined(_arch_dreamcast)
 
 RenderDevice::WindowInfo RenderDevice::displayInfo;
 

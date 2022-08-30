@@ -12,6 +12,7 @@
 // ================
 // STANDARD TYPES
 // ================
+#if !defined(_arch_dreamcast)
 typedef signed char int8;
 typedef unsigned char uint8;
 typedef signed short int16;
@@ -20,6 +21,7 @@ typedef signed int int32;
 typedef unsigned int uint32;
 typedef signed long long int64;
 typedef unsigned long long uint64;
+#endif  // !defined(_arch_dreamcast)
 
 typedef uint32 bool32;
 typedef uint32 color;
@@ -32,6 +34,7 @@ enum GamePlatforms {
     PLATFORM_PS4,
     PLATFORM_XB1,
     PLATFORM_SWITCH,
+    PLATFORM_DC, // DCFIXME: unused currently
 
     PLATFORM_DEV = 0xFF,
 };
@@ -91,6 +94,7 @@ enum GameRegions {
 #define RETRO_iOS     (6)
 #define RETRO_ANDROID (7)
 #define RETRO_UWP     (8)
+#define RETRO_KALLISTIOS (9)
 
 // ============================
 // PLATFORMS (used mostly in legacy but could come in handy here)
@@ -141,6 +145,9 @@ enum GameRegions {
 #define RETRO_DEVICETYPE (RETRO_STANDARD)
 #elif defined __linux__
 #define RETRO_PLATFORM   (RETRO_LINUX)
+#define RETRO_DEVICETYPE (RETRO_STANDARD)
+#elif defined _arch_dreamcast
+#define RETRO_PLATFORM (RETRO_KALLISTIOS)
 #define RETRO_DEVICETYPE (RETRO_STANDARD)
 #else
 #define RETRO_PLATFORM   (RETRO_WIN)
@@ -240,7 +247,12 @@ enum GameRegions {
 
 // Enables the use of the mod loader
 #ifndef RETRO_USE_MOD_LOADER
+// DCFIXME: disabling mod loader to fix build for now
+#ifdef _arch_dreamcast
+#define RETRO_USE_MOD_LOADER (0)
+#else
 #define RETRO_USE_MOD_LOADER (!RETRO_USE_ORIGINAL_CODE && 1)
+#endif
 #endif
 
 // Defines the version of the mod loader, this should be changed ONLY if the ModFunctionTable is updated in any way
@@ -411,6 +423,11 @@ enum GameRegions {
 
 #undef RETRO_INPUTDEVICE_SDL2
 #define RETRO_INPUTDEVICE_SDL2 (1)
+
+#elif RETRO_PLATFORM == RETRO_KALLISTIOS
+
+// DCFIXME: currently unused
+#define RETRO_RENDERDEVICE_KALLISTIOS (1)
 
 #endif
 

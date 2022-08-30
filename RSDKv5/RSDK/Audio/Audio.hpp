@@ -70,6 +70,11 @@ void LoadSfx(char *filePath, uint8 plays, uint8 scope);
 
 } // namespace RSDK
 
+// DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if defined(_arch_dreamcast)
+#include "KallistiOS/KallistiOSAudioDevice.hpp"
+#else  // defined(_arch_dreamcast)
+
 #if RETRO_AUDIODEVICE_XAUDIO
 #include "XAudio/XAudioDevice.hpp"
 #elif RETRO_AUDIODEVICE_PORT
@@ -81,6 +86,8 @@ void LoadSfx(char *filePath, uint8 plays, uint8 scope);
 #elif RETRO_AUDIODEVICE_OBOE
 #include "Oboe/OboeAudioDevice.hpp"
 #endif
+
+#endif  // !defined(_arch_dreamcast)
 
 namespace RSDK
 {

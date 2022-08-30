@@ -242,6 +242,11 @@ private:
     static void GetDisplays();
 };
 
+// DCFIXME: should define some RETRO_RENDERDEVICE_*
+#if defined(_arch_dreamcast)
+#include "KallistiOS/KallistiOSRenderDevice.hpp"
+#else  // defined(_arch_dreamcast)
+
 #if RETRO_RENDERDEVICE_DIRECTX9
 #include "DX9/DX9RenderDevice.hpp"
 #elif RETRO_RENDERDEVICE_DIRECTX11
@@ -255,6 +260,8 @@ private:
 #elif RETRO_RENDERDEVICE_EGL
 #include "EGL/EGLRenderDevice.hpp"
 #endif
+
+#endif  // !defined(_arch_dreamcast)
 
 extern DrawList drawGroups[DRAWGROUP_COUNT];
 extern char drawGroupNames[0x10][0x10];
