@@ -130,10 +130,17 @@ endif
 CFLAGS_ALL += $(CFLAGS) \
 			   -fsigned-char 
 		
-CXXFLAGS_ALL += $(CXXFLAGS) \
-			   -std=c++17 \
-			   -fsigned-char \
-			   -fpermissive 
+ifneq ("$(PLATFORM)","KallistiOS")
+	CXXFLAGS_ALL += $(CXXFLAGS) \
+				   -std=c++17 \
+				   -fsigned-char \
+				   -fpermissive 
+else
+	CXXFLAGS_ALL += $(CXXFLAGS) \
+				   -std=c++11 \
+				   -fsigned-char \
+				   -fpermissive 
+endif
 
 LDFLAGS_ALL = $(LDFLAGS)
 

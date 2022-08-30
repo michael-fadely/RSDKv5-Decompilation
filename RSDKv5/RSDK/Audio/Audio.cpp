@@ -9,10 +9,14 @@ using namespace RSDK;
 #define STB_VORBIS_NO_PUSHDATA_API
 #define STB_VORBIS_NO_STDIO
 #define STB_VORBIS_NO_INTEGER_CONVERSION
+
+// DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if !defined(_arch_dreamcast)
 #include "stb_vorbis/stb_vorbis.c"
 
 stb_vorbis *vorbisInfo = NULL;
 stb_vorbis_alloc vorbisAlloc;
+#endif  // !defined(_arch_dreamcast)
 
 SFXInfo RSDK::sfxList[SFX_COUNT];
 ChannelInfo RSDK::channels[CHANNEL_COUNT];
@@ -28,6 +32,11 @@ int32 streamLoopPoint  = 0;
 
 float linearInterpolationLookup[LINEAR_INTERPOLATION_LOOKUP_LENGTH];
 
+// DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if defined(_arch_dreamcast)
+#include "KallistiOS/KallistiOSAudioDevice.cpp"
+#else  // defined(_arch_dreamcast)
+
 #if RETRO_AUDIODEVICE_XAUDIO
 #include "XAudio/XAudioDevice.cpp"
 #elif RETRO_AUDIODEVICE_SDL2
@@ -37,6 +46,8 @@ float linearInterpolationLookup[LINEAR_INTERPOLATION_LOOKUP_LENGTH];
 #elif RETRO_AUDIODEVICE_OBOE
 #include "Oboe/OboeAudioDevice.cpp"
 #endif
+
+#endif  // !defined(_arch_dreamcast)
 
 uint8 AudioDeviceBase::initializedAudioChannels = false;
 uint8 AudioDeviceBase::audioState               = 0;
@@ -181,6 +192,8 @@ void AudioDeviceBase::InitAudioChannels()
 
 void RSDK::UpdateStreamBuffer(ChannelInfo *channel)
 {
+    // DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if !defined(_arch_dreamcast)
     int32 bufferRemaining = MIX_BUFFER_SIZE;
     float *buffer         = channel->samplePtr;
 
@@ -205,10 +218,13 @@ void RSDK::UpdateStreamBuffer(ChannelInfo *channel)
     }
 
     for (int32 i = 0; i < MIX_BUFFER_SIZE; ++i) channel->samplePtr[i] *= 0.5f;
+#endif
 }
 
 void RSDK::LoadStream(ChannelInfo *channel)
 {
+    // DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if !defined(_arch_dreamcast)
     if (channel->state != CHANNEL_LOADING_STREAM)
         return;
 
@@ -241,10 +257,15 @@ void RSDK::LoadStream(ChannelInfo *channel)
 
     if (channel->state == CHANNEL_LOADING_STREAM)
         channel->state = CHANNEL_IDLE;
+#endif
 }
 
 int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint32 loopPoint, bool32 loadASync)
 {
+    // DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if defined(_arch_dreamcast)
+    return -1;
+#else
     if (!engine.streamsEnabled)
         return -1;
 
@@ -295,6 +316,7 @@ int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint3
     UnlockAudioDevice();
 
     return slot;
+#endif
 }
 
 #define WAV_SIG_HEADER (0x46464952) // RIFF
@@ -302,6 +324,8 @@ int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint3
 
 void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 {
+    // DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if !defined(_arch_dreamcast)
     FileInfo info;
     InitFileInfo(&info);
 
@@ -419,10 +443,13 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 #endif
 
     CloseFile(&info);
+#endif
 }
 
 void RSDK::LoadSfx(char *filename, uint8 plays, uint8 scope)
 {
+    // DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if !defined(_arch_dreamcast)
     // Find an empty sound slot.
     uint16 id = -1;
     for (uint32 i = 0; i < SFX_COUNT; ++i) {
@@ -434,10 +461,15 @@ void RSDK::LoadSfx(char *filename, uint8 plays, uint8 scope)
 
     if (id != (uint16)-1)
         LoadSfxToSlot(filename, id, plays, scope);
+#endif
 }
 
 int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
 {
+    // DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if defined(_arch_dreamcast)
+    return -1;
+#else
     if (sfx >= SFX_COUNT || !sfxList[sfx].scope)
         return -1;
 
@@ -502,10 +534,13 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
     UnlockAudioDevice();
 
     return slot;
+#endif
 }
 
 void RSDK::SetChannelAttributes(uint8 channel, float volume, float panning, float speed)
 {
+    // DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if !defined(_arch_dreamcast)
     if (channel < CHANNEL_COUNT) {
         volume                   = fminf(4.0f, volume);
         volume                   = fmaxf(0.0f, volume);
@@ -520,10 +555,13 @@ void RSDK::SetChannelAttributes(uint8 channel, float volume, float panning, floa
         else if (speed == 1.0f)
             channels[channel].speed = TO_FIXED(1);
     }
+#endif
 }
 
 uint32 RSDK::GetChannelPos(uint32 channel)
 {
+    // DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if !defined(_arch_dreamcast)
     if (channel >= CHANNEL_COUNT)
         return 0;
 
@@ -536,21 +574,27 @@ uint32 RSDK::GetChannelPos(uint32 channel)
 
         return vorbisInfo->current_loc;
     }
+#endif
 
     return 0;
 }
 
 double RSDK::GetVideoStreamPos()
 {
+    // DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if !defined(_arch_dreamcast)
     if (channels[0].state == CHANNEL_STREAM && AudioDevice::audioState && AudioDevice::initializedAudioChannels && vorbisInfo->current_loc_valid) {
         return vorbisInfo->current_loc / (double)AUDIO_FREQUENCY;
     }
+#endif
 
     return -1.0;
 }
 
 void RSDK::ClearStageSfx()
 {
+    // DCFIXME: should define some RETRO_AUDIODEVICE_*
+#if !defined(_arch_dreamcast)
     LockAudioDevice();
 
     for (int32 c = 0; c < CHANNEL_COUNT; ++c) {
@@ -569,6 +613,7 @@ void RSDK::ClearStageSfx()
     }
 
     UnlockAudioDevice();
+#endif
 }
 
 #if RETRO_USE_MOD_LOADER

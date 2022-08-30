@@ -153,7 +153,10 @@ void DummyLeaderboards::TrackScore(LeaderboardID *leaderboard, int32 score, void
 
     std::string str = __FILE__;
     str += ": TrackScore() # TrackScore ";
+    // DCFIXME: kallistios does not have std::to_string seemingly
+#if !defined(_arch_dreamcast)
     str += std::to_string(score);
+#endif  // !defined(_arch_dreamcast)
     str += " \r\n";
     PrintLog(PRINT_NORMAL, str.c_str());
 

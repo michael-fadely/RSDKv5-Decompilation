@@ -399,7 +399,7 @@ void LinkGameLogic(EngineInfo info);
 // ORIGINAL CLASS
 
 // Windows.h already included by master header
-#if !(RETRO_PLATFORM == RETRO_WIN || RETRO_PLATFORM == RETRO_SWITCH)
+#if !(RETRO_PLATFORM == RETRO_WIN || RETRO_PLATFORM == RETRO_SWITCH || RETRO_PLATFORM == RETRO_KALLISTIOS)
 #include <dlfcn.h>
 #endif
 
@@ -446,6 +446,10 @@ public:
 
     static inline Handle PlatformLoadLibrary(std::string path)
     {
+// DCFIXME
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        return NULL;
+#else
         Handle ret;
 #if RETRO_PLATFORM == RETRO_WIN
         ret = (Handle)LoadLibraryA(path.c_str());
@@ -466,6 +470,7 @@ public:
         }
 #endif // ! RETRO_PLATFORM != SWITCH
 #endif // ! RETRO_PLATFORM == WIN
+#endif // ! RETRO_PLATFORM == RETRO_KALLISTIOS
         return ret;
     }
 
@@ -515,6 +520,10 @@ public:
 
     static inline void Close(Handle handle)
     {
+        // DCFIXME
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        return;
+#else
         if (handle)
 #if RETRO_PLATFORM == RETRO_WIN
             FreeLibrary(handle);
@@ -525,6 +534,10 @@ public:
 
     static inline void *GetSymbol(Handle handle, const char *symbol)
     {
+        // DCFIXME
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        return NULL;
+#else
         if (!handle)
             return NULL;
 #if RETRO_PLATFORM == RETRO_WIN
@@ -536,6 +549,10 @@ public:
 
     static inline char *GetError()
     {
+        // DCFIXME
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        return NULL;
+#else
 #if RETRO_PLATFORM == RETRO_WIN
         return (char *)GetLastErrorAsString();
 #else
