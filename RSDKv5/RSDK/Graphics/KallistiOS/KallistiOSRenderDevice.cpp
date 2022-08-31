@@ -6,8 +6,8 @@
 // static
 bool RenderDevice::Init()
 {
-	pvr_init_defaults();
 	glKosInit();
+	return true;
 }
 
 // static
