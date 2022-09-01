@@ -520,7 +520,6 @@ public:
 
     static inline void Close(Handle handle)
     {
-        // DCFIXME
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
         return;
 #else
@@ -534,7 +533,6 @@ public:
 
     static inline void *GetSymbol(Handle handle, const char *symbol)
     {
-        // DCFIXME
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
         return NULL;
 #else
@@ -549,7 +547,6 @@ public:
 
     static inline char *GetError()
     {
-        // DCFIXME
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
         return NULL;
 #else
