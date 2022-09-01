@@ -137,7 +137,7 @@ ifneq ("$(PLATFORM)","KallistiOS")
 				   -fpermissive 
 else
 	CXXFLAGS_ALL += $(CXXFLAGS) \
-				   -std=c++11 \
+				   -std=gnu++11 \
 				   -fsigned-char \
 				   -fpermissive 
 endif
