@@ -29,11 +29,20 @@ DataStorage RSDK::dataStorage[DATASET_MAX];
 bool32 RSDK::InitStorage()
 {
     // Storage limits.
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // DCFIXME: untested memory limits
+    dataStorage[DATASET_STG].storageLimit = 24 * 1024; // 24KB
+    dataStorage[DATASET_MUS].storageLimit = 8 * 1024;  // 8KB
+    dataStorage[DATASET_SFX].storageLimit = 64 * 1024; // 64KB // 32 * 1024; // 32 KB
+    dataStorage[DATASET_STR].storageLimit = 1 * 1024;  // 1KB
+    dataStorage[DATASET_TMP].storageLimit = 8 * 1024;  // 8KB
+#else
     dataStorage[DATASET_STG].storageLimit = 24 * 1024 * 1024; // 24MB
     dataStorage[DATASET_MUS].storageLimit = 8 * 1024 * 1024;  //  8MB
     dataStorage[DATASET_SFX].storageLimit = 32 * 1024 * 1024; // 32MB
     dataStorage[DATASET_STR].storageLimit = 2 * 1024 * 1024;  //  2MB
     dataStorage[DATASET_TMP].storageLimit = 8 * 1024 * 1024;  //  8MB
+#endif
 
     for (int32 s = 0; s < DATASET_MAX; ++s) {
         dataStorage[s].usedStorage = 0;
