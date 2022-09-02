@@ -1,5 +1,7 @@
 #include "RSDK/Core/RetroEngine.hpp"
 
+#include <RSDK/Core/Stub.hpp>
+
 using namespace RSDK;
 
 // DCFIXME: fixes build for now
@@ -23,8 +25,8 @@ bool32 VideoManager::initializing    = false;
 
 bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCallback)())
 {
-    // DCFIXME: fixes build for now
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+    DC_STUB();
     return false;
 #else  // RETRO_PLATFORM == RETRO_KALLISTIOS
     if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)
@@ -203,8 +205,9 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
 
 void RSDK::ProcessVideo()
 {
-    // DCFIXME: fixes build for now
-#if RETRO_PLATFORM != RETRO_KALLISTIOS
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    DC_STUB();
+#else
     bool32 finished = false;
     double curTime  = 0;
     if (!VideoManager::initializing) {

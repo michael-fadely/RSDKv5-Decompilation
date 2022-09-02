@@ -140,6 +140,7 @@ else
 				   -std=gnu++11 \
 				   -fsigned-char \
 				   -fpermissive 
+	RSDK_SOURCES += RSDKv5/RSDK/Core/Stub
 endif
 
 LDFLAGS_ALL = $(LDFLAGS)
