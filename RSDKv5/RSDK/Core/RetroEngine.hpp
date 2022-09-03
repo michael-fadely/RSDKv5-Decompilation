@@ -157,6 +157,7 @@ enum GameRegions {
 #define RETRO_DEVICETYPE (RETRO_STANDARD)
 #endif
 
+// DCFIXME: is this too large?
 #ifndef SCREEN_XMAX
 #define SCREEN_XMAX (1280)
 #endif
