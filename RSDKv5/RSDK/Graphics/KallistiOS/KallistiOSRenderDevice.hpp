@@ -16,7 +16,6 @@ public:
 
     static bool Init();
     static void CopyFrameBuffer();
-    static void ProcessDimming();
     static void FlipScreen();
     static void Release(bool32 isRefresh);
 
