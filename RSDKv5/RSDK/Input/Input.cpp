@@ -52,6 +52,11 @@ int32 RSDK::gamePadCount               = 0;
 #include "Paddleboat/PDBInputDevice.cpp"
 #endif
 
+// DCFIXME: should define some RETRO_INPUTDEVICE_KALLISTIOS type thing
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include "KallistiOS/KallistiOSInputDevice.cpp"
+#endif
+
 void RSDK::RemoveInputDevice(InputDevice *targetDevice)
 {
     if (targetDevice) {
@@ -130,6 +135,11 @@ void RSDK::InitInputDevices()
 
 #if RETRO_INPUTDEVICE_PDBOAT
     SKU::InitPaddleboatInputAPI();
+#endif
+
+    // DCFIXME: should define some RETRO_INPUTDEVICE_KALLISTIOS type thing
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    SKU::InitKallistiOSInputAPI();
 #endif
 }
 
