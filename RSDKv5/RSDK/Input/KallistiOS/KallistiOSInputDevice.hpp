@@ -12,7 +12,7 @@ struct KallistiOSInputDevice : InputDevice
     void ProcessInput(int32 controllerID) override;
     void CloseDevice() override;
     cont_state_t state {};
-    int32 controllerID = 0;
+    int32 mapleIndex = 0;
 };
 
 void InitKallistiOSInputAPI();
