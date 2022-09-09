@@ -124,6 +124,7 @@ bool RenderDevice::Init()
     SetScreenSize(0, (uint16)width, (uint16)height);
 
     engine.inFocus = 1;
+    InitInputDevices();
     return true;
 }
 
