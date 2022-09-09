@@ -6,7 +6,7 @@
 #include <RSDK/Core/Stub.hpp>
 
 void SKU::KallistiOSInputDevice::UpdateInput() {
-    maple_device_t* mapleDevice = maple_enum_type(this->controllerID, MAPLE_FUNC_CONTROLLER);
+    maple_device_t* mapleDevice = maple_enum_type(this->mapleIndex, MAPLE_FUNC_CONTROLLER);
 
     if (!mapleDevice) {
         return;
@@ -48,10 +48,11 @@ void SKU::KallistiOSInputDevice::CloseDevice() {
 void SKU::InitKallistiOSInputAPI() {
     printHere();
     for (int32 i = 0; i < PLAYER_COUNT; ++i) {
+        int32 controllerID = i + 1;
         KallistiOSInputDevice* kosInputDevice = nullptr;
 
         for (int32 d = 0; d < inputDeviceCount; ++d) {
-            if (inputDeviceList[d] && inputDeviceList[d]->id == i) {
+            if (inputDeviceList[d] && inputDeviceList[d]->id == controllerID) {
                 kosInputDevice = (KallistiOSInputDevice*)inputDeviceList[d];
             }
         }
@@ -92,11 +93,11 @@ void SKU::InitKallistiOSInputAPI() {
             kosInputDevice = new KallistiOSInputDevice();
             inputDeviceList[inputDeviceCount] = kosInputDevice;
             kosInputDevice->disabled = false;
-            kosInputDevice->id = i;
+            kosInputDevice->id = controllerID;
             kosInputDevice->active = true;
 
             for (int32 p = 0; p < PLAYER_COUNT; ++p) {
-                if (inputSlots[p] == i) {
+                if (inputSlots[p] == controllerID) {
                     inputSlotDevices[p] = kosInputDevice;
                     kosInputDevice->isAssigned  = true;
                 }
@@ -105,6 +106,6 @@ void SKU::InitKallistiOSInputAPI() {
             inputDeviceCount++;
         }
 
-        kosInputDevice->controllerID = i;
+        kosInputDevice->mapleIndex = i;
     }
 }
