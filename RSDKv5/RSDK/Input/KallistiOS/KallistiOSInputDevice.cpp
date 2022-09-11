@@ -46,7 +46,6 @@ void SKU::KallistiOSInputDevice::CloseDevice() {
 }
 
 void SKU::InitKallistiOSInputAPI() {
-    printHere();
     for (int32 i = 0; i < PLAYER_COUNT; ++i) {
         int32 controllerID = i + 1;
         KallistiOSInputDevice* kosInputDevice = nullptr;
