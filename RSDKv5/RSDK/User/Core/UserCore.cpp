@@ -13,6 +13,7 @@ namespace SKU
 // Dummy API
 #if RETRO_USERCORE_DUMMY
 #include "RSDK/User/Dummy/DummyCore.cpp"
+#include "RSDK/Core/Stub.hpp"
 #endif
 
 // Steam API
@@ -559,6 +560,11 @@ void RSDK::LoadSettingsINI()
 
 void RSDK::SaveSettingsINI(bool32 writeToFile)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    DC_STUB();
+    return;
+#else
+
     // only done on windows and "dev", consoles use "options.bin"
 #if RETRO_REV02
     if (SKU::curSKU.platform != PLATFORM_PC && SKU::curSKU.platform != PLATFORM_DEV)
@@ -737,5 +743,6 @@ void RSDK::SaveSettingsINI(bool32 writeToFile)
         delete[] gamePadMappings;
     gamePadMappings = NULL;
     gamePadCount    = 0;
+#endif
 #endif
 }
