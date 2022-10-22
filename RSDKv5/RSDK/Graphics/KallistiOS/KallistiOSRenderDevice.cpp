@@ -8,7 +8,7 @@ struct KOSTexture
     pvr_poly_cxt_t context;
     pvr_poly_hdr_t header;
     pvr_ptr_t pvrPtr;
-    uint16* sysPtr;
+    void* sysPtr;
     uint32 width;
     uint32 height;
 };
@@ -17,7 +17,7 @@ static KOSTexture screenTextures[SCREEN_COUNT] {};
 
 void draw_one_textured_poly(const KOSTexture& kost) {
     /* Opaque Textured vertex */
-    pvr_vertex_t vert;
+    pvr_vertex_t vert {};
 
     vert.flags = PVR_CMD_VERTEX;
     vert.argb = 0xffffffff;
@@ -61,10 +61,12 @@ bool RenderDevice::Init()
 {
     pvr_init_params_t pvrParams = {
         { PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_0, PVR_BINSIZE_0, PVR_BINSIZE_0 },
-        64 * 1024
+        1024
     };
 
-    if (pvr_init(&pvrParams) < 0) {
+    // DCFIXME: these init parameters don't actually work on hardware. initialization succeeds, but rendering fails.
+//    if (pvr_init(&pvrParams) < 0) {
+    if (pvr_init_defaults() < 0) {
         while (true) {
             printf("pvr_init failed!!!\n");
         }
@@ -75,11 +77,25 @@ bool RenderDevice::Init()
     videoSettings.windowed = false;
     videoSettings.windowState = WINDOWSTATE_ACTIVE;
     videoSettings.shaderSupport = false;
-    
+
+    displayCount = 1;
+    displayWidth[0] = 640;
+    displayHeight[0] = 480;
+
+    int32 bufferWidth  = videoSettings.fsWidth;
+    int32 bufferHeight = videoSettings.fsHeight;
+    if (videoSettings.fsWidth <= 0 || videoSettings.fsHeight <= 0) {
+        bufferWidth  = displayWidth[0];
+        bufferHeight = displayHeight[0];
+    }
+
+    viewSize.x = bufferWidth;
+    viewSize.y = bufferHeight;
+
     uint32 width;
     uint32 height;
 
-    if (videoSettings.pixHeight <= 256){
+    if (videoSettings.pixHeight <= 256) {
         width = 512;
         height = 256;
     }
@@ -87,20 +103,21 @@ bool RenderDevice::Init()
         width = 1024;
         height = 512;
     }
-    
+
     textureSize.x = (float)width;
     textureSize.y = (float)height;
 
     // DCFIXME: support multiple screen textures? (presumably multiplayer only)
 
     screenTextures[0].pvrPtr = pvr_mem_malloc(2 * width * height);
+
     if (!screenTextures[0].pvrPtr) {
         while (true) {
             printf("pvr_mem_malloc() failed!!!\n");
         }
     }
 
-    screenTextures[0].sysPtr = (uint16*)memalign(32, 2 * width * height);
+    screenTextures[0].sysPtr = memalign(32, 2 * width * height);
 
     if (!screenTextures[0].sysPtr) {
         while (true) {
@@ -108,22 +125,61 @@ bool RenderDevice::Init()
         }
     }
 
+    printf("pvr_mem_available: %lu\n", pvr_mem_available());
+
     pvr_poly_cxt_txr(&screenTextures[0].context,
                      PVR_LIST_OP_POLY,
                      PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED,
                      (int)width,
                      (int)height,
                      screenTextures[0].pvrPtr,
-                     PVR_FILTER_NONE);
+                     PVR_FILTER_NEAREST);
 
     pvr_poly_compile(&screenTextures[0].header, &screenTextures[0].context);
+
+    viewSize.x = 640.0f;
+    viewSize.y = 480.0f;
 
     screenTextures[0].width = width;
     screenTextures[0].height = height;
 
-    SetScreenSize(0, (uint16)width, (uint16)height);
+    int32 maxPixHeight = 0;
+    for (int32 s = 0; s < SCREEN_COUNT; ++s) {
+        if (videoSettings.pixHeight > maxPixHeight)
+            maxPixHeight = videoSettings.pixHeight;
+
+        screens[s].size.y = videoSettings.pixHeight;
+
+        float viewAspect  = viewSize.x / viewSize.y;
+        int32 screenWidth = (int32)((viewAspect * videoSettings.pixHeight) + 3) & 0xFFFFFFFC;
+        if (screenWidth < videoSettings.pixWidth)
+            screenWidth = videoSettings.pixWidth;
+
+#if !RETRO_USE_ORIGINAL_CODE
+        if (customSettings.maxPixWidth && screenWidth > customSettings.maxPixWidth)
+            screenWidth = customSettings.maxPixWidth;
+#else
+        if (screenWidth > DEFAULT_PIXWIDTH)
+            screenWidth = DEFAULT_PIXWIDTH;
+#endif
+
+        memset(&screens[s].frameBuffer, 0, sizeof(screens[s].frameBuffer));
+        SetScreenSize(s, screenWidth, screens[s].size.y);
+    }
+
+    pixelSize.x = screens[0].size.x;
+    pixelSize.y = screens[0].size.y;
 
     engine.inFocus = 1;
+
+    videoSettings.windowState = WINDOWSTATE_ACTIVE;
+    videoSettings.dimMax      = 1.0;
+    videoSettings.dimPercent  = 1.0;
+
+    int32 size = videoSettings.pixWidth >= SCREEN_YSIZE ? videoSettings.pixWidth : SCREEN_YSIZE;
+    scanlines  = (ScanlineInfo *)malloc(size * sizeof(ScanlineInfo));
+    memset(scanlines, 0, size * sizeof(ScanlineInfo));
+
     InitInputDevices();
     return true;
 }
@@ -131,7 +187,7 @@ bool RenderDevice::Init()
 // static
 void RenderDevice::CopyFrameBuffer()
 {
-    for (int32 s = 0; s < /* DCFIXME: videoSettings.screenCount*/ 1; ++s) {
+    for (int32 s = 0; s < /*videoSettings.screenCount*/ 1; ++s) {
         const KOSTexture& screenTexture = screenTextures[s];
 
         uint16* pixels = (uint16*)screenTexture.sysPtr;
@@ -144,9 +200,12 @@ void RenderDevice::CopyFrameBuffer()
             pixels += pitch;
         }
 
-        pvr_txr_load(screenTexture.sysPtr,
-                     screenTexture.pvrPtr,
-                     screenTexture.width * screenTexture.height * 2);
+        uint32 textureSize = screenTexture.width * screenTexture.height * 2;
+        pvr_txr_load(screenTexture.sysPtr, screenTexture.pvrPtr, textureSize);
+
+        // DMA version:
+        //dcache_flush_range(screenTexture.sysPtr, textureSize);
+        //pvr_txr_load_dma(screenTexture.sysPtr, screenTexture.pvrPtr, textureSize, 1, nullptr, 0);
     }
 }
 // static
