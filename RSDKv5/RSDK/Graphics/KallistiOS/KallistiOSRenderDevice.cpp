@@ -15,9 +15,9 @@ struct KOSTexture
 
 static KOSTexture screenTextures[SCREEN_COUNT] {};
 
-void draw_one_textured_poly(const KOSTexture& kost) {
+void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
     /* Opaque Textured vertex */
-    pvr_vertex_t vert {};
+    pvr_vertex_t vert;
 
     vert.flags = PVR_CMD_VERTEX;
     vert.argb = 0xffffffff;
@@ -35,7 +35,7 @@ void draw_one_textured_poly(const KOSTexture& kost) {
     vert.x = 640.0f;
     vert.y = 0.0f;
     vert.z = 1.0f;
-    vert.u = 1.0f;
+    vert.u = static_cast<float>(screenSize.x) / static_cast<float>(kost.width);
     vert.v = 0.0f;
     pvr_prim(&vert, sizeof(vert));
 
@@ -44,15 +44,15 @@ void draw_one_textured_poly(const KOSTexture& kost) {
     vert.y = 480.0f;
     vert.z = 1.0f;
     vert.u = 0.0f;
-    vert.v = 1.0f;
+    vert.v = static_cast<float>(screenSize.y) / static_cast<float>(kost.height);
     pvr_prim(&vert, sizeof(vert));
 
     vert.flags = PVR_CMD_VERTEX_EOL;
     vert.x = 640.0f;
     vert.y = 480.0f;
     vert.z = 1.0f;
-    vert.u = 1.0f;
-    vert.v = 1.0f;
+    vert.u = static_cast<float>(screenSize.x) / static_cast<float>(kost.width);
+    vert.v = static_cast<float>(screenSize.y) / static_cast<float>(kost.height);
     pvr_prim(&vert, sizeof(vert));
 }
 
@@ -219,7 +219,7 @@ void RenderDevice::FlipScreen()
             pvr_list_begin(PVR_LIST_OP_POLY);
             {
                 pvr_prim(&screenTextures[0].header, sizeof(screenTextures[0].header));
-                draw_one_textured_poly(screenTextures[0]);
+                draw_one_textured_poly(screens[0].size, screenTextures[0]);
             }
             pvr_list_finish();
             break;
