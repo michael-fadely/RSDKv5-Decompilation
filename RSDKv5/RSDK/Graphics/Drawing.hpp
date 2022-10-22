@@ -13,7 +13,11 @@ namespace RSDK
 #endif
 #define CAMERA_COUNT (4)
 
+#if defined(_arch_dreamcast)
+#define DEFAULT_PIXWIDTH (320)
+#else
 #define DEFAULT_PIXWIDTH (424)
+#endif
 
 #define LAYER_COUNT     (8)
 #define DRAWGROUP_COUNT (16)
