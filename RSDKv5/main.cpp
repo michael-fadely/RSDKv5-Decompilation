@@ -1,6 +1,10 @@
 #include "RSDK/Core/RetroEngine.hpp"
 #include "main.hpp"
 
+#if defined(_arch_dreamcast) && defined(RSDK_DEBUG)
+#include <arch/gdb.h>
+#endif
+
 #if RETRO_STANDALONE
 #define LinkGameLogic RSDK::LinkGameLogic
 #else
@@ -79,6 +83,10 @@ int32 main(int32 argc, char *argv[]) { return RSDK_main(argc, argv, (void *)Link
 
 int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
 {
+#if defined(_arch_dreamcast) && defined(RSDK_DEBUG)
+    gdb_init();
+#endif
+
     RSDK::linkGameLogic = (RSDK::LogicLinkHandle)linkLogicPtr;
 
     RSDK::InitCoreAPI();

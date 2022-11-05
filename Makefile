@@ -95,6 +95,8 @@ ifeq ($(DEBUG),1)
 	CXXFLAGS += -g
 	CFLAGS += -g
 	STRIP = :
+	# DCFIXME
+	DEFINES += -DRSDK_DEBUG
 else
 	CXXFLAGS += -O3
 	CFLAGS += -O3
