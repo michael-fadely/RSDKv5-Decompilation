@@ -8,7 +8,12 @@ namespace RSDK
 
 #ifndef SCREEN_COUNT
 #if RETRO_REV02
+#if defined(_arch_dreamcast)
+// DCFIXME: reduced screen count to save RAM (SCREEN_COUNT)
+#define SCREEN_COUNT (1)
+#else
 #define SCREEN_COUNT (4)
+#endif
 #else
 #define SCREEN_COUNT (2)
 #endif
