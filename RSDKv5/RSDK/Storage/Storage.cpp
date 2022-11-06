@@ -31,11 +31,18 @@ bool32 RSDK::InitStorage()
     // Storage limits.
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     // DCFIXME: untested memory limits
-    dataStorage[DATASET_STG].storageLimit = 24 * 1024; // 24KB
-    dataStorage[DATASET_MUS].storageLimit = 8 * 1024;  // 8KB
-    dataStorage[DATASET_SFX].storageLimit = 64 * 1024; // 64KB // 32 * 1024; // 32 KB
-    dataStorage[DATASET_STR].storageLimit = 1 * 1024;  // 1KB
-    dataStorage[DATASET_TMP].storageLimit = 8 * 1024;  // 8KB
+    //dataStorage[DATASET_STG].storageLimit = 24 * 1024; // 24KB
+    //dataStorage[DATASET_MUS].storageLimit = 8 * 1024;  // 8KB
+    //dataStorage[DATASET_SFX].storageLimit = 64 * 1024; // 64KB // 32 * 1024; // 32 KB
+    //dataStorage[DATASET_STR].storageLimit = 1 * 1024;  // 1KB
+    //dataStorage[DATASET_TMP].storageLimit = 8 * 1024;  // 8KB
+
+    dataStorage[DATASET_STG].storageLimit = (3 * 1024 * 1024) - (640 * 1024); // sonic renders on title screen
+
+    dataStorage[DATASET_MUS].storageLimit = 4;
+    dataStorage[DATASET_SFX].storageLimit = 4;
+    dataStorage[DATASET_STR].storageLimit = 32 * 1024;
+    dataStorage[DATASET_TMP].storageLimit = 1024;
 #else
     dataStorage[DATASET_STG].storageLimit = 24 * 1024 * 1024; // 24MB
     dataStorage[DATASET_MUS].storageLimit = 8 * 1024 * 1024;  //  8MB
