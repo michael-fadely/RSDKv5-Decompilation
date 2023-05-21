@@ -98,8 +98,8 @@ ifeq ($(DEBUG),1)
 	# DCFIXME
 	DEFINES += -DRSDK_DEBUG
 else
-	CXXFLAGS += -O3
-	CFLAGS += -O3
+	CXXFLAGS += -Os
+	CFLAGS += -Os
 endif
 
 ifeq ($(STATIC),1)

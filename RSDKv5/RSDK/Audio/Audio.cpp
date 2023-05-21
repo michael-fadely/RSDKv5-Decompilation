@@ -332,6 +332,9 @@ int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint3
 
 void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 {
+#if 1
+    return;
+#else
     FileInfo info;
     InitFileInfo(&info);
 
@@ -449,6 +452,7 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 #endif
 
     CloseFile(&info);
+#endif
 }
 
 void RSDK::LoadSfx(char *filename, uint8 plays, uint8 scope)

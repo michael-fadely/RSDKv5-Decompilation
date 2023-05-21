@@ -835,6 +835,11 @@ void RSDK::Draw3DScene(uint16 sceneID)
         Scene3DFace *faceBuffer = scn->faceBuffer;
         uint8 *faceVertCounts = scn->faceVertCounts;
 
+        // DCFIXME: lmao
+        if (vertices == nullptr) {
+            return;
+        }
+
         int32 vertIndex = 0;
         for (int32 i = 0; i < scn->faceCount; ++i) {
             switch (*faceVertCounts) {

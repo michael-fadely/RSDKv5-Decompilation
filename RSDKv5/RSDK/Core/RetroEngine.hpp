@@ -621,11 +621,12 @@ struct RetroEngine {
     bool32 useExternalCode = false;
 #endif
 
-    bool32 devMenu        = false;
     // DCFIXME: hack for debugging
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+    bool32 devMenu        = true;
     bool32 consoleEnabled = true;
 #else
+    bool32 devMenu        = false;
     bool32 consoleEnabled = false;
 #endif
 

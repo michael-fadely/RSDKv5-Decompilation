@@ -225,11 +225,8 @@ bool32 ImageGIF::Load(const char *fileName, bool32 loadHeader)
 
     Seek_Cur(&info, 2);
 
-    if (!palette)
-        AllocateStorage((void **)&palette, 0x100 * sizeof(int32), DATASET_TMP, true);
-
-    if (!pixels)
-        AllocateStorage((void **)&pixels, width * height, DATASET_TMP, false);
+    AllocatePaletteMaybe(0x100);
+    AllocatePixelsMaybe(width * height);
 
     if (palette && pixels) {
         uint8 clr[3];
@@ -516,7 +513,7 @@ bool32 RSDK::ImagePNG::AllocatePixels()
 {
     dataSize = sizeof(color) * height * (width + 1);
     if (!pixels) {
-        AllocateStorage((void **)&pixels, dataSize, DATASET_TMP, false);
+        AllocatePixelsMaybe(dataSize);
 
         if (!pixels) {
             Close();
@@ -527,7 +524,7 @@ bool32 RSDK::ImagePNG::AllocatePixels()
     return true;
 }
 
-void RSDK::ImagePNG::ProcessScanlines()
+void RSDK::ImagePNG::ProcessScanlines(std::vector<uint8>& chunkBuffer_)
 {
     uint8 *pixelsPtr = NULL;
     switch (colorFormat) {
@@ -546,6 +543,7 @@ void RSDK::ImagePNG::ProcessScanlines()
     // again, this is a BAD idea!! IDAT chunks should be stored and processed as a group at the end of reading
 
     // decode all loaded IDAT chunks into pixels
+    uint8* chunkBuffer = chunkBuffer_.data();
     Uncompress((uint8 **)&chunkBuffer, chunkSize, (uint8 **)&pixelsPtr, dataSize);
 
     Unfilter(pixelsPtr);
@@ -579,6 +577,8 @@ bool32 RSDK::ImagePNG::Load(const char *fileName, bool32 loadHeader)
     if (fileName) {
         if (LoadFile(&info, fileName, FMODE_RB)) {
             if (ReadInt64(&info) == PNG_SIGNATURE) {
+                std::vector<uint8> chunkBuffer_;
+
                 while (true) {
                     chunkSize   = ReadInt32(&info, true);
                     chunkHeader = ReadInt32(&info, false);
@@ -600,7 +600,12 @@ bool32 RSDK::ImagePNG::Load(const char *fileName, bool32 loadHeader)
 
 #if !RETRO_USE_ORIGINAL_CODE
                         // image size should be enough space to hold all the IDAT chunks
-                        AllocateStorage((void **)&chunkBuffer, sizeof(color) * height * (width + 1), DATASET_TMP, true);
+                        if (sizeof(color) * height * (width + 1) != chunkBuffer_.size()) {
+                            chunkBuffer_.resize(0);
+                            chunkBuffer_.resize(sizeof(color) * height * (width + 1));
+                            // DCFIXME: maybe not necessary
+                            memset(chunkBuffer_.data(), 0, chunkBuffer_.size());
+                        }
                         dataSize = 0;
 #endif
 
@@ -615,8 +620,7 @@ bool32 RSDK::ImagePNG::Load(const char *fileName, bool32 loadHeader)
                         if (!(chunkSize % 3)) {
                             chunkSize = colorCnt;
                             if (colorCnt <= 0x100) {
-                                if (!palette)
-                                    AllocateStorage((void **)&palette, sizeof(uint32) * colorCnt, DATASET_TMP, true);
+                                AllocatePaletteMaybe(colorCnt);
 
                                 uint8 channels[3];
                                 for (int32 c = 0; c < colorCnt; ++c) {
@@ -640,7 +644,7 @@ bool32 RSDK::ImagePNG::Load(const char *fileName, bool32 loadHeader)
                         ProcessScanlines();
 #else
                         // read this chunk into the chunk buffer storage (we process em all at the end)
-                        dataSize += ReadBytes(&info, chunkBuffer + dataSize, chunkSize);
+                        dataSize += ReadBytes(&info, chunkBuffer_.data() + dataSize, chunkSize);
 #endif
                     }
                     else {
@@ -660,9 +664,7 @@ bool32 RSDK::ImagePNG::Load(const char *fileName, bool32 loadHeader)
                             return false;
 
                         // decode the scanlines into usable RGBA pixels
-                        ProcessScanlines();
-
-                        RemoveStorageEntry((void **)&chunkBuffer);
+                        ProcessScanlines(chunkBuffer_);
 #endif
 
                         return true;
@@ -950,6 +952,12 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
             surface->lineSize = ls;
         }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        if (surface->pixels) {
+            RemoveStorageEntry((void**)&surface->pixels);
+        }
+#endif
+
         surface->pixels = NULL;
         AllocateStorage((void **)&surface->pixels, surface->width * surface->height, DATASET_STG, false);
 #if !RETRO_USE_ORIGINAL_CODE
@@ -1052,4 +1060,34 @@ bool32 RSDK::LoadImage(const char *filename, double displayLength, double fadeSp
         image.Close();
     }
     return false;
+}
+
+void Image::AllocatePixelsMaybe(size_t size)
+{
+    if (pixels != NULL) {
+        return;
+    }
+
+    if (tempPixels.size() != size) {
+        tempPixels.resize(0);
+        tempPixels.resize(size);
+        memset(tempPixels.data(), 0, tempPixels.size());
+    }
+
+    pixels = tempPixels.data();
+}
+
+void Image::AllocatePaletteMaybe(size_t size)
+{
+    if (palette != NULL) {
+        return;
+    }
+
+    if (tempPalette.size() != size) {
+        tempPalette.resize(0);
+        tempPalette.resize(size);
+        memset(tempPalette.data(), 0, tempPalette.size());
+    }
+
+    palette = tempPalette.data();
 }

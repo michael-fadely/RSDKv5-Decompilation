@@ -1078,7 +1078,7 @@ void RSDK::LoadGameConfig()
         for (int32 i = 0; i < sfxCnt; ++i) {
             ReadString(&info, buffer);
             uint8 maxConcurrentPlays = ReadInt8(&info);
-            LoadSfx(buffer, maxConcurrentPlays, SCOPE_GLOBAL);
+            //LoadSfx(buffer, maxConcurrentPlays, SCOPE_GLOBAL);
         }
 
         uint16 totalSceneCount = ReadInt16(&info);
@@ -1347,11 +1347,15 @@ void RSDK::InitGameLink()
 void RSDK::ProcessDebugCommands()
 {
 #if !RETRO_USE_ORIGINAL_CODE
-    if (!customSettings.enableControllerDebugging)
-        return;
+//    if (!customSettings.enableControllerDebugging)
+//        return;
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if (controller[CONT_P1].keyY.press) {
+#else
     if (controller[CONT_P1].keySelect.press) {
+#endif
 #if RETRO_REV0U
         if (sceneInfo.state == ENGINESTATE_DEVMENU || RSDK::Legacy::gameMode == RSDK::Legacy::ENGINE_DEVMENU)
 #else

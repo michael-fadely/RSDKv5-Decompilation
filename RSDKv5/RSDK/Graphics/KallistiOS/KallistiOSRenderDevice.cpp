@@ -242,11 +242,19 @@ void RenderDevice::Release(bool32 isRefresh)
 void RenderDevice::RefreshWindow()
 {
     DC_STUB();
+    printf("window size: %dx%d\n", videoSettings.windowWidth, videoSettings.windowHeight);
 }
 // static
 void RenderDevice::GetWindowSize(int32 *width, int32 *height)
 {
-    DC_STUB();
+    printf("window size: %dx%d\n", videoSettings.windowWidth, videoSettings.windowHeight);
+    if (width) {
+        *width = videoSettings.windowWidth;
+    }
+
+    if (height) {
+        *height = videoSettings.windowHeight;
+    }
 }
 
 // static

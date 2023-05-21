@@ -37,10 +37,11 @@ bool32 RSDK::InitStorage()
     //dataStorage[DATASET_STR].storageLimit = 1 * 1024;  // 1KB
     //dataStorage[DATASET_TMP].storageLimit = 8 * 1024;  // 8KB
 
-    dataStorage[DATASET_STG].storageLimit = (3 * 1024 * 1024) - (640 * 1024); // sonic renders on title screen
+//    dataStorage[DATASET_STG].storageLimit = (3 * 1024 * 1024) - (640 * 1024); // sonic renders on title screen
+    dataStorage[DATASET_STG].storageLimit = (5 * 1024 * 1024); // oh god
 
-    dataStorage[DATASET_MUS].storageLimit = 4;
-    dataStorage[DATASET_SFX].storageLimit = 4;
+    dataStorage[DATASET_MUS].storageLimit = 1;
+    dataStorage[DATASET_SFX].storageLimit = 1;
     dataStorage[DATASET_STR].storageLimit = 32 * 1024;
     dataStorage[DATASET_TMP].storageLimit = 1024;
 #else
@@ -55,7 +56,10 @@ bool32 RSDK::InitStorage()
         dataStorage[s].usedStorage = 0;
         dataStorage[s].entryCount  = 0;
         dataStorage[s].clearCount  = 0;
-        dataStorage[s].memoryTable = (uint32 *)malloc(dataStorage[s].storageLimit);
+
+        if (dataStorage[s].storageLimit > 1) {
+            dataStorage[s].memoryTable = (int32 *)malloc(dataStorage[s].storageLimit);
+        }
 
         if (dataStorage[s].memoryTable == NULL)
             return false;
@@ -88,8 +92,9 @@ void RSDK::ReleaseStorage()
 #endif
 }
 
-void RSDK::AllocateStorage(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear)
+void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line)
 {
+    uint32 inputSize = size;
     uint32 **data = (uint32 **)dataPtr;
     *data         = NULL;
 
@@ -179,10 +184,36 @@ void RSDK::AllocateStorage(void **dataPtr, uint32 size, StorageDataSets dataSet,
             if (*data != NULL && clear == (bool32)true)
                 memset(*data, 0, size);
         }
+
+        printf("[%s] ", *dataPtr == NULL ? "NG" : "OK");
+
+        switch (dataSet) {
+            case DATASET_STG:
+                printf("DATASET_STG");
+                break;
+            case DATASET_MUS:
+                printf("DATASET_MUS");
+                break;
+            case DATASET_SFX:
+                printf("DATASET_SFX");
+                break;
+            case DATASET_STR:
+                printf("DATASET_STR");
+                break;
+            case DATASET_TMP:
+                printf("DATASET_TMP");
+                break;
+            default:
+                printf("idk");
+                break;
+        }
+
+        printf(" %lu (%lu free) (from %s:%u)\n", inputSize, storage->storageLimit - (sizeof(int32) * storage->usedStorage), file, line);
     }
+
 }
 
-void RSDK::RemoveStorageEntry(void **dataPtr)
+void RSDK::RemoveStorageEntry_(void **dataPtr, const char* file, size_t line)
 {
     if (dataPtr != NULL && *dataPtr != NULL) {
         uint32 *data = *(uint32 **)dataPtr;
