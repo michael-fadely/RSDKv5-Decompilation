@@ -1,6 +1,9 @@
 #ifndef SPRITE_H
 #define SPRITE_H
 
+#include <memory>
+#include <vector>
+
 namespace RSDK
 {
 
@@ -17,6 +20,8 @@ struct Image {
     ~Image() { RemoveStorageEntry((void **)&palette); }
 #endif
 
+    virtual ~Image() = default;
+
     virtual bool32 Load(const char *fileName, bool32 loadHeader) { return false; }
     virtual bool32 Load(String *fileName, bool32 loadHeader)
     {
@@ -28,12 +33,19 @@ struct Image {
     }
     virtual void Close() { CloseFile(&info); }
 
+    void AllocatePixelsMaybe(size_t size);
+
+    void AllocatePaletteMaybe(size_t size);
+
     FileInfo info;
     int32 width;
     int32 height;
     int32 depth;
     color *palette;
     uint8 *pixels;
+
+    std::vector<color> tempPalette;
+    std::vector<uint8> tempPixels;
 };
 
 struct GifDecoder {
@@ -59,14 +71,17 @@ struct GifDecoder {
 };
 
 struct ImageGIF : public Image {
-    ImageGIF() { AllocateStorage((void **)&decoder, sizeof(GifDecoder), DATASET_TMP, true); }
+    ImageGIF() { decoder = std::unique_ptr<GifDecoder>(new GifDecoder); memset(decoder.get(), 0, sizeof(GifDecoder)); }
+    ~ImageGIF() noexcept override {
+        decoder = nullptr;
+    }
 #if !RETRO_USE_ORIGINAL_CODE
     ~ImageGIF() { RemoveStorageEntry((void **)&decoder); }
 #endif
 
-    bool32 Load(const char *fileName, bool32 loadHeader);
+    bool32 Load(const char *fileName, bool32 loadHeader) override;
 
-    GifDecoder *decoder;
+    std::unique_ptr<GifDecoder> decoder;
 };
 
 #if RETRO_REV02
@@ -87,7 +102,7 @@ enum PNGCompressionFilters {
 };
 
 struct ImagePNG : public Image {
-    bool32 Load(const char *fileName, bool32 loadHeader);
+    bool32 Load(const char *fileName, bool32 loadHeader) override;
 
     void UnpackPixels_Greyscale(uint8 *pixelData);
     void UnpackPixels_GreyscaleA(uint8 *pixelData);
@@ -98,7 +113,7 @@ struct ImagePNG : public Image {
     void Unfilter(uint8 *recon);
 
     bool32 AllocatePixels();
-    void ProcessScanlines();
+    void ProcessScanlines(std::vector<uint8>& chunkBuffer_);
 
     uint8 bitDepth;
     uint8 colorFormat;
@@ -109,7 +124,6 @@ struct ImagePNG : public Image {
     int32 chunkSize;
     int32 chunkCRC;
     int32 dataSize;
-    uint8 *chunkBuffer;
 };
 #else
 struct ImageTGA : public Image {

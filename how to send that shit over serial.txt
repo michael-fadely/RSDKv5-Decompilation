@@ -1,0 +1,2 @@
+# probably have to do this as su
+clear && dc-tool-ser -t /dev/ttyUSB0 -b 115200 -x bin/KallistiOS/RSDKv5.elf

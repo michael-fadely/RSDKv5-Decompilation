@@ -104,11 +104,14 @@ extern DataStorage dataStorage[DATASET_MAX];
 bool32 InitStorage();
 void ReleaseStorage();
 
-void AllocateStorage(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear);
+void AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line);
 void DefragmentAndGarbageCollectStorage(StorageDataSets set);
-void RemoveStorageEntry(void **dataPtr);
+void RemoveStorageEntry_(void **dataPtr, const char* file, size_t line);
 void CopyStorage(uint32 **src, uint32 **dst);
 void GarbageCollectStorage(StorageDataSets dataSet);
+
+#define RemoveStorageEntry(dataPtr) RemoveStorageEntry_(dataPtr, __FILE__, __LINE__)
+#define AllocateStorage(dataPtr, size, dataSet, clear) AllocateStorage_(dataPtr, size, dataSet, clear, __FILE__, __LINE__)
 
 #if RETRO_REV0U
 #include "Legacy/UserStorageLegacy.hpp"

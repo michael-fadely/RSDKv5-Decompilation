@@ -364,6 +364,7 @@ void RSDK::LoadSceneAssets()
 
         // Tile Layers
         uint8 layerCount = ReadInt8(&info);
+        std::vector<uint8> buffer;
         for (int32 l = 0; l < layerCount; ++l) {
             TileLayer *layer = &tileLayers[l];
 
@@ -425,16 +426,12 @@ void RSDK::LoadSceneAssets()
                 layer->scrollInfo[s].unknown = ReadInt8(&info);
             }
 
-            uint8 *scrollIndexes = NULL;
-            ReadCompressed(&info, (uint8 **)&scrollIndexes);
-            memcpy(layer->lineScroll, scrollIndexes, TILE_SIZE * size * sizeof(uint8));
-#if !RETRO_USE_ORIGINAL_CODE
-            RemoveStorageEntry((void **)&scrollIndexes);
-#endif
-            scrollIndexes = NULL;
+            auto& scrollIndexes = buffer;
+            ReadCompressed(&info, scrollIndexes);
+            memcpy(layer->lineScroll, scrollIndexes.data(), TILE_SIZE * size * sizeof(uint8));
 
-            uint8 *tileLayout = NULL;
-            ReadCompressed(&info, (uint8 **)&tileLayout);
+            auto& tileLayout = buffer;
+            ReadCompressed(&info, tileLayout);
 
             int32 id = 0;
             for (int32 y = 0; y < layer->ysize; ++y) {
@@ -443,21 +440,17 @@ void RSDK::LoadSceneAssets()
                     id += 2;
                 }
             }
-
-#if !RETRO_USE_ORIGINAL_CODE
-            RemoveStorageEntry((void **)&tileLayout);
-#endif
-            tileLayout = NULL;
         }
 
         // Objects
         uint8 objectCount = ReadInt8(&info);
-        editableVarList   = NULL;
-        AllocateStorage((void **)&editableVarList, sizeof(EditableVarInfo) * EDITABLEVAR_COUNT, DATASET_TMP, false);
+        std::vector<EditableVarInfo> editableVarBuffer(EDITABLEVAR_COUNT);
+        editableVarList   = editableVarBuffer.data();
+//        AllocateStorage((void **)&editableVarList, sizeof(EditableVarInfo) * EDITABLEVAR_COUNT, DATASET_TMP, false);
 
 #if RETRO_REV02
-        EntityBase *tempEntityList = NULL;
-        AllocateStorage((void **)&tempEntityList, SCENEENTITY_COUNT * sizeof(EntityBase), DATASET_TMP, true);
+        std::vector<EntityBase> tempEntityList_;
+//        AllocateStorage((void **)&tempEntityList, SCENEENTITY_COUNT * sizeof(EntityBase), DATASET_TMP, true);
 #endif
 
         for (int32 i = 0; i < objectCount; ++i) {
@@ -483,8 +476,9 @@ void RSDK::LoadSceneAssets()
             ObjectClass *objectClass = &objectClassList[stageObjectIDs[classID]];
 
             uint8 varCount           = ReadInt8(&info);
-            EditableVarInfo *varList = NULL;
-            AllocateStorage((void **)&varList, sizeof(EditableVarInfo) * varCount, DATASET_TMP, false);
+//            EditableVarInfo *varList = NULL;
+//            AllocateStorage((void **)&varList, sizeof(EditableVarInfo) * varCount, DATASET_TMP, false);
+            std::vector<EditableVarInfo> varList(varCount);
             editableVarCount = 0;
             if (classID) {
 #if RETRO_REV02
@@ -528,10 +522,13 @@ void RSDK::LoadSceneAssets()
                 EntityBase *entity = NULL;
 
 #if RETRO_REV02
-                if (slotID < SCENEENTITY_COUNT)
+                if (slotID < SCENEENTITY_COUNT) {
                     entity = &objectEntityList[slotID + RESERVE_ENTITY_COUNT];
-                else
-                    entity = &tempEntityList[slotID - SCENEENTITY_COUNT];
+                }
+                else {
+                    tempEntityList_.emplace_back();
+                    entity = &tempEntityList_[tempEntityList_.size() - 1];
+                }
 #else
                 entity = &objectEntityList[slotID + RESERVE_ENTITY_COUNT];
 #endif
@@ -691,18 +688,15 @@ void RSDK::LoadSceneAssets()
             entity++;
         }
 
-        for (int32 i = 0; i < SCENEENTITY_COUNT; ++i) {
-            if (sceneInfo.filter & tempEntityList[i].filter)
-                memcpy(&objectEntityList[activeSlot++], &tempEntityList[i], sizeof(EntityBase));
+        for (size_t i = 0; i < tempEntityList_.size(); ++i) {
+            if (sceneInfo.filter & tempEntityList_[i].filter)
+                memcpy(&objectEntityList[activeSlot++], &tempEntityList_[i], sizeof(EntityBase));
 
             if (activeSlot >= SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT)
                 break;
         }
 
-#if !RETRO_USE_ORIGINAL_CODE
-        RemoveStorageEntry((void **)&tempEntityList);
-#endif
-        tempEntityList = NULL;
+        tempEntityList_.resize(0);
 #endif
 
 #if !RETRO_USE_ORIGINAL_CODE
@@ -712,6 +706,10 @@ void RSDK::LoadSceneAssets()
 
         CloseFile(&info);
     }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    dataStorage[DATASET_TMP].usedStorage = 0;
+#endif
 }
 void RSDK::LoadTileConfig(char *filepath)
 {
@@ -725,8 +723,8 @@ void RSDK::LoadTileConfig(char *filepath)
             return;
         }
 
-        uint8 *buffer = NULL;
-        ReadCompressed(&info, &buffer);
+        std::vector<uint8> buffer;
+        ReadCompressed(&info, buffer);
 
         int32 bufPos = 0;
         for (int32 p = 0; p < CPATH_COUNT; ++p) {
@@ -735,9 +733,9 @@ void RSDK::LoadTileConfig(char *filepath)
                 uint8 maskHeights[0x10];
                 uint8 maskActive[0x10];
 
-                memcpy(maskHeights, buffer + bufPos, TILE_SIZE * sizeof(uint8));
+                memcpy(maskHeights, buffer.data() + bufPos, TILE_SIZE * sizeof(uint8));
                 bufPos += TILE_SIZE;
-                memcpy(maskActive, buffer + bufPos, TILE_SIZE * sizeof(uint8));
+                memcpy(maskActive, buffer.data() + bufPos, TILE_SIZE * sizeof(uint8));
                 bufPos += TILE_SIZE;
 
                 bool32 yFlip              = buffer[bufPos++];
@@ -1288,6 +1286,7 @@ void RSDK::CopyTileLayer(uint16 dstLayerID, int32 dstStartX, int32 dstStartY, ui
     }
 }
 
+// DCFIXME: literally shreds background on logo screen(s)
 void RSDK::DrawLayerHScroll(TileLayer *layer)
 {
     if (!layer->xsize || !layer->ysize)
@@ -1323,7 +1322,7 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
         }
         else {
             uint8 *pixels = &tilesetPixels[TILE_DATASIZE * (*layout & 0xFFF) + sheetY + sheetX];
-            for (int32 x = 0; x < tileRemain; ++x) {
+            for (int32 i = 0; i < tileRemain; ++i) {
                 if (*pixels)
                     *frameBuffer = activePalette[*pixels];
                 ++pixels;
@@ -1426,7 +1425,7 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
             }
             else {
                 uint8 *pixels = &tilesetPixels[TILE_DATASIZE * (*layout & 0xFFF) + sheetY];
-                for (int32 x = 0; x < tileRemain; ++x) {
+                for (int32 i = 0; i < tileRemain; ++i) {
                     if (*pixels)
                         *frameBuffer = activePalette[*pixels];
                     ++pixels;
@@ -1582,6 +1581,7 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
         ++frameBuffer;
     }
 }
+// DCFIXME: puts sparkles on title screen
 void RSDK::DrawLayerRotozoom(TileLayer *layer)
 {
     if (!layer->xsize || !layer->ysize)

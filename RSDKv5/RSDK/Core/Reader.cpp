@@ -291,7 +291,14 @@ bool32 RSDK::LoadFile(FileInfo *info, const char *filename, uint8 fileMode)
     }
 
     if (fileMode == FMODE_RB || fileMode == FMODE_WB || fileMode == FMODE_RB_PLUS) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        if (fileMode == FMODE_WB || fileMode == FMODE_RB_PLUS)
+            info->file = NULL;
+        else
+            info->file = fOpen(fullFilePath, openModes[fileMode - 1]);
+#else
         info->file = fOpen(fullFilePath, openModes[fileMode - 1]);
+#endif
     }
 
     if (!info->file) {

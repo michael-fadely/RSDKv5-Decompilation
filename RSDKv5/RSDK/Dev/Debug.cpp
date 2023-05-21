@@ -102,7 +102,7 @@ void RSDK::PrintLog(int32 mode, const char *message, ...)
 #endif
         }
 
-#if !RETRO_USE_ORIGINAL_CODE && RETRO_PLATFORM != RETRO_ANDROID
+#if !RETRO_USE_ORIGINAL_CODE && RETRO_PLATFORM != RETRO_ANDROID && RETRO_PLATFORM != RETRO_KALLISTIOS
         FileIO *file = fOpen(BASE_PATH "log.txt", "a");
         if (file) {
             fWrite(&outputString, 1, strlen(outputString), file);
