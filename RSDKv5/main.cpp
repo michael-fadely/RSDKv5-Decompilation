@@ -79,7 +79,7 @@ void android_main(struct android_app *ap)
     SwappyGL_destroy();
 }
 #else
-int32 main(int32 argc, char *argv[]) { return RSDK_main(argc, argv, (void *)LinkGameLogic); }
+int main(int argc, char *argv[]) { return RSDK_main(argc, argv, (void *)LinkGameLogic); }
 #endif
 
 int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
