@@ -546,7 +546,10 @@ extern "C" {
 #endif
 #endif
 
+// DCFIXME
+#if !defined(_arch_dreamcast)
 #include <theora/theoradec.h>
+#endif
 
 // ============================
 // ENGINE INCLUDES

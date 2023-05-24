@@ -40,6 +40,8 @@ struct DummyLeaderboards : UserLeaderboards {
         }
     }
 
+    ~DummyLeaderboards() noexcept {};
+
     void FetchLeaderboard(LeaderboardID *leaderboard, bool32 isUser);
     void LoadLeaderboards(LeaderboardLoadInfo *info);
     void TrackScore(LeaderboardID *leaderboard, int32 score, void (*callback)(bool32 success, int32 rank));

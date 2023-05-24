@@ -470,8 +470,8 @@ public:
         }
 #endif // ! RETRO_PLATFORM != SWITCH
 #endif // ! RETRO_PLATFORM == WIN
-#endif // ! RETRO_PLATFORM == RETRO_KALLISTIOS
         return ret;
+#endif // ! RETRO_PLATFORM == RETRO_KALLISTIOS
     }
 
     static inline Handle Open(std::string path)
@@ -529,6 +529,7 @@ public:
 #else
             dlclose(handle);
 #endif
+#endif
     }
 
     static inline void *GetSymbol(Handle handle, const char *symbol)
@@ -543,6 +544,7 @@ public:
 #else
         return (void *)dlsym(handle, symbol);
 #endif
+#endif
     }
 
     static inline char *GetError()
@@ -554,6 +556,7 @@ public:
         return (char *)GetLastErrorAsString();
 #else
         return dlerror();
+#endif
 #endif
     }
 

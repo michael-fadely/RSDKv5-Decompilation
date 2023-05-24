@@ -663,8 +663,8 @@ void RSDK::LoadSceneAssets()
             }
 
 #if !RETRO_USE_ORIGINAL_CODE
-            RemoveStorageEntry((void **)&varList);
-            varList = NULL;
+            //RemoveStorageEntry((void **)&varList);
+            //varList = NULL;
 #endif
         }
 
@@ -700,7 +700,7 @@ void RSDK::LoadSceneAssets()
 #endif
 
 #if !RETRO_USE_ORIGINAL_CODE
-        RemoveStorageEntry((void **)&editableVarList);
+        //RemoveStorageEntry((void **)&editableVarList);
 #endif
         editableVarList = NULL;
 
@@ -945,8 +945,8 @@ void RSDK::LoadTileConfig(char *filepath)
         }
 
 #if !RETRO_USE_ORIGINAL_CODE
-        RemoveStorageEntry((void **)&buffer);
-        buffer = NULL;
+        //RemoveStorageEntry((void **)&buffer);
+        //buffer = NULL;
 #endif
         CloseFile(&info);
     }

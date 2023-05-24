@@ -16,9 +16,6 @@ struct Image {
         palette = NULL;
         pixels  = NULL;
     }
-#if !RETRO_USE_ORIGINAL_CODE
-    ~Image() { RemoveStorageEntry((void **)&palette); }
-#endif
 
     virtual ~Image() = default;
 
@@ -75,9 +72,6 @@ struct ImageGIF : public Image {
     ~ImageGIF() noexcept override {
         decoder = nullptr;
     }
-#if !RETRO_USE_ORIGINAL_CODE
-    ~ImageGIF() { RemoveStorageEntry((void **)&decoder); }
-#endif
 
     bool32 Load(const char *fileName, bool32 loadHeader) override;
 

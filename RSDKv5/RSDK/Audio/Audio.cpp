@@ -60,7 +60,7 @@ uint8 AudioDeviceBase::audioFocus               = 0;
 void AudioDeviceBase::Release()
 {
     // This is missing, meaning that the garbage collector will never reclaim stb_vorbis's buffer.
-#if !RETRO_USE_ORIGINAL_CODE
+#if !RETRO_USE_ORIGINAL_CODE && !defined(_arch_dreamcast) // DCFIXME
     stb_vorbis_close(vorbisInfo);
     vorbisInfo = NULL;
 #endif
