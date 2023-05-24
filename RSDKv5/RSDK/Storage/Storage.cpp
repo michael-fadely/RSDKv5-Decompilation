@@ -57,8 +57,8 @@ bool32 RSDK::InitStorage()
         dataStorage[s].entryCount  = 0;
         dataStorage[s].clearCount  = 0;
 
-        if (dataStorage[s].storageLimit > 1) {
-            dataStorage[s].memoryTable = (int32 *)malloc(dataStorage[s].storageLimit);
+        /*if (dataStorage[s].storageLimit > 1)*/ {
+            dataStorage[s].memoryTable = (uint32 *)malloc(dataStorage[s].storageLimit);
         }
 
         if (dataStorage[s].memoryTable == NULL)
@@ -208,7 +208,8 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
                 break;
         }
 
-        printf(" %lu (%lu free) (from %s:%u)\n", inputSize, storage->storageLimit - (sizeof(int32) * storage->usedStorage), file, line);
+        // DCFIXME: printf(" %lu (%lu free) (from %s:%u)\n", inputSize, storage->storageLimit - (sizeof(int32) * storage->usedStorage), file, line);
+        printf("\n");
     }
 
 }
