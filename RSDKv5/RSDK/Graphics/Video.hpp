@@ -2,9 +2,9 @@
 #define VIDEO_H
 
 // DCFIXME
-#if defined(_arch_dreamcast)
+#if !defined(_arch_dreamcast)
 #include <ogg/ogg.h>
-#endif  // defined(_arch_dreamcast)
+#endif  // !defined(_arch_dreamcast)
 
 namespace RSDK
 {
