@@ -8,7 +8,7 @@ namespace RSDK
 
 #ifndef SCREEN_COUNT
 #if RETRO_REV02
-#if defined(_arch_dreamcast)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
 // DCFIXME: reduced screen count to save RAM (SCREEN_COUNT)
 #define SCREEN_COUNT (1)
 #else
@@ -20,7 +20,7 @@ namespace RSDK
 #endif
 #define CAMERA_COUNT (4)
 
-#if defined(_arch_dreamcast)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
 #define DEFAULT_PIXWIDTH (320)
 #else
 #define DEFAULT_PIXWIDTH (424)
@@ -251,11 +251,6 @@ private:
     static void GetDisplays();
 };
 
-// DCFIXME: should define some RETRO_RENDERDEVICE_*
-#if defined(_arch_dreamcast)
-#include "KallistiOS/KallistiOSRenderDevice.hpp"
-#else  // defined(_arch_dreamcast)
-
 #if RETRO_RENDERDEVICE_DIRECTX9
 #include "DX9/DX9RenderDevice.hpp"
 #elif RETRO_RENDERDEVICE_DIRECTX11
@@ -268,9 +263,9 @@ private:
 #include "Vulkan/VulkanRenderDevice.hpp"
 #elif RETRO_RENDERDEVICE_EGL
 #include "EGL/EGLRenderDevice.hpp"
+#elif RETRO_RENDERDEVICE_KALLISTIOS
+#include "KallistiOS/KallistiOSRenderDevice.hpp"
 #endif
-
-#endif  // !defined(_arch_dreamcast)
 
 extern DrawList drawGroups[DRAWGROUP_COUNT];
 extern char drawGroupNames[0x10][0x10];

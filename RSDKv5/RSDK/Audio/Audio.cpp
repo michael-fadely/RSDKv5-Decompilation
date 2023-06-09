@@ -14,13 +14,13 @@ using namespace RSDK;
 #define STB_VORBIS_NO_STDIO
 #define STB_VORBIS_NO_INTEGER_CONVERSION
 
-// DCFIXME: should define some RETRO_AUDIODEVICE_*
-#if !defined(_arch_dreamcast)
+// DCFIXME: Stub stb_vorbis for now
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 #include "stb_vorbis/stb_vorbis.c"
 
 stb_vorbis *vorbisInfo = NULL;
 stb_vorbis_alloc vorbisAlloc;
-#endif  // !defined(_arch_dreamcast)
+#endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 
 SFXInfo RSDK::sfxList[SFX_COUNT];
 ChannelInfo RSDK::channels[CHANNEL_COUNT];
@@ -36,10 +36,6 @@ int32 streamLoopPoint  = 0;
 
 float linearInterpolationLookup[LINEAR_INTERPOLATION_LOOKUP_LENGTH];
 
-// DCFIXME: should define some RETRO_AUDIODEVICE_*
-#if defined(_arch_dreamcast)
-#include "KallistiOS/KallistiOSAudioDevice.cpp"
-#else  // defined(_arch_dreamcast)
 
 #if RETRO_AUDIODEVICE_XAUDIO
 #include "XAudio/XAudioDevice.cpp"
@@ -51,9 +47,9 @@ float linearInterpolationLookup[LINEAR_INTERPOLATION_LOOKUP_LENGTH];
 #include "MiniAudio/MiniAudioDevice.cpp"
 #elif RETRO_AUDIODEVICE_OBOE
 #include "Oboe/OboeAudioDevice.cpp"
+#elif RETRO_AUDIODEVICE_KALLISTIOS
+#include "KallistiOS/KallistiOSAudioDevice.cpp"
 #endif
-
-#endif  // !defined(_arch_dreamcast)
 
 uint8 AudioDeviceBase::initializedAudioChannels = false;
 uint8 AudioDeviceBase::audioState               = 0;
@@ -62,7 +58,7 @@ uint8 AudioDeviceBase::audioFocus               = 0;
 void AudioDeviceBase::Release()
 {
     // This is missing, meaning that the garbage collector will never reclaim stb_vorbis's buffer.
-#if !RETRO_USE_ORIGINAL_CODE && !defined(_arch_dreamcast) // DCFIXME
+#if !RETRO_USE_ORIGINAL_CODE && RETRO_PLATFORM != RETRO_KALLISTIOS // DCFIXME
     stb_vorbis_close(vorbisInfo);
     vorbisInfo = NULL;
 #endif
@@ -198,7 +194,7 @@ void AudioDeviceBase::InitAudioChannels()
 
 void RSDK::UpdateStreamBuffer(ChannelInfo *channel)
 {
-#if defined(_arch_dreamcast)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
     DC_STUB();
 #else
     int32 bufferRemaining = MIX_BUFFER_SIZE;
@@ -230,7 +226,7 @@ void RSDK::UpdateStreamBuffer(ChannelInfo *channel)
 
 void RSDK::LoadStream(ChannelInfo *channel)
 {
-#if defined(_arch_dreamcast)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
     DC_STUB();
 #else
     if (channel->state != CHANNEL_LOADING_STREAM)
@@ -270,7 +266,7 @@ void RSDK::LoadStream(ChannelInfo *channel)
 
 int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint32 loopPoint, bool32 loadASync)
 {
-#if defined(_arch_dreamcast)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
     DC_STUB();
     return -1;
 #else
@@ -457,8 +453,7 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 
 void RSDK::LoadSfx(char *filename, uint8 plays, uint8 scope)
 {
-    // DCFIXME: should define some RETRO_AUDIODEVICE_*
-#if !defined(_arch_dreamcast)
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     // Find an empty sound slot.
     uint16 id = -1;
     for (uint32 i = 0; i < SFX_COUNT; ++i) {
@@ -561,7 +556,7 @@ void RSDK::SetChannelAttributes(uint8 channel, float volume, float panning, floa
 
 uint32 RSDK::GetChannelPos(uint32 channel)
 {
-#if defined(_arch_dreamcast)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
     DC_STUB();
 #else
     if (channel >= CHANNEL_COUNT)
@@ -583,7 +578,7 @@ uint32 RSDK::GetChannelPos(uint32 channel)
 
 double RSDK::GetVideoStreamPos()
 {
-#if defined(_arch_dreamcast)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
     DC_STUB();
 #else
     if (channels[0].state == CHANNEL_STREAM && AudioDevice::audioState && AudioDevice::initializedAudioChannels && vorbisInfo->current_loc_valid) {
