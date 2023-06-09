@@ -1,7 +1,7 @@
 #include "RSDK/Core/RetroEngine.hpp"
 #include "main.hpp"
 
-#if defined(_arch_dreamcast) && RSDK_DEBUG
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && RSDK_DEBUG
 #include <arch/gdb.h>
 #endif
 
@@ -83,7 +83,7 @@ int main(int argc, char *argv[]) { return RSDK_main(argc, argv, (void *)LinkGame
 
 int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
 {
-#if defined(_arch_dreamcast) && RSDK_DEBUG
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && RSDK_DEBUG
     gdb_init();
 #endif
 

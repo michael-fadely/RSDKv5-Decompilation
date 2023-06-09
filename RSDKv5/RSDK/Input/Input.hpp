@@ -504,8 +504,7 @@ extern int32 gamePadCount;
 #include "Paddleboat/PDBInputDevice.hpp"
 #endif
 
-// DCFIXME: should define some RETRO_INPUTDEVICE_KALLISTIOS type thing
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#if RETRO_INPUTDEVICE_KALLISTIOS
 #include "KallistiOS/KallistiOSInputDevice.hpp"
 #endif
 

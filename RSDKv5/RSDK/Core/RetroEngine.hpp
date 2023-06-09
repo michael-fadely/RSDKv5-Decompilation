@@ -159,7 +159,7 @@ enum GameRegions {
 
 // DCFIXME: is this too large?
 #ifndef SCREEN_XMAX
-#if defined(_arch_dreamcast)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
 #define SCREEN_XMAX (640)
 #else
 #define SCREEN_XMAX (1280)
@@ -251,12 +251,7 @@ enum GameRegions {
 
 // enables the use of the mod loader
 #ifndef RETRO_USE_MOD_LOADER
-// DCFIXME: disabling mod loader to fix build for now
-#ifdef _arch_dreamcast
-#define RETRO_USE_MOD_LOADER (0)
-#else
 #define RETRO_USE_MOD_LOADER (!RETRO_USE_ORIGINAL_CODE && 1)
-#endif
 #endif
 
 // defines the version of the mod loader, this should be changed ONLY if the ModFunctionTable is updated in any way
@@ -430,8 +425,9 @@ enum GameRegions {
 
 #elif RETRO_PLATFORM == RETRO_KALLISTIOS
 
-// DCFIXME: currently unused
 #define RETRO_RENDERDEVICE_KALLISTIOS (1)
+#define RETRO_AUDIODEVICE_KALLISTIOS  (1)
+#define RETRO_INPUTDEVICE_KALLISTIOS  (1)
 
 #undef RETRO_INPUTDEVICE_KEYBOARD
 #define RETRO_INPUTDEVICE_KEYBOARD (0)
@@ -546,8 +542,8 @@ extern "C" {
 #endif
 #endif
 
-// DCFIXME
-#if !defined(_arch_dreamcast)
+// DCFIXME: No video support for now
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 #include <theora/theoradec.h>
 #endif
 
