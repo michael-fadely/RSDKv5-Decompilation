@@ -3,14 +3,6 @@
 
 namespace RSDK
 {
-#if defined(_arch_dreamcast)
-    // DCFIXME: fixes build. should fix in files that include this header maybe?
-    template <typename T>
-    T abs(T value)
-    {
-        return value < 0 ? -value : value;
-    }
-#endif
 
 // not "math" but works best here
 #define INT_TO_VOID(x) (void *)(size_t)(x)

@@ -2,15 +2,15 @@
 #define VIDEO_H
 
 // DCFIXME
-#if defined(_arch_dreamcast)
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 #include <ogg/ogg.h>
-#endif  // defined(_arch_dreamcast)
+#endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 
 namespace RSDK
 {
 
 struct VideoManager {
-    #if !defined(_arch_dreamcast) // DCFIXME
+    #if RETRO_PLATFORM != RETRO_KALLISTIOS // DCFIXME
     static FileInfo file;
 
     static ogg_sync_state oy;
@@ -26,7 +26,7 @@ struct VideoManager {
     static th_pixel_fmt pixelFormat;
     static ogg_int64_t granulePos;
     static bool32 initializing;
-    #endif  // !defined(_arch_dreamcast)
+    #endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 };
 
 bool32 LoadVideo(const char *filename, double startDelay, bool32 (*skipCallback)());

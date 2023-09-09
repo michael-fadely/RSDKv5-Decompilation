@@ -15,7 +15,7 @@ namespace RSDK
 // 0x800 scene objects, 0x40 reserved ones, and 0x100 spare slots for creation
 #define RESERVE_ENTITY_COUNT (0x40)
 #define TEMPENTITY_COUNT     (0x100)
-#ifdef _arch_dreamcast
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
 #define SCENEENTITY_COUNT    (256)
 #else
 #define SCENEENTITY_COUNT    (0x800)
