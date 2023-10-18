@@ -24,7 +24,6 @@
 FileIO *fOpen(const char *path, const char *mode);
 #endif
 
-#include <vector>
 #include <miniz/miniz.h>
 
 namespace RSDK
@@ -418,30 +417,23 @@ inline int32 Uncompress(uint8 **cBuffer, int32 cSize, uint8 **buffer, int32 size
 }
 
 // The buffer passed in parameter is allocated here, so it's up to the caller to free it once it goes unused
-inline int32 ReadCompressed(FileInfo *info, std::vector<uint8>& buffer)
+inline int32 ReadCompressed(FileInfo *info, uint8 **buffer)
 {
+    if (!buffer)
+        return 0;
+
     uint32 cSize  = ReadInt32(info, false) - 4;
     uint32 sizeBE = ReadInt32(info, false);
 
     uint32 sizeLE = (uint32)((sizeBE << 24) | ((sizeBE << 8) & 0x00FF0000) | ((sizeBE >> 8) & 0x0000FF00) | (sizeBE >> 24));
-//    buffer.clear();
-    buffer.resize(0);
-    buffer.resize(sizeLE);
+    AllocateStorage((void **)buffer, sizeLE, DATASET_TMP, false);
 
     uint8 *cBuffer = NULL;
-#if 0
     AllocateStorage((void **)&cBuffer, cSize, DATASET_TMP, false);
-#else
-    std::vector<uint8> cBufferv(cSize);
-    cBuffer = cBufferv.data();
-#endif
     ReadBytes(info, cBuffer, cSize);
 
-    uint8* bufferptr = buffer.data();
-    uint32 newSize = Uncompress(&cBuffer, cSize, &bufferptr, sizeLE);
-#if 0
+    uint32 newSize = Uncompress(&cBuffer, cSize, buffer, sizeLE);
     RemoveStorageEntry((void **)&cBuffer);
-#endif
 
     return newSize;
 }

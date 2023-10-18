@@ -57,9 +57,7 @@ bool32 RSDK::InitStorage()
         dataStorage[s].entryCount  = 0;
         dataStorage[s].clearCount  = 0;
 
-        /*if (dataStorage[s].storageLimit > 1)*/ {
-            dataStorage[s].memoryTable = (uint32 *)malloc(dataStorage[s].storageLimit);
-        }
+        dataStorage[s].memoryTable = (uint32 *)malloc(dataStorage[s].storageLimit);
 
         if (dataStorage[s].memoryTable == NULL)
             return false;
