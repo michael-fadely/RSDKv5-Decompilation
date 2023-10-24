@@ -38,12 +38,14 @@ bool32 RSDK::InitStorage()
     //dataStorage[DATASET_TMP].storageLimit = 8 * 1024;  // 8KB
 
 //    dataStorage[DATASET_STG].storageLimit = (3 * 1024 * 1024) - (640 * 1024); // sonic renders on title screen
-    dataStorage[DATASET_STG].storageLimit = (5 * 1024 * 1024); // oh god
+//    dataStorage[DATASET_STG].storageLimit = (5 * 1024 * 1024); // oh god
+//    dataStorage[DATASET_STG].storageLimit = (6 * 1024 * 1024) + ((512 + 64) * 1024); // oh god!!!
+    dataStorage[DATASET_STG].storageLimit = (6 * 1024 * 1024); // ok...
 
     dataStorage[DATASET_MUS].storageLimit = 1;
     dataStorage[DATASET_SFX].storageLimit = 1;
     dataStorage[DATASET_STR].storageLimit = 32 * 1024;
-    dataStorage[DATASET_TMP].storageLimit = 1024;
+    dataStorage[DATASET_TMP].storageLimit = 512 * 1024;
 #else
     dataStorage[DATASET_STG].storageLimit = 24 * 1024 * 1024; // 24MB
     dataStorage[DATASET_MUS].storageLimit = 8 * 1024 * 1024;  //  8MB
@@ -103,9 +105,9 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
         if (size_aligned < size)
             size = size_aligned + sizeof(void *);
 
-        if (dataStorage[dataSet].entryCount < STORAGE_ENTRY_COUNT) {
-            DataStorage *storage = &dataStorage[dataSet];
+        DataStorage *storage = &dataStorage[dataSet];
 
+        if (dataStorage[dataSet].entryCount < STORAGE_ENTRY_COUNT) {
 #if !RETRO_USE_ORIGINAL_CODE
             // Bug: The original release never takes into account the size of the header when checking if there's enough storage left.
             // Omitting this will overflow the memory pool when (storageLimit - usedStorage + size) < header size (16 bytes here).
@@ -206,8 +208,12 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
                 break;
         }
 
-        // DCFIXME: printf(" %lu (%lu free) (from %s:%u)\n", inputSize, storage->storageLimit - (sizeof(int32) * storage->usedStorage), file, line);
-        printf("\n");
+        if (storage) {
+            printf(" %lu (%lu free) (from %s:%u)\n", inputSize, storage->storageLimit - (sizeof(int32) * storage->usedStorage), file, line);
+        }
+        else {
+            printf("\n");
+        }
     }
 
 }
