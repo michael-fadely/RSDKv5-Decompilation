@@ -60,16 +60,32 @@ void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
 bool RenderDevice::Init()
 {
     pvr_init_params_t pvrParams = {
-        { PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_0, PVR_BINSIZE_0, PVR_BINSIZE_0 },
-        1024
+        // bin sizes
+        {
+            PVR_BINSIZE_8, // opaque polygons
+            PVR_BINSIZE_0, // opaque modifiers (disabled)
+            PVR_BINSIZE_8, // translucent polygons
+            PVR_BINSIZE_0, // translucent modifiers (disabled)
+            PVR_BINSIZE_8  // punch-through polygons
+        },
+        // vertex buffer size
+        // 512 KB is the default used by pvr_init_defaults(). might need adjusting.
+        512 * 1024,
+        // dma enabled? (no)
+        0,
+        // fsaa enabled? (no)
+        0,
+        // autosort disabled? (no, will use for 3D maybe!)
+        0
     };
 
-    // DCFIXME: these init parameters don't actually work on hardware. initialization succeeds, but rendering fails.
-//    if (pvr_init(&pvrParams) < 0) {
-    if (pvr_init_defaults() < 0) {
+    if (pvr_init(&pvrParams) < 0) {
         while (true) {
             printf("pvr_init failed!!!\n");
         }
+    }
+    else {
+        printf("pvr_init success. pvr_mem_available: %lu\n", pvr_mem_available());
     }
 
     pvr_set_bg_color(0.0f, 1.0f, 1.0f);
@@ -125,8 +141,6 @@ bool RenderDevice::Init()
         }
     }
 
-    printf("pvr_mem_available: %lu\n", pvr_mem_available());
-
     pvr_poly_cxt_txr(&screenTextures[0].context,
                      PVR_LIST_OP_POLY,
                      PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED,
@@ -136,6 +150,8 @@ bool RenderDevice::Init()
                      PVR_FILTER_NEAREST);
 
     pvr_poly_compile(&screenTextures[0].header, &screenTextures[0].context);
+
+    printf("pvr setup complete. pvr_mem_available: %lu\n", pvr_mem_available());
 
     viewSize.x = 640.0f;
     viewSize.y = 480.0f;
