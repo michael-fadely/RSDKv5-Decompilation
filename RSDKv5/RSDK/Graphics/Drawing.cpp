@@ -587,6 +587,56 @@ void RSDK::SwapDrawListEntries(uint8 drawGroup, uint16 slot1, uint16 slot2, uint
     }
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+void DrawPolyForScreenFill(uint32 color) {
+    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
+
+    pvr_poly_cxt_t context;
+    pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+
+    pvr_poly_hdr_t header;
+    pvr_poly_compile(&header, &context);
+
+    //pvr_list_begin(PVR_LIST_OP_POLY);
+    {
+        pvr_prim(&header, sizeof(header));
+
+        pvr_vertex_t vert {};
+
+        vert.flags = PVR_CMD_VERTEX;
+        vert.argb = color;
+        vert.oargb = 0;
+
+        // top left
+        vert.x = 0.0f;
+        vert.y = 0.0f;
+        vert.z = 1.0f;
+        pvr_prim(&vert, sizeof(vert));
+
+        // top right
+        vert.x = renderWidth;
+        vert.y = 0.0f;
+        vert.z = 1.0f;
+        pvr_prim(&vert, sizeof(vert));
+
+        // bottom left
+        vert.x = 0.0f;
+        vert.y = renderHeight;
+        vert.z = 1.0f;
+        pvr_prim(&vert, sizeof(vert));
+
+        // bottom right
+        vert.flags = PVR_CMD_VERTEX_EOL;
+        vert.x = renderWidth;
+        vert.y = renderHeight;
+        vert.z = 1.0f;
+        pvr_prim(&vert, sizeof(vert));
+    }
+    //pvr_list_finish();
+}
+#endif
+
 void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
 {
     alphaR = CLAMP(alphaR, 0x00, 0xFF);
@@ -594,6 +644,12 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
     alphaB = CLAMP(alphaB, 0x00, 0xFF);
 
     if (alphaR + alphaG + alphaB) {
+        #if RETRO_PLATFORM == RETRO_KALLISTIOS
+        validDraw = true;
+        uint32 shittyAlpha = (alphaR + alphaG + alphaB) / 3;
+        shittyAlpha = CLAMP(shittyAlpha, 0x00, 0xFF);
+        DrawPolyForScreenFill(color | (shittyAlpha << 24));
+        #else
         validDraw        = true;
         uint16 clrBlendR = blendLookupTable[0x20 * alphaR + rgb32To16_B[(color >> 0x10) & 0xFF]];
         uint16 clrBlendG = blendLookupTable[0x20 * alphaG + rgb32To16_B[(color >> 0x08) & 0xFF]];
@@ -613,6 +669,7 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
 
             currentScreen->frameBuffer[id] = (B) | (G << 6) | (R << 11);
         }
+        #endif
     }
 }
 
@@ -2980,6 +3037,7 @@ void DrawPoly(
         vert.v = v1;
         pvr_prim(&vert, sizeof(vert));
 
+        // bottom right
         vert.flags = PVR_CMD_VERTEX_EOL;
         vert.x = renderX + lmaoWidth;
         vert.y = renderY + lmaoHeight;
