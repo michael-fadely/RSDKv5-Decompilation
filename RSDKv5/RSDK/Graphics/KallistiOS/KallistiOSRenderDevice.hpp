@@ -19,6 +19,9 @@ public:
     static void FlipScreen();
     static void Release(bool32 isRefresh);
 
+    static void BeginScene();
+    static void EndScene();
+
     static void RefreshWindow();
     static void GetWindowSize(int32 *width, int32 *height);
 

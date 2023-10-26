@@ -1,6 +1,11 @@
 #ifndef DRAWING_H
 #define DRAWING_H
 
+// DCWIP
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include <dc/pvr.h>
+#endif
+
 namespace RSDK
 {
 
@@ -76,6 +81,9 @@ enum ShaderIDs {
 struct GFXSurface {
     RETRO_HASH_MD5(hash);
     uint8 *pixels;
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    pvr_ptr_t texture;
+#endif
     int32 height;
     int32 width;
     int32 lineSize;
@@ -423,6 +431,11 @@ inline void ClearGfxSurfaces()
     // Unload sprite sheets
     for (int32 s = 0; s < SURFACE_COUNT; ++s) {
         if (gfxSurface[s].scope != SCOPE_GLOBAL) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            if (gfxSurface[s].texture != nullptr) {
+                pvr_mem_free(gfxSurface[s].texture);
+            }
+#endif
             MEM_ZERO(gfxSurface[s]);
             gfxSurface[s].scope = SCOPE_NONE;
         }

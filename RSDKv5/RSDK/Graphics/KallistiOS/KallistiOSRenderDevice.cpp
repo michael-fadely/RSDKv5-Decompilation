@@ -3,12 +3,16 @@
 
 #include <RSDK/Core/Stub.hpp>
 
+#define HARDWARE_RENDERER
+
 struct KOSTexture
 {
+#if !defined(HARDWARE_RENDERER)
     pvr_poly_cxt_t context;
     pvr_poly_hdr_t header;
     pvr_ptr_t pvrPtr;
     void* sysPtr;
+#endif
     uint32 width;
     uint32 height;
 };
@@ -68,13 +72,17 @@ bool RenderDevice::Init()
             PVR_BINSIZE_0, // translucent modifiers (disabled)
             PVR_BINSIZE_8  // punch-through polygons
         },
+
         // vertex buffer size
         // 512 KB is the default used by pvr_init_defaults(). might need adjusting.
-        512 * 1024,
+        64 * 1024, // UNDONE: was 512 * 1024
+
         // dma enabled? (no)
         0,
+
         // fsaa enabled? (no)
         0,
+
         // autosort disabled? (no, will use for 3D maybe!)
         0
     };
@@ -111,6 +119,7 @@ bool RenderDevice::Init()
     uint32 width;
     uint32 height;
 
+    // DCFIXME: just align pixWidth and pixHeight to the nearest power of 2
     if (videoSettings.pixHeight <= 256) {
         width = 512;
         height = 256;
@@ -123,21 +132,26 @@ bool RenderDevice::Init()
     textureSize.x = (float)width;
     textureSize.y = (float)height;
 
-    // DCFIXME: support multiple screen textures? (presumably multiplayer only)
+#if !defined(HARDWARE_RENDERER)
+    const uint32 screenTextureSize = 2 * width * height;
 
-    screenTextures[0].pvrPtr = pvr_mem_malloc(2 * width * height);
+    // DCFIXME: support multiple screen textures? (presumably multiplayer only)
+    printf("allocating %lux%lu frame buffer texture (%lu bytes)\n",
+           width, height, screenTextureSize);
+
+    screenTextures[0].pvrPtr = pvr_mem_malloc(screenTextureSize);
 
     if (!screenTextures[0].pvrPtr) {
         while (true) {
-            printf("pvr_mem_malloc() failed!!!\n");
+            printf("pvr_mem_malloc(%lu) failed!!!\n", screenTextureSize);
         }
     }
 
-    screenTextures[0].sysPtr = memalign(32, 2 * width * height);
+    screenTextures[0].sysPtr = memalign(32, screenTextureSize);
 
     if (!screenTextures[0].sysPtr) {
         while (true) {
-            printf("memalign() failed!!!\n");
+            printf("memalign(32, %lu) failed!!!\n", screenTextureSize);
         }
     }
 
@@ -150,6 +164,7 @@ bool RenderDevice::Init()
                      PVR_FILTER_NEAREST);
 
     pvr_poly_compile(&screenTextures[0].header, &screenTextures[0].context);
+#endif
 
     printf("pvr setup complete. pvr_mem_available: %lu\n", pvr_mem_available());
 
@@ -203,6 +218,7 @@ bool RenderDevice::Init()
 // static
 void RenderDevice::CopyFrameBuffer()
 {
+#if !defined(HARDWARE_RENDERER)
     for (int32 s = 0; s < /*videoSettings.screenCount*/ 1; ++s) {
         const KOSTexture& screenTexture = screenTextures[s];
 
@@ -223,10 +239,12 @@ void RenderDevice::CopyFrameBuffer()
         //dcache_flush_range(screenTexture.sysPtr, textureSize);
         //pvr_txr_load_dma(screenTexture.sysPtr, screenTexture.pvrPtr, textureSize, 1, nullptr, 0);
     }
+#endif
 }
 // static
 void RenderDevice::FlipScreen()
 {
+#if !defined(HARDWARE_RENDERER)
     pvr_scene_begin();
 
     // DCFIXME: support multiple screen textures? (presumably multiplayer only)
@@ -247,11 +265,29 @@ void RenderDevice::FlipScreen()
     }
 
     pvr_scene_finish();
+#endif
 }
 // static
 void RenderDevice::Release(bool32 isRefresh)
 {
     DC_STUB();
+}
+
+// static
+void RenderDevice::BeginScene()
+{
+#if defined(HARDWARE_RENDERER)
+    pvr_scene_begin();
+    pvr_list_begin(PVR_LIST_TR_POLY); // DCWIP
+#endif
+}
+// static
+void RenderDevice::EndScene()
+{
+#if defined(HARDWARE_RENDERER)
+    pvr_list_finish(); // DCWIP
+    pvr_scene_finish();
+#endif
 }
 
 // static

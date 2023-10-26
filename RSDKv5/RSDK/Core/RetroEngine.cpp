@@ -269,7 +269,13 @@ int32 RSDK::RunRetroEngine(int32 argc, char *argv[])
                         case 3: Legacy::v3::ProcessEngine(); break;
                     }
 #else
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                    RenderDevice::BeginScene();
                     ProcessEngine();
+                    RenderDevice::EndScene();
+#else
+                    ProcessEngine();
+#endif
 #endif
                 }
 

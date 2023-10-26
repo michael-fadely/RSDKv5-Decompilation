@@ -950,12 +950,95 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
             surface->lineSize = ls;
         }
 
+        // DCWIP
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-        if (surface->pixels) {
+        const int32 textureSize = surface->width * surface->height;
+
+        if (textureSize < 0) {
+            printf("[pvr] [NG] [Data/Sprites/%s] texture size is negative!!! %ld * %ld = %ld\n",
+                   filename, surface->width, surface->height, textureSize);
+
+            return -1;
+        }
+
+        uint32 pvrMemBefore;
+        uint32 pvrMemAfter;
+
+        const auto printPvrMem = [](uint32 before, uint32 after) {
+            auto change = static_cast<int32>(after - before);
+            printf("[pvr] memory before: %lu; after: %lu; change: %ld\n",
+                   before, after, change);
+        };
+
+        if (surface->texture != nullptr) {
+            pvrMemBefore = pvr_mem_available();
+
+            pvr_mem_free(surface->texture);
+            surface->texture = nullptr;
+
+            pvrMemAfter = pvr_mem_available();
+
+            printf("[pvr] [OK] [Data/Sprites/%s] freed existing surface texture for use.\n",
+                   filename);
+
+            printPvrMem(pvrMemBefore, pvrMemAfter);
+        }
+
+        if (image.pixels != NULL) {
+            RemoveStorageEntry((void**)&image.pixels);
+        }
+
+        if (surface->pixels != NULL) {
             RemoveStorageEntry((void**)&surface->pixels);
         }
-#endif
 
+        {
+            pvrMemBefore = pvr_mem_available();
+
+            surface->texture = pvr_mem_malloc(static_cast<size_t>(textureSize));
+
+            pvrMemAfter = pvr_mem_available();
+
+            if (surface->texture == nullptr) {
+                printf("[pvr] [NG] [Data/Sprites/%s] pvr_mem_malloc(%ld) failed!!!\n",
+                       filename, textureSize);
+
+                printPvrMem(pvrMemBefore, pvrMemAfter);
+
+                return -1;
+            } else {
+                printf("[pvr] [OK] [Data/Sprites/%s] pvr_mem_malloc(%ld) succeeded.\n",
+                       filename, textureSize);
+
+                printPvrMem(pvrMemBefore, pvrMemAfter);
+            }
+        }
+
+        AllocateStorage((void **)&surface->pixels, textureSize, DATASET_STG, false);
+
+        if (surface->pixels == NULL) {
+            printf("[pvr] [NG] [Data/Sprites/%s] AllocateStorage failed!!!\n", filename);
+            return -1;
+        }
+
+        image.pixels = surface->pixels;
+
+        if (!image.Load(NULL, false)) {
+            printf("[pvr] [NG] [Data/Sprites/%s] image.Load(NULL, false) failed!!!\n", filename);
+            return -1;
+        }
+
+        // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
+        // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h)
+        // DCFIXME: pvr_txr_load_ex actually *always* twiddles, even if you don't want it
+        pvr_txr_load_ex(
+            surface->pixels,
+            surface->texture,
+            surface->width,
+            surface->height,
+            PVR_TXRLOAD_8BPP
+        );
+#else
         surface->pixels = NULL;
         AllocateStorage((void **)&surface->pixels, surface->width * surface->height, DATASET_STG, false);
 #if !RETRO_USE_ORIGINAL_CODE
@@ -970,6 +1053,7 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 #endif
         image.pixels = surface->pixels;
         image.Load(NULL, false);
+#endif
 
 #if RETRO_USE_ORIGINAL_CODE
         image.palette = NULL;

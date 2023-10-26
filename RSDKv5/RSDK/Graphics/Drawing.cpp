@@ -287,6 +287,7 @@ void RSDK::InitSystemSurfaces()
     gfxSurface[0].height   = TILE_COUNT * TILE_SIZE;
     gfxSurface[0].lineSize = 4; // 16px
     gfxSurface[0].pixels   = tilesetPixels;
+    // DCTODO: allocate texture
 
 #if RETRO_REV02
     GEN_HASH_MD5("EngineText", gfxSurface[1].hash);
@@ -295,6 +296,7 @@ void RSDK::InitSystemSurfaces()
     gfxSurface[1].height   = 128 * 8;
     gfxSurface[1].lineSize = 3; // 8px
     gfxSurface[1].pixels   = devTextStencil;
+    // DCTODO: allocate texture
 #endif
 }
 
@@ -2853,6 +2855,142 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
         }
     }
 }
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+void DrawPoly(
+    int32 x, int32 y,
+    int32 width, int32 height,
+    int32 sprX, int32 sprY,
+    GFXSurface* surface, int32 direction,
+    int srcBlend, int dstBlend, int32 alpha
+) {
+    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
+
+    constexpr float scaleX = renderWidth / screenWidth;
+    constexpr float scaleY = renderHeight / screenHeight;
+
+    const auto surfaceWidth = static_cast<float>(surface->width);
+    const auto surfaceHeight = static_cast<float>(surface->height);
+
+    const float renderX = static_cast<float>(x) * scaleX;
+    const float renderY = static_cast<float>(y) * scaleY;
+    const float lmaoWidth = static_cast<float>(width) * scaleX;
+    const float lmaoHeight = static_cast<float>(height) * scaleY;
+
+    float u0 = static_cast<float>(sprX) / surfaceWidth;
+    float u1 = static_cast<float>(sprX + width) / surfaceWidth;
+
+    float v0 = static_cast<float>(sprY) / surfaceHeight;
+    float v1 = static_cast<float>(sprY + height) / surfaceHeight;
+
+    if (direction & FLIP_X) {
+        std::swap(u0, u1);
+    }
+
+    if (direction & FLIP_Y) {
+        std::swap(v0, v1);
+    }
+
+    // DCFIXME: gotta check for palette changes and split the sprite
+    // for now, we just take the first one
+    const uint8* lineBuffer  = &gfxLineBuffer[y];
+    const auto gamePaletteBankIndex = static_cast<uint32>(*lineBuffer);
+    uint32 pvrPaletteBankIndex = gamePaletteBankIndex;
+
+    if (gamePaletteBankIndex >= 4) {
+        const uint32 corrected = gamePaletteBankIndex % 4;
+
+        printf("[pvr] WARNING: palette bank index exceeds 4: %lu; applying mod, using this instead: %lu\n",
+               gamePaletteBankIndex,
+               corrected);
+
+        pvrPaletteBankIndex = corrected;
+    }
+
+    uint16 *activePalette = fullPalette[gamePaletteBankIndex];
+
+    // DCFIXME: PVR_PAL_ARGB8888 cuts rendering speed in half!
+    // maybe convert to ARGB1555 since all we want is cutout anyway?
+    pvr_set_pal_format(PVR_PAL_ARGB8888);
+
+    // DCFIXME: do we need to populate the palette entries for EVERY sprite we render?
+    for (int i = 0; i < PALETTE_BANK_SIZE; ++i) {
+        uint16 color16 = activePalette[i];
+        uint32 R = (color16 & 0xF800) << 8;
+        uint32 G = (color16 & 0x7E0) << 5;
+        uint32 B = (color16 & 0x1F) << 3;
+        uint32 color32 = R | G | B;
+        // first color is always completely translucent
+        if (i) {
+            color32 |= 0xFF000000;
+        }
+        pvr_set_pal_entry((256 * pvrPaletteBankIndex) + i, color32);
+    }
+
+    pvr_poly_cxt_t context;
+    pvr_poly_cxt_txr(
+        &context,
+        PVR_LIST_TR_POLY,
+        PVR_TXRFMT_PAL8BPP | PVR_TXRFMT_8BPP_PAL(pvrPaletteBankIndex),
+        surface->width,
+        surface->height,
+        surface->texture,
+        PVR_FILTER_NEAREST
+    );
+
+    context.blend.src = srcBlend;
+    context.blend.dst = dstBlend;
+
+    pvr_poly_hdr_t header;
+    pvr_poly_compile(&header, &context);
+
+    //pvr_list_begin(PVR_LIST_OP_POLY);
+    {
+        pvr_prim(&header, sizeof(header));
+
+        pvr_vertex_t vert;
+
+        vert.flags = PVR_CMD_VERTEX;
+        vert.argb = 0x00ffffff | (alpha << 24);
+        vert.oargb = 0;
+
+        // top left
+        vert.x = renderX;
+        vert.y = renderY;
+        vert.z = 1.0f;
+        vert.u = u0;
+        vert.v = v0;
+        pvr_prim(&vert, sizeof(vert));
+
+        // top right
+        vert.x = renderX + lmaoWidth;
+        vert.y = renderY;
+        vert.z = 1.0f;
+        vert.u = u1;
+        vert.v = v0;
+        pvr_prim(&vert, sizeof(vert));
+
+        // bottom left
+        vert.x = renderX;
+        vert.y = renderY + lmaoHeight;
+        vert.z = 1.0f;
+        vert.u = u0;
+        vert.v = v1;
+        pvr_prim(&vert, sizeof(vert));
+
+        vert.flags = PVR_CMD_VERTEX_EOL;
+        vert.x = renderX + lmaoWidth;
+        vert.y = renderY + lmaoHeight;
+        vert.z = 1.0f;
+        vert.u = u1;
+        vert.v = v1;
+        pvr_prim(&vert, sizeof(vert));
+    }
+    //pvr_list_finish();
+}
+#endif
 void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 sprX, int32 sprY, int32 direction, int32 inkEffect, int32 alpha,
                              int32 sheetID)
 {
@@ -2878,6 +3016,8 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
                 return;
             break;
     }
+    // DCFIXME: this whole block shouldn't need to be here, but we're going out of bounds in DrawPoly
+    // when determining the palette bank index
     int32 widthFlip  = width;
     int32 heightFlip = height;
 
@@ -2906,6 +3046,71 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
     if (width <= 0 || height <= 0)
         return;
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    GFXSurface *surface = &gfxSurface[sheetID];
+    validDraw           = true;
+
+    // this is normally from an allocation error, but the GPU will not allow this, so we have to handle it.
+    if (surface->width <= 0 || surface->height <= 0) {
+        return;
+    }
+
+    int srcBlend;
+    int dstBlend;
+
+    switch (inkEffect) {
+        default:
+            return;
+
+        case INK_NONE:
+            alpha = 0xFF;
+            srcBlend = PVR_BLEND_SRCALPHA;
+            dstBlend = PVR_BLEND_INVSRCALPHA;
+            break;
+
+        case INK_BLEND:
+            printf("[pvr] WARNING: unsupported ink effect INK_BLEND; skipping sprite\n");
+            return;
+
+        case INK_ALPHA:
+            srcBlend = PVR_BLEND_SRCALPHA;
+            dstBlend = PVR_BLEND_INVSRCALPHA;
+            break;
+
+        case INK_ADD:
+            srcBlend = PVR_BLEND_SRCALPHA;
+            dstBlend = PVR_BLEND_ONE;
+            break;
+
+        case INK_SUB:
+            printf("[pvr] WARNING: unsupported ink effect INK_SUB; skipping sprite\n");
+            return;
+
+        case INK_TINT:
+            printf("[pvr] WARNING: unsupported ink effect INK_TINT; skipping sprite\n");
+            return;
+
+        case INK_MASKED:
+            printf("[pvr] WARNING: unsupported ink effect INK_MASKED; skipping sprite\n");
+            return;
+
+        case INK_UNMASKED:
+            printf("[pvr] WARNING: unsupported ink effect INK_UNMASKED; skipping sprite\n");
+            return;
+    }
+
+    switch (direction) {
+        default:
+            return;
+
+        case FLIP_NONE:
+        case FLIP_X:
+        case FLIP_Y:
+        case FLIP_XY:
+            DrawPoly(x, y, width, height, sprX, sprY, surface, direction, srcBlend, dstBlend, alpha);
+            break;
+    }
+#else
     GFXSurface *surface = &gfxSurface[sheetID];
     validDraw           = true;
     int32 pitch         = currentScreen->pitch - width;
@@ -3513,6 +3718,7 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
             }
             break;
     }
+#endif
 }
 void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int32 width, int32 height, int32 sprX, int32 sprY, int32 scaleX,
                               int32 scaleY, int32 direction, int16 rotation, int32 inkEffect, int32 alpha, int32 sheetID)
