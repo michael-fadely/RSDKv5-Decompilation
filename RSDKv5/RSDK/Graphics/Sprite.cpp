@@ -934,7 +934,6 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
     ImageGIF image;
 
     if (image.Load(fullFilePath, true)) {
-        surface->scope    = scope;
         surface->width    = image.width;
         surface->height   = image.height;
         surface->lineSize = 0;
@@ -966,7 +965,7 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 
         const auto printPvrMem = [](uint32 before, uint32 after) {
             auto change = static_cast<int32>(after - before);
-            printf("[pvr] memory before: %lu; after: %lu; change: %ld\n",
+            printf("[pvr] memory: %lu -> %lu; change: %ld\n",
                    before, after, change);
         };
 
@@ -992,52 +991,53 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
             RemoveStorageEntry((void**)&surface->pixels);
         }
 
-        {
-            pvrMemBefore = pvr_mem_available();
-
-            surface->texture = pvr_mem_malloc(static_cast<size_t>(textureSize));
-
-            pvrMemAfter = pvr_mem_available();
-
-            if (surface->texture == nullptr) {
-                printf("[pvr] [NG] [Data/Sprites/%s] pvr_mem_malloc(%ld) failed!!!\n",
-                       filename, textureSize);
-
-                printPvrMem(pvrMemBefore, pvrMemAfter);
-
-                return -1;
-            } else {
-                printf("[pvr] [OK] [Data/Sprites/%s] pvr_mem_malloc(%ld) succeeded.\n",
-                       filename, textureSize);
-
-                printPvrMem(pvrMemBefore, pvrMemAfter);
-            }
-        }
-
         AllocateStorage((void **)&surface->pixels, textureSize, DATASET_STG, false);
 
         if (surface->pixels == NULL) {
             printf("[pvr] [NG] [Data/Sprites/%s] AllocateStorage failed!!!\n", filename);
-            return -1;
+            id = -1;
+        } else {
+            image.pixels = surface->pixels;
+
+            if (!image.Load(NULL, false)) {
+                printf("[pvr] [NG] [Data/Sprites/%s] image.Load(NULL, false) failed!!!\n", filename);
+                id = -1;
+            } else {
+                pvrMemBefore = pvr_mem_available();
+                surface->texture = pvr_mem_malloc(static_cast<size_t>(textureSize));
+                pvrMemAfter = pvr_mem_available();
+
+                if (surface->texture == nullptr) {
+                    printf("[pvr] [NG] [Data/Sprites/%s] pvr_mem_malloc(%ld) failed!!!\n",
+                           filename, textureSize);
+
+                    printPvrMem(pvrMemBefore, pvrMemAfter);
+
+                    id = -1;
+                } else {
+                    printf("[pvr] [OK] [Data/Sprites/%s] pvr_mem_malloc(%ld) succeeded.\n",
+                           filename, textureSize);
+
+                    printPvrMem(pvrMemBefore, pvrMemAfter);
+
+                    // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
+                    // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h)
+                    // DCFIXME: pvr_txr_load_ex actually *always* twiddles, even if you don't want it
+                    pvr_txr_load_ex(
+                        surface->pixels,
+                        surface->texture,
+                        surface->width,
+                        surface->height,
+                        PVR_TXRLOAD_8BPP
+                    );
+
+                    surface->scope = scope;
+                }
+            }
+
+            RemoveStorageEntry((void **)&surface->pixels);
+            surface->pixels = NULL;
         }
-
-        image.pixels = surface->pixels;
-
-        if (!image.Load(NULL, false)) {
-            printf("[pvr] [NG] [Data/Sprites/%s] image.Load(NULL, false) failed!!!\n", filename);
-            return -1;
-        }
-
-        // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
-        // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h)
-        // DCFIXME: pvr_txr_load_ex actually *always* twiddles, even if you don't want it
-        pvr_txr_load_ex(
-            surface->pixels,
-            surface->texture,
-            surface->width,
-            surface->height,
-            PVR_TXRLOAD_8BPP
-        );
 #else
         surface->pixels = NULL;
         AllocateStorage((void **)&surface->pixels, surface->width * surface->height, DATASET_STG, false);

@@ -51,6 +51,7 @@ void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
     vert.v = static_cast<float>(screenSize.y) / static_cast<float>(kost.height);
     pvr_prim(&vert, sizeof(vert));
 
+    // bottom right
     vert.flags = PVR_CMD_VERTEX_EOL;
     vert.x = 640.0f;
     vert.y = 480.0f;
@@ -66,11 +67,11 @@ bool RenderDevice::Init()
     pvr_init_params_t pvrParams = {
         // bin sizes
         {
-            PVR_BINSIZE_8, // opaque polygons
+            PVR_BINSIZE_0, // opaque polygons
             PVR_BINSIZE_0, // opaque modifiers (disabled)
             PVR_BINSIZE_8, // translucent polygons
             PVR_BINSIZE_0, // translucent modifiers (disabled)
-            PVR_BINSIZE_8  // punch-through polygons
+            PVR_BINSIZE_0  // punch-through polygons
         },
 
         // vertex buffer size
@@ -83,7 +84,7 @@ bool RenderDevice::Init()
         // fsaa enabled? (no)
         0,
 
-        // autosort disabled? (no, will use for 3D maybe!)
+        // autosort disabled?
         0
     };
 

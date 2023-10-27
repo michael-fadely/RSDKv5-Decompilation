@@ -233,6 +233,69 @@ char RSDK::drawGroupNames[0x10][0x10] = {
     if (frameBufferClr != maskColor)                                                                                                                 \
         frameBufferClr = pixel;
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+bool InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
+{
+    switch (inkEffect) {
+        default:
+            return false;
+
+        case INK_NONE:
+            if (srcBlend) {
+                *srcBlend = PVR_BLEND_SRCALPHA;
+            }
+
+            if (dstBlend) {
+                *dstBlend = PVR_BLEND_INVSRCALPHA;
+            }
+
+            return true;
+
+        case INK_BLEND:
+            //printf("[pvr] WARNING: unsupported ink effect INK_BLEND; skipping sprite\n");
+            return false;
+
+        case INK_ALPHA:
+            if (srcBlend) {
+                *srcBlend = PVR_BLEND_SRCALPHA;
+            }
+
+            if (dstBlend) {
+                *dstBlend = PVR_BLEND_INVSRCALPHA;
+            }
+
+            return true;
+
+        case INK_ADD:
+            if (srcBlend) {
+                *srcBlend = PVR_BLEND_SRCALPHA;
+            }
+
+            if (dstBlend) {
+                *dstBlend = PVR_BLEND_ONE;
+            }
+
+            return true;
+
+        case INK_SUB:
+            printf("[pvr] WARNING: unsupported ink effect INK_SUB; skipping sprite\n");
+            return false;
+
+        case INK_TINT:
+            printf("[pvr] WARNING: unsupported ink effect INK_TINT; skipping sprite\n");
+            return false;
+
+        case INK_MASKED:
+            //printf("[pvr] WARNING: unsupported ink effect INK_MASKED; skipping sprite\n");
+            return false;
+
+        case INK_UNMASKED:
+            printf("[pvr] WARNING: unsupported ink effect INK_UNMASKED; skipping sprite\n");
+            return false;
+    }
+}
+#endif
+
 void RSDK::RenderDeviceBase::ProcessDimming()
 {
     // Bug Details:
@@ -287,7 +350,7 @@ void RSDK::InitSystemSurfaces()
     gfxSurface[0].height   = TILE_COUNT * TILE_SIZE;
     gfxSurface[0].lineSize = 4; // 16px
     gfxSurface[0].pixels   = tilesetPixels;
-    // DCTODO: allocate texture
+    // DCTODO: allocate texture?
 
 #if RETRO_REV02
     GEN_HASH_MD5("EngineText", gfxSurface[1].hash);
@@ -296,7 +359,7 @@ void RSDK::InitSystemSurfaces()
     gfxSurface[1].height   = 128 * 8;
     gfxSurface[1].lineSize = 3; // 8px
     gfxSurface[1].pixels   = devTextStencil;
-    // DCTODO: allocate texture
+    // DCTODO: allocate texture?
 #endif
 }
 
@@ -1202,6 +1265,70 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
             break;
     }
 }
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+void DrawRectanglePoly(
+        int32 x, int32 y,
+        int32 width, int32 height,
+        int srcBlend, int dstBlend,
+        uint32 color
+) {
+    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
+
+    constexpr float scaleX = renderWidth / screenWidth;
+    constexpr float scaleY = renderHeight / screenHeight;
+
+    const float renderX = static_cast<float>(x) * scaleX;
+    const float renderY = static_cast<float>(y) * scaleY;
+    const float lmaoWidth = static_cast<float>(width) * scaleX;
+    const float lmaoHeight = static_cast<float>(height) * scaleY;
+
+    pvr_poly_cxt_t context;
+    pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+
+    context.blend.src = srcBlend;
+    context.blend.dst = dstBlend;
+
+    pvr_poly_hdr_t header;
+    pvr_poly_compile(&header, &context);
+
+    //pvr_list_begin(PVR_LIST_OP_POLY);
+    {
+        pvr_prim(&header, sizeof(header));
+
+        pvr_vertex_t vert {};
+
+        vert.flags = PVR_CMD_VERTEX;
+        vert.argb = color;
+        vert.oargb = 0;
+        vert.z = 1.0f;
+
+        // top left
+        vert.x = renderX;
+        vert.y = renderY;
+        pvr_prim(&vert, sizeof(vert));
+
+        // top right
+        vert.x = renderX + lmaoWidth;
+        vert.y = renderY;
+        pvr_prim(&vert, sizeof(vert));
+
+        // bottom left
+        vert.x = renderX;
+        vert.y = renderY + lmaoHeight;
+        pvr_prim(&vert, sizeof(vert));
+
+        // bottom right
+        vert.flags = PVR_CMD_VERTEX_EOL;
+        vert.x = renderX + lmaoWidth;
+        vert.y = renderY + lmaoHeight;
+        pvr_prim(&vert, sizeof(vert));
+    }
+    //pvr_list_finish();
+}
+#endif
 void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
     switch (inkEffect) {
@@ -1253,6 +1380,20 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
     if (width <= 0 || height <= 0)
         return;
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
+    int srcBlend;
+    int dstBlend;
+
+    if (!InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
+        return;
+    }
+
+    DrawRectanglePoly(x, y, width, height, srcBlend, dstBlend, color | (alpha << 24));
+#else
     int32 pitch         = currentScreen->pitch - width;
     validDraw           = true;
     uint16 *frameBuffer = &currentScreen->frameBuffer[x + (y * currentScreen->pitch)];
@@ -1371,6 +1512,7 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
             break;
         }
     }
+#endif
 }
 void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
@@ -3007,16 +3149,16 @@ void DrawPoly(
     {
         pvr_prim(&header, sizeof(header));
 
-        pvr_vertex_t vert;
+        pvr_vertex_t vert {};
 
         vert.flags = PVR_CMD_VERTEX;
         vert.argb = 0x00ffffff | (alpha << 24);
         vert.oargb = 0;
+        vert.z = 1.0f;
 
         // top left
         vert.x = renderX;
         vert.y = renderY;
-        vert.z = 1.0f;
         vert.u = u0;
         vert.v = v0;
         pvr_prim(&vert, sizeof(vert));
@@ -3024,7 +3166,6 @@ void DrawPoly(
         // top right
         vert.x = renderX + lmaoWidth;
         vert.y = renderY;
-        vert.z = 1.0f;
         vert.u = u1;
         vert.v = v0;
         pvr_prim(&vert, sizeof(vert));
@@ -3032,7 +3173,6 @@ void DrawPoly(
         // bottom left
         vert.x = renderX;
         vert.y = renderY + lmaoHeight;
-        vert.z = 1.0f;
         vert.u = u0;
         vert.v = v1;
         pvr_prim(&vert, sizeof(vert));
@@ -3041,7 +3181,6 @@ void DrawPoly(
         vert.flags = PVR_CMD_VERTEX_EOL;
         vert.x = renderX + lmaoWidth;
         vert.y = renderY + lmaoHeight;
-        vert.z = 1.0f;
         vert.u = u1;
         vert.v = v1;
         pvr_prim(&vert, sizeof(vert));
@@ -3113,48 +3252,15 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
         return;
     }
 
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
     int srcBlend;
     int dstBlend;
 
-    switch (inkEffect) {
-        default:
-            return;
-
-        case INK_NONE:
-            alpha = 0xFF;
-            srcBlend = PVR_BLEND_SRCALPHA;
-            dstBlend = PVR_BLEND_INVSRCALPHA;
-            break;
-
-        case INK_BLEND:
-            printf("[pvr] WARNING: unsupported ink effect INK_BLEND; skipping sprite\n");
-            return;
-
-        case INK_ALPHA:
-            srcBlend = PVR_BLEND_SRCALPHA;
-            dstBlend = PVR_BLEND_INVSRCALPHA;
-            break;
-
-        case INK_ADD:
-            srcBlend = PVR_BLEND_SRCALPHA;
-            dstBlend = PVR_BLEND_ONE;
-            break;
-
-        case INK_SUB:
-            printf("[pvr] WARNING: unsupported ink effect INK_SUB; skipping sprite\n");
-            return;
-
-        case INK_TINT:
-            printf("[pvr] WARNING: unsupported ink effect INK_TINT; skipping sprite\n");
-            return;
-
-        case INK_MASKED:
-            printf("[pvr] WARNING: unsupported ink effect INK_MASKED; skipping sprite\n");
-            return;
-
-        case INK_UNMASKED:
-            printf("[pvr] WARNING: unsupported ink effect INK_UNMASKED; skipping sprite\n");
-            return;
+    if (!InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
+        return;
     }
 
     switch (direction) {
