@@ -670,30 +670,27 @@ void DrawPolyForScreenFill(uint32 color) {
         vert.flags = PVR_CMD_VERTEX;
         vert.argb = color;
         vert.oargb = 0;
+        vert.z = 5.0f;
 
         // top left
         vert.x = 0.0f;
         vert.y = 0.0f;
-        vert.z = 1.0f;
         pvr_prim(&vert, sizeof(vert));
 
         // top right
         vert.x = renderWidth;
         vert.y = 0.0f;
-        vert.z = 1.0f;
         pvr_prim(&vert, sizeof(vert));
 
         // bottom left
         vert.x = 0.0f;
         vert.y = renderHeight;
-        vert.z = 1.0f;
         pvr_prim(&vert, sizeof(vert));
 
         // bottom right
         vert.flags = PVR_CMD_VERTEX_EOL;
         vert.x = renderWidth;
         vert.y = renderHeight;
-        vert.z = 1.0f;
         pvr_prim(&vert, sizeof(vert));
     }
     //pvr_list_finish();
@@ -3073,10 +3070,10 @@ void DrawPoly(
     const auto surfaceWidth = static_cast<float>(surface->width);
     const auto surfaceHeight = static_cast<float>(surface->height);
 
-    const float renderX = static_cast<float>(x) * scaleX;
-    const float renderY = static_cast<float>(y) * scaleY;
-    const float lmaoWidth = static_cast<float>(width) * scaleX;
-    const float lmaoHeight = static_cast<float>(height) * scaleY;
+    const float x0 = static_cast<float>(x) * scaleX;
+    const float x1 = x0 + (static_cast<float>(width) * scaleX);
+    const float y0 = static_cast<float>(y) * scaleY;
+    const float y1 = y0 + static_cast<float>(height) * scaleY;
 
     float u0 = static_cast<float>(sprX) / surfaceWidth;
     float u1 = static_cast<float>(sprX + width) / surfaceWidth;
@@ -3157,30 +3154,30 @@ void DrawPoly(
         vert.z = 1.0f;
 
         // top left
-        vert.x = renderX;
-        vert.y = renderY;
+        vert.x = x0;
+        vert.y = y0;
         vert.u = u0;
         vert.v = v0;
         pvr_prim(&vert, sizeof(vert));
 
         // top right
-        vert.x = renderX + lmaoWidth;
-        vert.y = renderY;
+        vert.x = x1;
+        vert.y = y0;
         vert.u = u1;
         vert.v = v0;
         pvr_prim(&vert, sizeof(vert));
 
         // bottom left
-        vert.x = renderX;
-        vert.y = renderY + lmaoHeight;
+        vert.x = x0;
+        vert.y = y1;
         vert.u = u0;
         vert.v = v1;
         pvr_prim(&vert, sizeof(vert));
 
         // bottom right
         vert.flags = PVR_CMD_VERTEX_EOL;
-        vert.x = renderX + lmaoWidth;
-        vert.y = renderY + lmaoHeight;
+        vert.x = x1;
+        vert.y = y1;
         vert.u = u1;
         vert.v = v1;
         pvr_prim(&vert, sizeof(vert));
@@ -3213,8 +3210,6 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
                 return;
             break;
     }
-    // DCFIXME: this whole block shouldn't need to be here, but we're going out of bounds in DrawPoly
-    // when determining the palette bank index
     int32 widthFlip  = width;
     int32 heightFlip = height;
 
