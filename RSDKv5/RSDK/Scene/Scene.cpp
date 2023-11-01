@@ -1337,11 +1337,6 @@ void RSDK::CopyTileLayer(uint16 dstLayerID, int32 dstStartX, int32 dstStartY, ui
     }
 }
 
-// DCWIP
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-extern float lmaoDepth;
-#endif
-
 void RSDK::DrawLayerHScroll(TileLayer *layer)
 {
     if (!layer->xsize || !layer->ysize)
@@ -1381,7 +1376,6 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
             const int32 tilesetY = TILE_SIZE * ((int32)layout / 32);
 
             // DCFIXME: this is a grossly inefficient way to draw tiles!
-            lmaoDepth = 3.0f;
             DrawSpriteFlipped(screenX, screenY,
                               TILE_SIZE, TILE_SIZE,
                               tilesetX, tilesetY,
@@ -1769,7 +1763,6 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
                 const int32 tilesetY = TILE_SIZE * ((int32)layout / 32);
 
                 // DCFIXME: this is a grossly inefficient way to draw tiles!
-                lmaoDepth = 3.0f;
                 DrawSpriteFlipped(screenX, screenY,
                                   TILE_SIZE, TILE_SIZE,
                                   tilesetX, tilesetY,

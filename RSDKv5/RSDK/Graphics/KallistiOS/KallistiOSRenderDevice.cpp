@@ -19,6 +19,10 @@ struct KOSTexture
 
 static KOSTexture screenTextures[SCREEN_COUNT] {};
 
+#if defined(HARDWARE_RENDERER)
+static float drawDepth = 1.0f;
+#endif
+
 void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
     /* Opaque Textured vertex */
     pvr_vertex_t vert;
@@ -273,24 +277,6 @@ void RenderDevice::Release(bool32 isRefresh)
 {
     DC_STUB();
 }
-
-// static
-void RenderDevice::BeginScene()
-{
-#if defined(HARDWARE_RENDERER)
-    pvr_scene_begin();
-    pvr_list_begin(PVR_LIST_TR_POLY); // DCWIP
-#endif
-}
-// static
-void RenderDevice::EndScene()
-{
-#if defined(HARDWARE_RENDERER)
-    pvr_list_finish(); // DCWIP
-    pvr_scene_finish();
-#endif
-}
-
 // static
 void RenderDevice::RefreshWindow()
 {
@@ -379,4 +365,42 @@ bool RenderDevice::GetCursorPos(void*)
 void RenderDevice::ShowCursor(bool)
 {
     DC_STUB();
+}
+
+// KallistiOS only!!!
+
+// static
+void RenderDevice::BeginScene() {
+#if defined(HARDWARE_RENDERER)
+    SetDepth(0);
+
+    pvr_scene_begin();
+    pvr_list_begin(PVR_LIST_TR_POLY); // DCWIP
+#endif
+}
+
+// static
+void RenderDevice::EndScene() {
+#if defined(HARDWARE_RENDERER)
+    pvr_list_finish(); // DCWIP
+    pvr_scene_finish();
+#endif
+}
+
+// static
+float RenderDevice::GetDepth() {
+#if defined(HARDWARE_RENDERER)
+    return drawDepth;
+#else
+    return 1.0f;
+#endif
+}
+
+// static
+void RenderDevice::SetDepth(uint32 depth) {
+    // DCWIP: maybe drop the DRAWGROUP_COUNT limit and use EntityBase.zdepth (ctrl+shift+f that mfer)
+#if defined(HARDWARE_RENDERER)
+    depth = MIN(depth + 1, DRAWGROUP_COUNT);
+    drawDepth = static_cast<float>(depth);
+#endif
 }

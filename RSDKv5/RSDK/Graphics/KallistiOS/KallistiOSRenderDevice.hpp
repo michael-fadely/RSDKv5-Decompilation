@@ -19,9 +19,6 @@ public:
     static void FlipScreen();
     static void Release(bool32 isRefresh);
 
-    static void BeginScene();
-    static void EndScene();
-
     static void RefreshWindow();
     static void GetWindowSize(int32 *width, int32 *height);
 
@@ -42,6 +39,12 @@ public:
     static void SetWindowTitle();
     static bool GetCursorPos(void*);
     static void ShowCursor(bool);
+
+    // KallistiOS only!!!
+    static void BeginScene();
+    static void EndScene();
+    static float GetDepth();
+    static void SetDepth(uint32 depth);
 
 private:
     static bool InitShaders();

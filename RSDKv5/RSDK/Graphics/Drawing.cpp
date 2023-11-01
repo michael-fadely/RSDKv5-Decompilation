@@ -676,7 +676,7 @@ void DrawPolyForScreenFill(uint32 color) {
         vert.flags = PVR_CMD_VERTEX;
         vert.argb = color;
         vert.oargb = 0;
-        vert.z = 5.0f;
+        vert.z = RenderDevice::GetDepth();
 
         // top left
         vert.x = 0.0f;
@@ -1306,7 +1306,7 @@ void DrawRectanglePoly(
         vert.flags = PVR_CMD_VERTEX;
         vert.argb = color;
         vert.oargb = 0;
-        vert.z = 1.0f;
+        vert.z = RenderDevice::GetDepth();
 
         // top left
         vert.x = renderX;
@@ -3058,7 +3058,6 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
     }
 }
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-float lmaoDepth = 4.0f;
 void DrawPoly(
     int32 x, int32 y,
     int32 width, int32 height,
@@ -3158,8 +3157,7 @@ void DrawPoly(
         vert.flags = PVR_CMD_VERTEX;
         vert.argb = 0x00ffffff | (alpha << 24);
         vert.oargb = 0;
-        vert.z = lmaoDepth;
-        lmaoDepth = 4.0f;
+        vert.z = RenderDevice::GetDepth();
 
         // top left
         vert.x = x0;

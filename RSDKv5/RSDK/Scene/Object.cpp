@@ -737,6 +737,9 @@ void RSDK::ProcessObjectDrawLists()
 
             sceneInfo.currentDrawGroup = 0;
             for (int32 l = 0; l < DRAWGROUP_COUNT; ++l) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                RenderDevice::SetDepth(l);
+#endif
                 if (engine.drawGroupVisible[l]) {
                     DrawList *list = &drawGroups[l];
 
