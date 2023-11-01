@@ -346,11 +346,17 @@ void RSDK::InitSystemSurfaces()
 {
     GEN_HASH_MD5("TileBuffer", gfxSurface[0].hash);
     gfxSurface[0].scope    = SCOPE_GLOBAL;
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    gfxSurface[0].width    = TILE_SIZE * 32;
+    gfxSurface[0].height   = TILE_SIZE * 32;
+    gfxSurface[0].lineSize = 9; // 16px
+    // texture is allocated on demand
+#else
     gfxSurface[0].width    = TILE_SIZE;
     gfxSurface[0].height   = TILE_COUNT * TILE_SIZE;
     gfxSurface[0].lineSize = 4; // 16px
+#endif
     gfxSurface[0].pixels   = tilesetPixels;
-    // DCTODO: allocate texture?
 
 #if RETRO_REV02
     GEN_HASH_MD5("EngineText", gfxSurface[1].hash);
@@ -3052,6 +3058,7 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
     }
 }
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+float lmaoDepth = 4.0f;
 void DrawPoly(
     int32 x, int32 y,
     int32 width, int32 height,
@@ -3151,7 +3158,8 @@ void DrawPoly(
         vert.flags = PVR_CMD_VERTEX;
         vert.argb = 0x00ffffff | (alpha << 24);
         vert.oargb = 0;
-        vert.z = 1.0f;
+        vert.z = lmaoDepth;
+        lmaoDepth = 4.0f;
 
         // top left
         vert.x = x0;

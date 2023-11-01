@@ -976,6 +976,51 @@ void RSDK::LoadStageGIF(char *filepath)
             }
         }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        // use one of the additional tileset buffers to re-orient the tileset into a 512x512 texture
+        uint8* const srcTiles = &tilesetPixels[0];
+        uint8* const dstTiles = &tilesetPixels[TILESET_SIZE];
+        constexpr size_t tilesPerRow = 32;
+
+        for (size_t i = 0; i < TILE_COUNT; ++i) {
+            const size_t dstColumn = i % 32;
+            const size_t dstRow = i / 32;
+
+            uint8* srcPixels = &srcTiles[TILE_DATASIZE * i];
+            uint8* dstPixels = &dstTiles[(dstColumn * TILE_SIZE) + (dstRow * tilesPerRow * TILE_DATASIZE)];
+
+            for (size_t tileY = 0; tileY < TILE_SIZE; ++tileY) {
+                memcpy(dstPixels, srcPixels, TILE_SIZE);
+                srcPixels += TILE_SIZE;
+                dstPixels += TILE_SIZE * tilesPerRow;
+            }
+        }
+
+        auto* surface = &gfxSurface[0];
+
+        if (surface->texture == nullptr) {
+            pvr_ptr_t texture = pvr_mem_malloc(surface->width * surface->height);
+
+            if (texture == nullptr) {
+                printf("[pvr] [NG] WARNING: failed to allocate tileset texture!\n");
+            } else {
+                surface->texture = texture;
+            }
+        }
+
+        if (surface->texture != nullptr) {
+            // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
+            // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h)
+            // DCFIXME: pvr_txr_load_ex actually *always* twiddles, even if you don't want it
+            pvr_txr_load_ex(
+                dstTiles,
+                surface->texture,
+                surface->width,
+                surface->height,
+                PVR_TXRLOAD_8BPP
+            );
+        }
+#else
         // Flip X
         uint8 *srcPixels = tilesetPixels;
         uint8 *dstPixels = &tilesetPixels[(FLIP_X * TILESET_SIZE) + (TILE_SIZE - 1)];
@@ -1010,6 +1055,7 @@ void RSDK::LoadStageGIF(char *filepath)
 
             dstPixels += (TILE_SIZE * 2);
         }
+#endif
 
 #if RETRO_USE_ORIGINAL_CODE
         tileset.palette = NULL;
@@ -1291,11 +1337,63 @@ void RSDK::CopyTileLayer(uint16 dstLayerID, int32 dstStartX, int32 dstStartY, ui
     }
 }
 
+// DCWIP
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+extern float lmaoDepth;
+#endif
+
 void RSDK::DrawLayerHScroll(TileLayer *layer)
 {
     if (!layer->xsize || !layer->ysize)
         return;
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
+
+    for (int32 cy = currentScreen->clipBound_Y1; cy < currentScreen->clipBound_Y2; cy += TILE_SIZE) {
+        int32 x = scanline->position.x;
+        const int32 y     = scanline->position.y;
+        const int32 tileX = FROM_FIXED(x);
+
+        if (tileX >= TILE_SIZE * layer->xsize)
+            x = TO_FIXED(tileX - TILE_SIZE * layer->xsize);
+        else if (tileX < 0)
+            x = TO_FIXED(tileX + TILE_SIZE * layer->xsize);
+
+        const int ty = y >> 20;
+
+        for (int cx = 0; cx < currentScreen->pitch; cx += TILE_SIZE) {
+            const int tx = ((FROM_FIXED(x) + cx) / TILE_SIZE) % layer->xsize;
+            uint16 layout = layer->layout[tx + (ty << layer->widthShift)];
+
+            if (layout >= 0xFFFF) {
+                continue;
+            }
+
+            const int32 screenX = cx - (FROM_FIXED(x) & 0xF);
+            const int32 screenY = cy - (FROM_FIXED(y) & 0xF);
+
+            layout &= 0xFFF;
+            const int32 flip = layout / TILE_COUNT;
+            layout %= TILE_COUNT;
+
+            const int32 tilesetX = TILE_SIZE * ((int32)layout % 32);
+            const int32 tilesetY = TILE_SIZE * ((int32)layout / 32);
+
+            // DCFIXME: this is a grossly inefficient way to draw tiles!
+            lmaoDepth = 3.0f;
+            DrawSpriteFlipped(screenX, screenY,
+                              TILE_SIZE, TILE_SIZE,
+                              tilesetX, tilesetY,
+                              flip,
+                              INK_NONE,
+                              255,
+                              0);
+        }
+
+        scanline += TILE_SIZE;
+    }
+#else
     int32 lineTileCount    = (currentScreen->pitch >> 4) - 1;
     uint8 *lineBuffer      = &gfxLineBuffer[currentScreen->clipBound_Y1];
     ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
@@ -1442,6 +1540,7 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
 
         ++scanline;
     }
+#endif
 }
 void RSDK::DrawLayerVScroll(TileLayer *layer)
 {
@@ -1638,6 +1737,55 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
 
     uint16 *activePalette = fullPalette[0];
     if (currentScreen->clipBound_X1 < currentScreen->clipBound_X2 && currentScreen->clipBound_Y1 < currentScreen->clipBound_Y2) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
+
+        const int layerPixelHeight = currentScreen->clipBound_Y2 - currentScreen->clipBound_Y1;
+        const int layerPixelWidth = currentScreen->clipBound_X2 - currentScreen->clipBound_X1;
+        //int ty = FROM_FIXED(scanline->position.y) / TILE_SIZE;
+        int ty = FROM_FIXED(scanline->position.y) >> 4;
+
+        for (int y = 0; y < layerPixelHeight; y += TILE_SIZE) {
+            for (int x = 0; x < layerPixelWidth; x += TILE_SIZE) {
+                const int tx = (x + (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x))) / TILE_SIZE;
+
+                const int layoutIndex = (tx % layer->xsize) + (ty << layer->widthShift);
+                uint16 layout = layer->layout[layoutIndex];
+
+                if (layout == 0xFFFF) {
+                    // DCWIP: something?
+                    continue;
+                }
+
+                layout &= 0xFFF;
+                const int32 flip = layout / TILE_COUNT;
+                layout %= TILE_COUNT;
+
+                //const int32 screenX = x + (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x));
+                //const int32 screenY = y + (currentScreen->clipBound_Y1 + FROM_FIXED(scanline->position.y));
+                const int32 screenX = x + currentScreen->clipBound_X1;
+                const int32 screenY = y + currentScreen->clipBound_Y1;
+                const int32 tilesetX = TILE_SIZE * ((int32)layout % 32);
+                const int32 tilesetY = TILE_SIZE * ((int32)layout / 32);
+
+                // DCFIXME: this is a grossly inefficient way to draw tiles!
+                lmaoDepth = 3.0f;
+                DrawSpriteFlipped(screenX, screenY,
+                                  TILE_SIZE, TILE_SIZE,
+                                  tilesetX, tilesetY,
+                                  flip,
+                                  INK_NONE,
+                                  255,
+                                  0);
+            }
+
+            if (++ty == layer->ysize) {
+                ty = 0;
+            }
+
+            scanline += TILE_SIZE;
+        }
+#else
         int32 lineSize = (currentScreen->clipBound_X2 - currentScreen->clipBound_X1) >> 4;
 
         ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
@@ -2082,5 +2230,6 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
                 frameBuffer += currentScreen->pitch - sheetX;
             }
         }
+#endif
     }
 }

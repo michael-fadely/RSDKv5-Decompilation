@@ -69,14 +69,14 @@ bool RenderDevice::Init()
         {
             PVR_BINSIZE_0, // opaque polygons
             PVR_BINSIZE_0, // opaque modifiers (disabled)
-            PVR_BINSIZE_8, // translucent polygons
+            PVR_BINSIZE_16, // translucent polygons
             PVR_BINSIZE_0, // translucent modifiers (disabled)
             PVR_BINSIZE_0  // punch-through polygons
         },
 
         // vertex buffer size
         // 512 KB is the default used by pvr_init_defaults(). might need adjusting.
-        64 * 1024, // UNDONE: was 512 * 1024
+        128 * 1024, // UNDONE: was 512 * 1024
 
         // dma enabled? (no)
         0,
