@@ -667,7 +667,6 @@ void DrawPolyForScreenFill(uint32 color) {
     pvr_poly_hdr_t header;
     pvr_poly_compile(&header, &context);
 
-    //pvr_list_begin(PVR_LIST_OP_POLY);
     {
         pvr_prim(&header, sizeof(header));
 
@@ -699,7 +698,6 @@ void DrawPolyForScreenFill(uint32 color) {
         vert.y = renderHeight;
         pvr_prim(&vert, sizeof(vert));
     }
-    //pvr_list_finish();
 }
 #endif
 
@@ -1297,7 +1295,6 @@ void DrawRectanglePoly(
     pvr_poly_hdr_t header;
     pvr_poly_compile(&header, &context);
 
-    //pvr_list_begin(PVR_LIST_OP_POLY);
     {
         pvr_prim(&header, sizeof(header));
 
@@ -1329,7 +1326,6 @@ void DrawRectanglePoly(
         vert.y = renderY + lmaoHeight;
         pvr_prim(&vert, sizeof(vert));
     }
-    //pvr_list_finish();
 }
 #endif
 void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
@@ -3111,24 +3107,24 @@ void DrawPoly(
         pvrPaletteBankIndex = corrected;
     }
 
+    const uint32 pvrPaletteBankOffset = 256 * pvrPaletteBankIndex;
+
+    auto rgb565toargb1555 = [](uint16 color16) -> uint16 {
+        return (color16 & 0x1F) | ((color16 >> 1) & 0x7FE0);
+    };
+
     uint16 *activePalette = fullPalette[gamePaletteBankIndex];
 
-    // DCFIXME: PVR_PAL_ARGB8888 cuts rendering speed in half!
-    // maybe convert to ARGB1555 since all we want is cutout anyway?
-    pvr_set_pal_format(PVR_PAL_ARGB8888);
+    pvr_set_pal_format(PVR_PAL_ARGB1555);
+
+    // first color (0) is always completely translucent
+    pvr_set_pal_entry(pvrPaletteBankOffset, rgb565toargb1555(activePalette[0]));
 
     // DCFIXME: do we need to populate the palette entries for EVERY sprite we render?
-    for (int i = 0; i < PALETTE_BANK_SIZE; ++i) {
-        uint16 color16 = activePalette[i];
-        uint32 R = (color16 & 0xF800) << 8;
-        uint32 G = (color16 & 0x7E0) << 5;
-        uint32 B = (color16 & 0x1F) << 3;
-        uint32 color32 = R | G | B;
-        // first color is always completely translucent
-        if (i) {
-            color32 |= 0xFF000000;
-        }
-        pvr_set_pal_entry((256 * pvrPaletteBankIndex) + i, color32);
+    // now set every other color with the opaque bit set
+    for (int i = 1; i < PALETTE_BANK_SIZE; ++i) {
+        const uint16 color16 = rgb565toargb1555(activePalette[i]) | 0x8000;
+        pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32)color16);
     }
 
     pvr_poly_cxt_t context;
@@ -3148,7 +3144,6 @@ void DrawPoly(
     pvr_poly_hdr_t header;
     pvr_poly_compile(&header, &context);
 
-    //pvr_list_begin(PVR_LIST_OP_POLY);
     {
         pvr_prim(&header, sizeof(header));
 
@@ -3188,7 +3183,6 @@ void DrawPoly(
         vert.v = v1;
         pvr_prim(&vert, sizeof(vert));
     }
-    //pvr_list_finish();
 }
 #endif
 void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 sprX, int32 sprY, int32 direction, int32 inkEffect, int32 alpha,
