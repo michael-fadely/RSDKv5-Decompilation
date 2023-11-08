@@ -1337,6 +1337,150 @@ void RSDK::CopyTileLayer(uint16 dstLayerID, int32 dstStartX, int32 dstStartY, ui
     }
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+void PrepareQuad(int32 y, GFXSurface* surface) {
+    // DCFIXME: gotta check for palette changes and split the sprite
+    // for now, we just take the first one
+    const uint8* lineBuffer  = &gfxLineBuffer[CLAMP(y, 0, 239)]; // DCWIP: hard-coded height
+    const auto gamePaletteBankIndex = static_cast<uint32>(*lineBuffer);
+    uint32 pvrPaletteBankIndex = gamePaletteBankIndex;
+
+    if (gamePaletteBankIndex >= 4) {
+        const uint32 corrected = gamePaletteBankIndex % 4;
+
+        printf("[pvr] WARNING: palette bank index exceeds 4: %lu; applying mod, using this instead: %lu\n",
+               gamePaletteBankIndex,
+               corrected);
+
+        pvrPaletteBankIndex = corrected;
+    }
+
+    const uint32 pvrPaletteBankOffset = 256 * pvrPaletteBankIndex;
+
+    auto rgb565toargb1555 = [](uint16 color16) -> uint16 {
+        return (color16 & 0x1F) | ((color16 >> 1) & 0x7FE0);
+    };
+
+    uint16 *activePalette = fullPalette[gamePaletteBankIndex];
+
+    pvr_set_pal_format(PVR_PAL_ARGB1555);
+
+    // first color (0) is always completely translucent
+    pvr_set_pal_entry(pvrPaletteBankOffset, rgb565toargb1555(activePalette[0]));
+
+    // DCFIXME: do we need to populate the palette entries for EVERY sprite we render?
+    // now set every other color with the opaque bit set
+    for (int i = 1; i < PALETTE_BANK_SIZE; ++i) {
+        const uint16 color16 = rgb565toargb1555(activePalette[i]) | 0x8000;
+        pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32)color16);
+    }
+
+    pvr_sprite_cxt_t context;
+    pvr_sprite_cxt_txr(
+            &context,
+            PVR_LIST_TR_POLY,
+            PVR_TXRFMT_PAL8BPP | PVR_TXRFMT_8BPP_PAL(pvrPaletteBankIndex),
+            surface->width,
+            surface->height,
+            surface->texture,
+            PVR_FILTER_NEAREST
+    );
+
+    pvr_sprite_hdr_t header;
+    pvr_sprite_compile(&header, &context);
+
+    pvr_prim(&header, sizeof(header));
+}
+
+void DrawQuad(
+        int32 x, int32 y,
+        int32 width, int32 height,
+        int32 sprX0, int32 sprX1,
+        int32 sprY0, int32 sprY1,
+        GFXSurface* surface,
+        int srcBlend, int dstBlend, int32 alpha
+) {
+    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
+
+    constexpr float scaleX = renderWidth / screenWidth;
+    constexpr float scaleY = renderHeight / screenHeight;
+
+    const auto surfaceWidth = static_cast<float>(surface->width);
+    const auto surfaceHeight = static_cast<float>(surface->height);
+
+    const float x0 = static_cast<float>(x) * scaleX;
+    const float x1 = x0 + (static_cast<float>(width) * scaleX);
+    const float y0 = static_cast<float>(y) * scaleY;
+    const float y1 = y0 + static_cast<float>(height) * scaleY;
+
+    float u0 = static_cast<float>(sprX0) / surfaceWidth;
+    float u1 = static_cast<float>(sprX1) / surfaceWidth;
+
+    float v0 = static_cast<float>(sprY0) / surfaceHeight;
+    float v1 = static_cast<float>(sprY1) / surfaceHeight;
+
+    pvr_sprite_txr_t vert {};
+
+    vert.flags = PVR_CMD_VERTEX_EOL;
+    vert.ax = x0;
+    vert.ay = y0;
+    vert.az = RenderDevice::GetDepth();
+
+    vert.bx = x1;
+    vert.by = y0;
+    vert.bz = vert.az;
+
+    vert.cx = x1;
+    vert.cy = y1;
+    vert.cz = vert.az;
+
+    vert.dx = x0;
+    vert.dy = y1;
+    vert.auv = PVR_PACK_16BIT_UV(u0, v0);
+    vert.buv = PVR_PACK_16BIT_UV(u1, v0);
+    vert.cuv = PVR_PACK_16BIT_UV(u1, v1);
+
+    pvr_prim(&vert, sizeof(vert));
+}
+void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
+    layout &= 0xFFF;
+    const int32 flip = layout / TILE_COUNT;
+    layout %= TILE_COUNT;
+
+    const int32 tilesetX = TILE_SIZE * ((int32)layout % 32);
+    const int32 tilesetY = TILE_SIZE * ((int32)layout / 32);
+
+    int32 sprX0 = tilesetX;
+    int32 sprX1 = tilesetX;
+    int32 sprY0 = tilesetY;
+    int32 sprY1 = tilesetY;
+
+    if (flip & FLIP_X) {
+        sprX0 += TILE_SIZE;
+    } else {
+        sprX1 += TILE_SIZE;
+    }
+
+    if (flip & FLIP_Y) {
+        sprY0 += TILE_SIZE;
+    } else {
+        sprY1 += TILE_SIZE;
+    }
+
+    DrawQuad(screenX, screenY,
+             TILE_SIZE, TILE_SIZE,
+             sprX0, sprX1,
+             sprY0, sprY1,
+             &gfxSurface[0],
+             PVR_BLEND_SRCALPHA,
+             PVR_BLEND_INVSRCALPHA,
+             255);
+}
+#endif
+
 void RSDK::DrawLayerHScroll(TileLayer *layer)
 {
     if (!layer->xsize || !layer->ysize)
@@ -1344,45 +1488,43 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
+    PrepareQuad(currentScreen->clipBound_Y1 - (FROM_FIXED(scanline->position.y) & 0xF), &gfxSurface[0]);
 
     for (int32 cy = currentScreen->clipBound_Y1; cy < currentScreen->clipBound_Y2; cy += TILE_SIZE) {
         int32 x = scanline->position.x;
-        const int32 y     = scanline->position.y;
-        const int32 tileX = FROM_FIXED(x);
 
-        if (tileX >= TILE_SIZE * layer->xsize)
-            x = TO_FIXED(tileX - TILE_SIZE * layer->xsize);
-        else if (tileX < 0)
-            x = TO_FIXED(tileX + TILE_SIZE * layer->xsize);
+        {
+            const int32 tileX = FROM_FIXED(x);
+            if (tileX >= TILE_SIZE * layer->xsize) {
+                x = TO_FIXED(tileX - TILE_SIZE * layer->xsize);
+            } else if (tileX < 0) {
+                x = TO_FIXED(tileX + TILE_SIZE * layer->xsize);
+            }
+        }
 
-        const int ty = y >> 20;
+        const int32 fromFixedX = FROM_FIXED(x);
+        const int32 fromFixedY = FROM_FIXED(scanline->position.y);
 
-        for (int cx = 0; cx < currentScreen->pitch; cx += TILE_SIZE) {
-            const int tx = ((FROM_FIXED(x) + cx) / TILE_SIZE) % layer->xsize;
-            uint16 layout = layer->layout[tx + (ty << layer->widthShift)];
+        const int32 screenY = cy - (fromFixedY & 0xF);
+
+        const int32 xMax = (currentScreen->size.x + (fromFixedX & 0xF));
+        const int32 ty = fromFixedY >> 4;
+
+        for (int cx = 0; cx < xMax; cx += TILE_SIZE) {
+            const int32 screenX = cx - (fromFixedX & 0xF);
+
+            if (screenX >= currentScreen->size.x) {
+                break;
+            }
+
+            const int tx = ((fromFixedX + cx) / TILE_SIZE) % layer->xsize;
+            const uint16 layout = layer->layout[tx + (ty << layer->widthShift)];
 
             if (layout >= 0xFFFF) {
                 continue;
             }
 
-            const int32 screenX = cx - (FROM_FIXED(x) & 0xF);
-            const int32 screenY = cy - (FROM_FIXED(y) & 0xF);
-
-            layout &= 0xFFF;
-            const int32 flip = layout / TILE_COUNT;
-            layout %= TILE_COUNT;
-
-            const int32 tilesetX = TILE_SIZE * ((int32)layout % 32);
-            const int32 tilesetY = TILE_SIZE * ((int32)layout / 32);
-
-            // DCFIXME: this is a grossly inefficient way to draw tiles!
-            DrawSpriteFlipped(screenX, screenY,
-                              TILE_SIZE, TILE_SIZE,
-                              tilesetX, tilesetY,
-                              flip,
-                              INK_NONE,
-                              255,
-                              0);
+            DrawByLayout(layout, screenX, screenY);
         }
 
         scanline += TILE_SIZE;
@@ -1733,10 +1875,10 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
     if (currentScreen->clipBound_X1 < currentScreen->clipBound_X2 && currentScreen->clipBound_Y1 < currentScreen->clipBound_Y2) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
         ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
+        PrepareQuad(currentScreen->clipBound_Y1, &gfxSurface[0]);
 
         const int layerPixelHeight = currentScreen->clipBound_Y2 - currentScreen->clipBound_Y1;
         const int layerPixelWidth = currentScreen->clipBound_X2 - currentScreen->clipBound_X1;
-        //int ty = FROM_FIXED(scanline->position.y) / TILE_SIZE;
         int ty = FROM_FIXED(scanline->position.y) >> 4;
 
         for (int y = 0; y < layerPixelHeight; y += TILE_SIZE) {
@@ -1744,32 +1886,16 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
                 const int tx = (x + (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x))) / TILE_SIZE;
 
                 const int layoutIndex = (tx % layer->xsize) + (ty << layer->widthShift);
-                uint16 layout = layer->layout[layoutIndex];
+                const uint16 layout = layer->layout[layoutIndex];
 
                 if (layout == 0xFFFF) {
-                    // DCWIP: something?
                     continue;
                 }
 
-                layout &= 0xFFF;
-                const int32 flip = layout / TILE_COUNT;
-                layout %= TILE_COUNT;
-
-                //const int32 screenX = x + (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x));
-                //const int32 screenY = y + (currentScreen->clipBound_Y1 + FROM_FIXED(scanline->position.y));
                 const int32 screenX = x + currentScreen->clipBound_X1;
                 const int32 screenY = y + currentScreen->clipBound_Y1;
-                const int32 tilesetX = TILE_SIZE * ((int32)layout % 32);
-                const int32 tilesetY = TILE_SIZE * ((int32)layout / 32);
 
-                // DCFIXME: this is a grossly inefficient way to draw tiles!
-                DrawSpriteFlipped(screenX, screenY,
-                                  TILE_SIZE, TILE_SIZE,
-                                  tilesetX, tilesetY,
-                                  flip,
-                                  INK_NONE,
-                                  255,
-                                  0);
+                DrawByLayout(layout, screenX, screenY);
             }
 
             if (++ty == layer->ysize) {
