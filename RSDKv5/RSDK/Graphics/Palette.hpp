@@ -33,6 +33,87 @@ extern uint16 *tintLookupTable;
 extern uint16 tintLookupTable[0x10000];
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+
+
+class PaletteFlags
+{
+private:
+    static constexpr uint16 DirtyShift = 8;
+    static constexpr uint16 ActiveBankMask = 0x7;
+    static constexpr uint16 QuadMask = 0x10;
+
+    static uint16 m_PaletteFlags;
+
+public:
+    static inline bool IsQuadTime() {
+        return !!(m_PaletteFlags & QuadMask);
+    }
+
+    static inline void SetQuadTime() {
+        m_PaletteFlags |= QuadMask;
+    }
+
+    static inline void ClearQuadTime() {
+        m_PaletteFlags &= ~QuadMask;
+    }
+
+    static inline void FlipDirtyNoCheck(uint8 bankID) {
+        m_PaletteFlags ^= 1 << (DirtyShift + bankID);
+    }
+    static inline void FlipDirty(uint8 bankID) {
+        if (bankID < PALETTE_BANK_COUNT) {
+            FlipDirtyNoCheck(bankID);
+        }
+    }
+
+    static inline void ClearDirtyNoCheck(uint8 bankID) {
+        m_PaletteFlags &= ~(1 << (DirtyShift + bankID));
+    }
+    static inline void ClearDirty(uint8 bankID) {
+        if (bankID < PALETTE_BANK_COUNT) {
+            ClearDirtyNoCheck(bankID);
+        }
+    }
+
+    static inline void MarkDirtyNoCheck(uint8 bankID) {
+        m_PaletteFlags |= 1 << (DirtyShift + bankID);
+    }
+    static inline void MarkDirty(uint8 bankID) {
+        if (bankID < PALETTE_BANK_COUNT) {
+            MarkDirtyNoCheck(bankID);
+        }
+    }
+
+    static inline bool GetDirtyNoCheck(uint8 bankID) {
+        return !!((m_PaletteFlags >> (DirtyShift + bankID)) & 1);
+    }
+    static inline bool GetDirty(uint8 bankID) {
+        return bankID < PALETTE_BANK_COUNT && GetDirtyNoCheck(bankID);
+    }
+
+    static inline void MarkAllDirty() {
+        m_PaletteFlags |= 0xFF00;
+    }
+
+    static inline uint8 GetBank() {
+        return (uint8)(m_PaletteFlags & ActiveBankMask);
+    }
+
+    static inline void SetBank(uint8 newBankID) {
+        m_PaletteFlags = (m_PaletteFlags & ~ActiveBankMask) | ((uint16)newBankID & ActiveBankMask);
+    }
+
+    static inline bool BankIsSameNoCheck(uint8 newBankID) {
+        return GetBank() == newBankID;
+    }
+    static inline bool BankIsSame(uint8 newBankID) {
+        return newBankID < PALETTE_BANK_COUNT && BankIsSameNoCheck(newBankID);
+    }
+};
+
+#endif
+
 #define RGB888_TO_RGB565(r, g, b) ((b) >> 3) | (((g) >> 2) << 5) | (((r) >> 3) << 11)
 
 #define PACK_RGB888(r, g, b) RGB888_TO_RGB565(r, g, b)
@@ -62,6 +143,9 @@ inline uint32 GetPaletteEntry(uint8 bankID, uint8 index)
 
 inline void SetPaletteEntry(uint8 bankID, uint8 index, uint32 color)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    PaletteFlags::MarkDirty(bankID);
+#endif
     fullPalette[bankID][index] = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
 }
 
@@ -84,6 +168,9 @@ inline uint16 *GetTintLookupTable() { return tintLookupTable; }
 inline void CopyPalette(uint8 sourceBank, uint8 srcBankStart, uint8 destinationBank, uint8 destBankStart, uint16 count)
 {
     if (sourceBank < PALETTE_BANK_COUNT && destinationBank < PALETTE_BANK_COUNT) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        PaletteFlags::MarkDirtyNoCheck(destinationBank);
+#endif
         for (int32 i = 0; i < count; ++i) {
             fullPalette[destinationBank][destBankStart + i] = fullPalette[sourceBank][srcBankStart + i];
         }
@@ -92,6 +179,9 @@ inline void CopyPalette(uint8 sourceBank, uint8 srcBankStart, uint8 destinationB
 
 inline void RotatePalette(uint8 bankID, uint8 startIndex, uint8 endIndex, bool32 right)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    PaletteFlags::MarkDirty(bankID);
+#endif
     if (right) {
         uint16 startClr = fullPalette[bankID][endIndex];
         for (int32 i = endIndex; i > startIndex; --i) fullPalette[bankID][i] = fullPalette[bankID][i - 1];

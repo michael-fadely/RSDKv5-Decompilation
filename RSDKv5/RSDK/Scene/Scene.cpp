@@ -301,6 +301,10 @@ void RSDK::LoadSceneAssets()
 
     memset(tileLayers, 0, LAYER_COUNT * sizeof(TileLayer));
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    PaletteFlags::MarkAllDirty();
+#endif
+
     // Reload palette
     for (int32 b = 0; b < 8; ++b) {
         for (int32 r = 0; r < 0x10; ++r) {
@@ -963,6 +967,10 @@ void RSDK::LoadStageGIF(char *filepath)
     if (tileset.Load(filepath, true) && tileset.width == TILE_SIZE && tileset.height <= TILE_COUNT * TILE_SIZE) {
         tileset.pixels = tilesetPixels;
         tileset.Load(NULL, false);
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        PaletteFlags::MarkDirtyNoCheck(0);
+#endif
 
         for (int32 r = 0; r < 0x10; ++r) {
             // only overwrite inactive rows

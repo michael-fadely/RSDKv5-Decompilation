@@ -26,6 +26,10 @@ uint16 *RSDK::tintLookupTable = NULL;
 uint16 RSDK::tintLookupTable[0x10000];
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+uint16 RSDK::PaletteFlags::m_PaletteFlags = 0;
+#endif
+
 #if RETRO_REV02
 void RSDK::LoadPalette(uint8 bankID, const char *filename, uint16 disabledRows)
 {
@@ -35,6 +39,9 @@ void RSDK::LoadPalette(uint8 bankID, const char *filename, uint16 disabledRows)
     FileInfo info;
     InitFileInfo(&info);
     if (LoadFile(&info, fullFilePath, FMODE_RB)) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        PaletteFlags::MarkDirty(bankID);
+#endif
         for (int32 r = 0; r < 0x10; ++r) {
             if (!(disabledRows >> r & 1)) {
                 for (int32 c = 0; c < 0x10; ++c) {
@@ -59,6 +66,10 @@ void RSDK::BlendColors(uint8 destBankID, uint32 *srcColorsA, uint32 *srcColorsB,
         return;
 
     blendAmount = CLAMP(blendAmount, 0x00, 0xFF);
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    PaletteFlags::MarkDirtyNoCheck(destBankID);
+#endif
 
     uint8 blendA         = 0xFF - blendAmount;
     uint16 *paletteColor = &fullPalette[destBankID][startIndex];
@@ -86,6 +97,10 @@ void RSDK::SetPaletteFade(uint8 destBankID, uint8 srcBankA, uint8 srcBankB, int1
 
     if (startIndex >= endIndex)
         return;
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    PaletteFlags::MarkDirtyNoCheck(destBankID);
+#endif
 
     uint32 blendA        = 0xFF - blendAmount;
     uint16 *paletteColor = &fullPalette[destBankID][startIndex];
