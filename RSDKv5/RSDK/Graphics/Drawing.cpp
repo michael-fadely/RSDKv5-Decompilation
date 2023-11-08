@@ -3055,11 +3055,12 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
 }
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 void DrawPoly(
-    int32 x, int32 y,
-    int32 width, int32 height,
-    int32 sprX, int32 sprY,
-    GFXSurface* surface, int32 direction,
-    int srcBlend, int dstBlend, int32 alpha
+        int32 x, int32 y,
+        int32 width, int32 height,
+        int32 sprX0, int32 sprX1,
+        int32 sprY0, int32 sprY1,
+        GFXSurface* surface,
+        int srcBlend, int dstBlend, int32 alpha
 ) {
     constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
     constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
@@ -3077,19 +3078,11 @@ void DrawPoly(
     const float y0 = static_cast<float>(y) * scaleY;
     const float y1 = y0 + static_cast<float>(height) * scaleY;
 
-    float u0 = static_cast<float>(sprX) / surfaceWidth;
-    float u1 = static_cast<float>(sprX + width) / surfaceWidth;
+    float u0 = static_cast<float>(sprX0) / surfaceWidth;
+    float u1 = static_cast<float>(sprX1) / surfaceWidth;
 
-    float v0 = static_cast<float>(sprY) / surfaceHeight;
-    float v1 = static_cast<float>(sprY + height) / surfaceHeight;
-
-    if (direction & FLIP_X) {
-        std::swap(u0, u1);
-    }
-
-    if (direction & FLIP_Y) {
-        std::swap(v0, v1);
-    }
+    float v0 = static_cast<float>(sprY0) / surfaceHeight;
+    float v1 = static_cast<float>(sprY1) / surfaceHeight;
 
     // DCFIXME: gotta check for palette changes and split the sprite
     // for now, we just take the first one
@@ -3210,6 +3203,90 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
                 return;
             break;
     }
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    GFXSurface *surface = &gfxSurface[sheetID];
+
+    if (surface->texture == nullptr) {
+        return;
+    }
+
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
+    int srcBlend;
+    int dstBlend;
+
+    if (!InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
+        return;
+    }
+
+    if (direction < FLIP_NONE || direction > FLIP_XY) {
+        return;
+    }
+
+    int32 xClipped = x;
+    int32 yClipped = y;
+
+    int32 sprX0 = sprX;
+    int32 sprX1 = sprX + width;
+
+    int32 sprY0 = sprY;
+    int32 sprY1 = sprY + height;
+
+    if (xClipped + width > currentScreen->clipBound_X2) {
+        const int32 widthClipped = currentScreen->clipBound_X2 - xClipped;
+        sprX1 -= width - widthClipped;
+    }
+
+    if (xClipped < currentScreen->clipBound_X1) {
+        const int32 difference = currentScreen->clipBound_X1 - xClipped;
+        xClipped = currentScreen->clipBound_X1;
+        sprX0 += difference;
+    }
+
+    if (yClipped + height > currentScreen->clipBound_Y2) {
+        const int32 heightClipped = currentScreen->clipBound_Y2 - yClipped;
+        sprY1 -= height - heightClipped;
+    }
+
+    if (yClipped < currentScreen->clipBound_Y1) {
+        const int32 difference = currentScreen->clipBound_Y1 - yClipped;
+        yClipped = currentScreen->clipBound_Y1;
+        sprY0 += difference;
+    }
+
+    const int32 widthClipped = sprX1 - sprX0;
+    const int32 heightClipped = sprY1 - sprY0;
+
+    if (widthClipped <= 0 || heightClipped <= 0) {
+        return;
+    }
+
+    if (direction & FLIP_X) {
+        const int32 right = (sprX + width) - 1;
+        const int32 difference = (xClipped - x) - 1;
+        sprX0 = right - difference;
+        sprX1 = sprX0 - widthClipped;
+    }
+
+    if (direction & FLIP_Y) {
+        const int32 bottom = (sprY + width) - 1;
+        const int32 difference = (yClipped - y) - 1;
+        sprY0 = bottom - difference;
+        sprY1 = sprY0 - heightClipped;
+    }
+
+    validDraw = true;
+
+    DrawPoly(xClipped, yClipped,
+             widthClipped, heightClipped,
+             sprX0, sprX1,
+             sprY0, sprY1,
+             surface,
+             srcBlend, dstBlend,
+             alpha);
+#else
     int32 widthFlip  = width;
     int32 heightFlip = height;
 
@@ -3238,38 +3315,6 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
     if (width <= 0 || height <= 0)
         return;
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-    GFXSurface *surface = &gfxSurface[sheetID];
-    validDraw           = true;
-
-    // this is normally from an allocation error, but the GPU will not allow this, so we have to handle it.
-    if (surface->width <= 0 || surface->height <= 0) {
-        return;
-    }
-
-    if (inkEffect == INK_NONE) {
-        alpha = 0xFF;
-    }
-
-    int srcBlend;
-    int dstBlend;
-
-    if (!InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
-        return;
-    }
-
-    switch (direction) {
-        default:
-            return;
-
-        case FLIP_NONE:
-        case FLIP_X:
-        case FLIP_Y:
-        case FLIP_XY:
-            DrawPoly(x, y, width, height, sprX, sprY, surface, direction, srcBlend, dstBlend, alpha);
-            break;
-    }
-#else
     GFXSurface *surface = &gfxSurface[sheetID];
     validDraw           = true;
     int32 pitch         = currentScreen->pitch - width;
