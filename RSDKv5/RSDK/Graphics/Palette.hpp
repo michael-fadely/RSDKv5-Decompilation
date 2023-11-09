@@ -41,23 +41,10 @@ class PaletteFlags
 private:
     static constexpr uint16 DirtyShift = 8;
     static constexpr uint16 ActiveBankMask = 0x7;
-    static constexpr uint16 QuadMask = 0x10;
 
     static uint16 m_PaletteFlags;
 
 public:
-    static inline bool IsQuadTime() {
-        return !!(m_PaletteFlags & QuadMask);
-    }
-
-    static inline void SetQuadTime() {
-        m_PaletteFlags |= QuadMask;
-    }
-
-    static inline void ClearQuadTime() {
-        m_PaletteFlags &= ~QuadMask;
-    }
-
     static inline void FlipDirtyNoCheck(uint8 bankID) {
         m_PaletteFlags ^= 1 << (DirtyShift + bankID);
     }

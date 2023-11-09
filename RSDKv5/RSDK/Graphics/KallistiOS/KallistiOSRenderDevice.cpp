@@ -3,11 +3,9 @@
 
 #include <RSDK/Core/Stub.hpp>
 
-#define HARDWARE_RENDERER
-
 struct KOSTexture
 {
-#if !defined(HARDWARE_RENDERER)
+#if !defined(KOS_HARDWARE_RENDERER)
     pvr_poly_cxt_t context;
     pvr_poly_hdr_t header;
     pvr_ptr_t pvrPtr;
@@ -19,10 +17,11 @@ struct KOSTexture
 
 static KOSTexture screenTextures[SCREEN_COUNT] {};
 
-#if defined(HARDWARE_RENDERER)
+#if defined(KOS_HARDWARE_RENDERER)
 static float drawDepth = 1.0f;
 #endif
 
+#if !defined(KOS_HARDWARE_RENDERER)
 void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
     /* Opaque Textured vertex */
     pvr_vertex_t vert;
@@ -64,6 +63,7 @@ void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
     vert.v = static_cast<float>(screenSize.y) / static_cast<float>(kost.height);
     pvr_prim(&vert, sizeof(vert));
 }
+#endif
 
 // static
 bool RenderDevice::Init()
@@ -137,7 +137,7 @@ bool RenderDevice::Init()
     textureSize.x = (float)width;
     textureSize.y = (float)height;
 
-#if !defined(HARDWARE_RENDERER)
+#if !defined(KOS_HARDWARE_RENDERER)
     const uint32 screenTextureSize = 2 * width * height;
 
     // DCFIXME: support multiple screen textures? (presumably multiplayer only)
@@ -223,7 +223,7 @@ bool RenderDevice::Init()
 // static
 void RenderDevice::CopyFrameBuffer()
 {
-#if !defined(HARDWARE_RENDERER)
+#if !defined(KOS_HARDWARE_RENDERER)
     for (int32 s = 0; s < /*videoSettings.screenCount*/ 1; ++s) {
         const KOSTexture& screenTexture = screenTextures[s];
 
@@ -249,7 +249,7 @@ void RenderDevice::CopyFrameBuffer()
 // static
 void RenderDevice::FlipScreen()
 {
-#if !defined(HARDWARE_RENDERER)
+#if !defined(KOS_HARDWARE_RENDERER)
     pvr_scene_begin();
 
     // DCFIXME: support multiple screen textures? (presumably multiplayer only)
@@ -371,7 +371,7 @@ void RenderDevice::ShowCursor(bool)
 
 // static
 void RenderDevice::BeginScene() {
-#if defined(HARDWARE_RENDERER)
+#if defined(KOS_HARDWARE_RENDERER)
     SetDepth(0);
 
     pvr_scene_begin();
@@ -381,7 +381,7 @@ void RenderDevice::BeginScene() {
 
 // static
 void RenderDevice::EndScene() {
-#if defined(HARDWARE_RENDERER)
+#if defined(KOS_HARDWARE_RENDERER)
     pvr_list_finish(); // DCWIP
     pvr_scene_finish();
 #endif
@@ -389,7 +389,7 @@ void RenderDevice::EndScene() {
 
 // static
 float RenderDevice::GetDepth() {
-#if defined(HARDWARE_RENDERER)
+#if defined(KOS_HARDWARE_RENDERER)
     return drawDepth;
 #else
     return 1.0f;
@@ -399,8 +399,421 @@ float RenderDevice::GetDepth() {
 // static
 void RenderDevice::SetDepth(uint32 depth) {
     // DCWIP: maybe drop the DRAWGROUP_COUNT limit and use EntityBase.zdepth (ctrl+shift+f that mfer)
-#if defined(HARDWARE_RENDERER)
+#if defined(KOS_HARDWARE_RENDERER)
     depth = MIN(depth + 1, DRAWGROUP_COUNT);
     drawDepth = static_cast<float>(depth);
 #endif
+}
+
+inline uint32 CalculatePvrPaletteBankOffset(uint32 pvrPaletteBankIndex) {
+    return 256 * pvrPaletteBankIndex;
+}
+
+// static
+uint32 RenderDevice::GetGamePaletteBankIndex(int32 y) {
+    const uint8* lineBuffer  = &gfxLineBuffer[CLAMP(y, 0, 239)]; // DCWIP: hard-coded height
+    return static_cast<uint32>(*lineBuffer);
+}
+
+// static
+uint32 RenderDevice::GameToPvrPaletteBankIndex(uint32 gamePaletteBankIndex) {
+    uint32 pvrPaletteBankIndex = gamePaletteBankIndex;
+
+    if (gamePaletteBankIndex >= 4) {
+        const uint32 corrected = gamePaletteBankIndex % 4;
+
+        printf("[pvr] WARNING: palette bank index exceeds 4: %lu; applying mod, using this instead: %lu\n",
+               gamePaletteBankIndex,
+               corrected);
+
+        pvrPaletteBankIndex = corrected;
+    }
+
+    return pvrPaletteBankIndex;
+}
+
+// static
+void RenderDevice::PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPaletteBankIndex) {
+    const uint32 pvrPaletteBankOffset = CalculatePvrPaletteBankOffset(pvrPaletteBankIndex);
+
+    auto rgb565toargb1555 = [](uint16 color16) -> uint16 {
+        return (color16 & 0x1F) | ((color16 >> 1) & 0x7FE0);
+    };
+
+    uint16 *activePalette = fullPalette[gamePaletteBankIndex];
+
+    pvr_set_pal_format(PVR_PAL_ARGB1555);
+
+    // first color (0) is always completely translucent
+    pvr_set_pal_entry(pvrPaletteBankOffset, rgb565toargb1555(activePalette[0]));
+
+    // now set every other color with the opaque bit set
+    for (int i = 1; i < PALETTE_BANK_SIZE; ++i) {
+        const uint16 color16 = rgb565toargb1555(activePalette[i]) | 0x8000;
+        pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32) color16);
+    }
+}
+
+// static
+bool RenderDevice::InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
+{
+    switch (inkEffect) {
+        default:
+            return false;
+
+        case INK_NONE:
+            if (srcBlend) {
+                *srcBlend = PVR_BLEND_SRCALPHA;
+            }
+
+            if (dstBlend) {
+                *dstBlend = PVR_BLEND_INVSRCALPHA;
+            }
+
+            return true;
+
+        case INK_BLEND:
+            //printf("[pvr] WARNING: unsupported ink effect INK_BLEND; skipping sprite\n");
+            return false;
+
+        case INK_ALPHA:
+            if (srcBlend) {
+                *srcBlend = PVR_BLEND_SRCALPHA;
+            }
+
+            if (dstBlend) {
+                *dstBlend = PVR_BLEND_INVSRCALPHA;
+            }
+
+            return true;
+
+        case INK_ADD:
+            if (srcBlend) {
+                *srcBlend = PVR_BLEND_SRCALPHA;
+            }
+
+            if (dstBlend) {
+                *dstBlend = PVR_BLEND_ONE;
+            }
+
+            return true;
+
+        case INK_SUB:
+            printf("[pvr] WARNING: unsupported ink effect INK_SUB; skipping sprite\n");
+            return false;
+
+        case INK_TINT:
+            printf("[pvr] WARNING: unsupported ink effect INK_TINT; skipping sprite\n");
+            return false;
+
+        case INK_MASKED:
+            //printf("[pvr] WARNING: unsupported ink effect INK_MASKED; skipping sprite\n");
+            return false;
+
+        case INK_UNMASKED:
+            printf("[pvr] WARNING: unsupported ink effect INK_UNMASKED; skipping sprite\n");
+            return false;
+    }
+}
+
+enum PrimitiveTypes {
+    PrimitiveTypes_None,
+    PrimitiveTypes_TexturedQuad,
+    PrimitiveTypes_TexturedPoly,
+    PrimitiveTypes_ColoredPoly,
+};
+
+static pvr_ptr_t lastTexture = nullptr;
+static int lastSrcBlend = -1;
+static int lastDstBlend = -1;
+static PrimitiveTypes lastPrimitiveType = PrimitiveTypes_None;
+
+// static
+bool RenderDevice::PreparePrimitive(int primitiveType,
+                                    uint32 gamePaletteBankIndex,
+                                    uint32 pvrPaletteBankIndex,
+                                    int srcBlend,
+                                    int dstBlend,
+                                    pvr_ptr_t texture) {
+    if (PaletteFlags::GetDirty(gamePaletteBankIndex)
+        || pvrPaletteBankIndex != gamePaletteBankIndex) {
+        PopulatePvrPalette(gamePaletteBankIndex, pvrPaletteBankIndex);
+        PaletteFlags::ClearDirty(gamePaletteBankIndex);
+    }
+
+    if (lastPrimitiveType != primitiveType
+        || !PaletteFlags::BankIsSame(gamePaletteBankIndex)
+        || srcBlend != lastSrcBlend
+        || dstBlend != lastDstBlend
+        || texture != lastTexture) {
+        lastPrimitiveType = (PrimitiveTypes)primitiveType;
+        PaletteFlags::SetBank(gamePaletteBankIndex);
+        lastSrcBlend = srcBlend;
+        lastDstBlend = dstBlend;
+        lastTexture = texture;
+
+        return true;
+    }
+
+    // DCFIXME: this should just return false, but sprites were breaking the debug menu render
+    return primitiveType != PrimitiveTypes_TexturedQuad;
+}
+
+// static
+void RenderDevice::PrepareTexturedQuad(int32 y, GFXSurface* surface) {
+    const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
+    const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
+
+    if (PreparePrimitive(PrimitiveTypes_TexturedQuad,
+                         gamePaletteBankIndex,
+                         pvrPaletteBankIndex,
+                         PVR_BLEND_SRCALPHA,
+                         PVR_BLEND_INVSRCALPHA,
+                         surface->texture)) {
+        pvr_sprite_cxt_t context;
+        pvr_sprite_cxt_txr(
+                &context,
+                PVR_LIST_TR_POLY,
+                PVR_TXRFMT_PAL8BPP | PVR_TXRFMT_8BPP_PAL(pvrPaletteBankIndex),
+                surface->width,
+                surface->height,
+                surface->texture,
+                PVR_FILTER_NEAREST
+        );
+
+        pvr_sprite_hdr_t header;
+        pvr_sprite_compile(&header, &context);
+
+        pvr_prim(&header, sizeof(header));
+    }
+}
+
+// static
+void RenderDevice::DrawTexturedQuad(
+        int32 x, int32 y,
+        int32 width, int32 height,
+        int32 sprX0, int32 sprX1,
+        int32 sprY0, int32 sprY1,
+        GFXSurface* surface
+) {
+    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
+
+    constexpr float scaleX = renderWidth / screenWidth;
+    constexpr float scaleY = renderHeight / screenHeight;
+
+    const auto surfaceWidth = static_cast<float>(surface->width);
+    const auto surfaceHeight = static_cast<float>(surface->height);
+
+    const float x0 = static_cast<float>(x) * scaleX;
+    const float x1 = x0 + (static_cast<float>(width) * scaleX);
+    const float y0 = static_cast<float>(y) * scaleY;
+    const float y1 = y0 + static_cast<float>(height) * scaleY;
+
+    float u0 = static_cast<float>(sprX0) / surfaceWidth;
+    float u1 = static_cast<float>(sprX1) / surfaceWidth;
+
+    float v0 = static_cast<float>(sprY0) / surfaceHeight;
+    float v1 = static_cast<float>(sprY1) / surfaceHeight;
+
+    pvr_sprite_txr_t vert {};
+
+    vert.flags = PVR_CMD_VERTEX_EOL;
+    vert.ax = x0;
+    vert.ay = y0;
+    vert.az = GetDepth();
+
+    vert.bx = x1;
+    vert.by = y0;
+    vert.bz = vert.az;
+
+    vert.cx = x1;
+    vert.cy = y1;
+    vert.cz = vert.az;
+
+    vert.dx = x0;
+    vert.dy = y1;
+    vert.auv = PVR_PACK_16BIT_UV(u0, v0);
+    vert.buv = PVR_PACK_16BIT_UV(u1, v0);
+    vert.cuv = PVR_PACK_16BIT_UV(u1, v1);
+
+    pvr_prim(&vert, sizeof(vert));
+}
+
+// static
+void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, RSDK::GFXSurface *surface) {
+    const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
+    const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
+
+    if (PreparePrimitive(PrimitiveTypes_TexturedPoly,
+                         gamePaletteBankIndex,
+                         pvrPaletteBankIndex,
+                         srcBlend,
+                         dstBlend,
+                         surface->texture)) {
+        pvr_poly_cxt_t context;
+        pvr_poly_cxt_txr(
+                &context,
+                PVR_LIST_TR_POLY,
+                PVR_TXRFMT_PAL8BPP | PVR_TXRFMT_8BPP_PAL(pvrPaletteBankIndex),
+                surface->width,
+                surface->height,
+                surface->texture,
+                PVR_FILTER_NEAREST
+        );
+
+        context.blend.src = srcBlend;
+        context.blend.dst = dstBlend;
+
+        pvr_poly_hdr_t header;
+        pvr_poly_compile(&header, &context);
+
+        pvr_prim(&header, sizeof(header));
+    }
+}
+
+// static
+void RenderDevice::DrawTexturedPoly(
+        int32 x, int32 y,
+        int32 width, int32 height,
+        int32 sprX0, int32 sprX1,
+        int32 sprY0, int32 sprY1,
+        GFXSurface* surface,
+        int32 alpha
+) {
+    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
+
+    constexpr float scaleX = renderWidth / screenWidth;
+    constexpr float scaleY = renderHeight / screenHeight;
+
+    const auto surfaceWidth = static_cast<float>(surface->width);
+    const auto surfaceHeight = static_cast<float>(surface->height);
+
+    const float x0 = static_cast<float>(x) * scaleX;
+    const float x1 = x0 + (static_cast<float>(width) * scaleX);
+    const float y0 = static_cast<float>(y) * scaleY;
+    const float y1 = y0 + static_cast<float>(height) * scaleY;
+
+    float u0 = static_cast<float>(sprX0) / surfaceWidth;
+    float u1 = static_cast<float>(sprX1) / surfaceWidth;
+
+    float v0 = static_cast<float>(sprY0) / surfaceHeight;
+    float v1 = static_cast<float>(sprY1) / surfaceHeight;
+
+    {
+        pvr_vertex_t vert {};
+
+        vert.flags = PVR_CMD_VERTEX;
+        vert.argb = 0x00ffffff | (alpha << 24);
+        vert.oargb = 0;
+        vert.z = GetDepth();
+
+        // top left
+        vert.x = x0;
+        vert.y = y0;
+        vert.u = u0;
+        vert.v = v0;
+        pvr_prim(&vert, sizeof(vert));
+
+        // top right
+        vert.x = x1;
+        vert.y = y0;
+        vert.u = u1;
+        vert.v = v0;
+        pvr_prim(&vert, sizeof(vert));
+
+        // bottom left
+        vert.x = x0;
+        vert.y = y1;
+        vert.u = u0;
+        vert.v = v1;
+        pvr_prim(&vert, sizeof(vert));
+
+        // bottom right
+        vert.flags = PVR_CMD_VERTEX_EOL;
+        vert.x = x1;
+        vert.y = y1;
+        vert.u = u1;
+        vert.v = v1;
+        pvr_prim(&vert, sizeof(vert));
+    }
+}
+
+// static
+void RenderDevice::PrepareColoredPoly(int32 y, int srcBlend, int dstBlend) {
+    const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
+    const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
+
+    if (PreparePrimitive(PrimitiveTypes_ColoredPoly,
+                         gamePaletteBankIndex,
+                         pvrPaletteBankIndex,
+                         srcBlend,
+                         dstBlend,
+                         nullptr)) {
+        pvr_poly_cxt_t context;
+        pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+
+        context.blend.src = srcBlend;
+        context.blend.dst = dstBlend;
+
+        pvr_poly_hdr_t header;
+        pvr_poly_compile(&header, &context);
+
+        pvr_prim(&header, sizeof(header));
+    }
+}
+
+// static
+void RenderDevice::DrawColoredPoly(
+        int32 x, int32 y,
+        int32 width, int32 height,
+        uint32 color
+) {
+    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
+    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
+
+    constexpr float scaleX = renderWidth / screenWidth;
+    constexpr float scaleY = renderHeight / screenHeight;
+
+    const float renderX = static_cast<float>(x) * scaleX;
+    const float renderY = static_cast<float>(y) * scaleY;
+    const float lmaoWidth = static_cast<float>(width) * scaleX;
+    const float lmaoHeight = static_cast<float>(height) * scaleY;
+
+    {
+        pvr_vertex_t vert {};
+
+        vert.flags = PVR_CMD_VERTEX;
+        vert.argb = color;
+        vert.oargb = 0;
+        vert.z = GetDepth();
+
+        // top left
+        vert.x = renderX;
+        vert.y = renderY;
+        pvr_prim(&vert, sizeof(vert));
+
+        // top right
+        vert.x = renderX + lmaoWidth;
+        vert.y = renderY;
+        pvr_prim(&vert, sizeof(vert));
+
+        // bottom left
+        vert.x = renderX;
+        vert.y = renderY + lmaoHeight;
+        pvr_prim(&vert, sizeof(vert));
+
+        // bottom right
+        vert.flags = PVR_CMD_VERTEX_EOL;
+        vert.x = renderX + lmaoWidth;
+        vert.y = renderY + lmaoHeight;
+        pvr_prim(&vert, sizeof(vert));
+    }
 }

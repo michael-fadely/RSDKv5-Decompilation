@@ -1,3 +1,5 @@
+#pragma once
+#define KOS_HARDWARE_RENDERER
 using ShaderEntry = ShaderEntryBase; // DCFIXME
 
 class RenderDevice : public RenderDeviceBase
@@ -45,6 +47,46 @@ public:
     static void EndScene();
     static float GetDepth();
     static void SetDepth(uint32 depth);
+
+#if defined(KOS_HARDWARE_RENDERER)
+    static uint32 GetGamePaletteBankIndex(int32 y);
+    static uint32 GameToPvrPaletteBankIndex(uint32 gamePaletteBankIndex);
+    static void PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPaletteBankIndex);
+    static bool InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend);
+
+    static bool PreparePrimitive(int primitiveType,
+                                 uint32 gamePaletteBankIndex,
+                                 uint32 pvrPaletteBankIndex,
+                                 int srcBlend,
+                                 int dstBlend,
+                                 pvr_ptr_t texture);
+
+    static void PrepareTexturedQuad(int32 y, GFXSurface* surface);
+    static void DrawTexturedQuad(
+            int32 x, int32 y,
+            int32 width, int32 height,
+            int32 sprX0, int32 sprX1,
+            int32 sprY0, int32 sprY1,
+            GFXSurface* surface
+    );
+
+    static void PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, GFXSurface* surface);
+    static void DrawTexturedPoly(
+            int32 x, int32 y,
+            int32 width, int32 height,
+            int32 sprX0, int32 sprX1,
+            int32 sprY0, int32 sprY1,
+            GFXSurface* surface,
+            int32 alpha
+    );
+
+    static void PrepareColoredPoly(int32 y, int srcBlend, int dstBlend);
+    static void DrawColoredPoly(
+            int32 x, int32 y,
+            int32 width, int32 height,
+            uint32 color
+    );
+#endif
 
 private:
     static bool InitShaders();

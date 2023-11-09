@@ -233,69 +233,6 @@ char RSDK::drawGroupNames[0x10][0x10] = {
     if (frameBufferClr != maskColor)                                                                                                                 \
         frameBufferClr = pixel;
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-bool InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
-{
-    switch (inkEffect) {
-        default:
-            return false;
-
-        case INK_NONE:
-            if (srcBlend) {
-                *srcBlend = PVR_BLEND_SRCALPHA;
-            }
-
-            if (dstBlend) {
-                *dstBlend = PVR_BLEND_INVSRCALPHA;
-            }
-
-            return true;
-
-        case INK_BLEND:
-            //printf("[pvr] WARNING: unsupported ink effect INK_BLEND; skipping sprite\n");
-            return false;
-
-        case INK_ALPHA:
-            if (srcBlend) {
-                *srcBlend = PVR_BLEND_SRCALPHA;
-            }
-
-            if (dstBlend) {
-                *dstBlend = PVR_BLEND_INVSRCALPHA;
-            }
-
-            return true;
-
-        case INK_ADD:
-            if (srcBlend) {
-                *srcBlend = PVR_BLEND_SRCALPHA;
-            }
-
-            if (dstBlend) {
-                *dstBlend = PVR_BLEND_ONE;
-            }
-
-            return true;
-
-        case INK_SUB:
-            printf("[pvr] WARNING: unsupported ink effect INK_SUB; skipping sprite\n");
-            return false;
-
-        case INK_TINT:
-            printf("[pvr] WARNING: unsupported ink effect INK_TINT; skipping sprite\n");
-            return false;
-
-        case INK_MASKED:
-            //printf("[pvr] WARNING: unsupported ink effect INK_MASKED; skipping sprite\n");
-            return false;
-
-        case INK_UNMASKED:
-            printf("[pvr] WARNING: unsupported ink effect INK_UNMASKED; skipping sprite\n");
-            return false;
-    }
-}
-#endif
-
 void RSDK::RenderDeviceBase::ProcessDimming()
 {
     // Bug Details:
@@ -656,51 +593,6 @@ void RSDK::SwapDrawListEntries(uint8 drawGroup, uint16 slot1, uint16 slot2, uint
     }
 }
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-void DrawPolyForScreenFill(uint32 color) {
-    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
-
-    pvr_poly_cxt_t context;
-    pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
-
-    pvr_poly_hdr_t header;
-    pvr_poly_compile(&header, &context);
-
-    {
-        pvr_prim(&header, sizeof(header));
-
-        pvr_vertex_t vert {};
-
-        vert.flags = PVR_CMD_VERTEX;
-        vert.argb = color;
-        vert.oargb = 0;
-        vert.z = RenderDevice::GetDepth();
-
-        // top left
-        vert.x = 0.0f;
-        vert.y = 0.0f;
-        pvr_prim(&vert, sizeof(vert));
-
-        // top right
-        vert.x = renderWidth;
-        vert.y = 0.0f;
-        pvr_prim(&vert, sizeof(vert));
-
-        // bottom left
-        vert.x = 0.0f;
-        vert.y = renderHeight;
-        pvr_prim(&vert, sizeof(vert));
-
-        // bottom right
-        vert.flags = PVR_CMD_VERTEX_EOL;
-        vert.x = renderWidth;
-        vert.y = renderHeight;
-        pvr_prim(&vert, sizeof(vert));
-    }
-}
-#endif
-
 void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
 {
     alphaR = CLAMP(alphaR, 0x00, 0xFF);
@@ -712,7 +604,9 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
         validDraw = true;
         uint32 shittyAlpha = (alphaR + alphaG + alphaB) / 3;
         shittyAlpha = CLAMP(shittyAlpha, 0x00, 0xFF);
-        DrawPolyForScreenFill(color | (shittyAlpha << 24));
+        RenderDevice::PrepareColoredPoly(0, PVR_BLEND_SRCALPHA, PVR_BLEND_INVSRCALPHA);
+        // DCWIP: hard-coded screen dimensions (320, 240)
+        RenderDevice::DrawColoredPoly(0, 0, 320, 240, color | (shittyAlpha << 24));
         #else
         validDraw        = true;
         uint16 clrBlendR = blendLookupTable[0x20 * alphaR + rgb32To16_B[(color >> 0x10) & 0xFF]];
@@ -1266,68 +1160,6 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
             break;
     }
 }
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-void DrawRectanglePoly(
-        int32 x, int32 y,
-        int32 width, int32 height,
-        int srcBlend, int dstBlend,
-        uint32 color
-) {
-    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
-
-    constexpr float scaleX = renderWidth / screenWidth;
-    constexpr float scaleY = renderHeight / screenHeight;
-
-    const float renderX = static_cast<float>(x) * scaleX;
-    const float renderY = static_cast<float>(y) * scaleY;
-    const float lmaoWidth = static_cast<float>(width) * scaleX;
-    const float lmaoHeight = static_cast<float>(height) * scaleY;
-
-    pvr_poly_cxt_t context;
-    pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
-
-    context.blend.src = srcBlend;
-    context.blend.dst = dstBlend;
-
-    pvr_poly_hdr_t header;
-    pvr_poly_compile(&header, &context);
-
-    {
-        pvr_prim(&header, sizeof(header));
-
-        pvr_vertex_t vert {};
-
-        vert.flags = PVR_CMD_VERTEX;
-        vert.argb = color;
-        vert.oargb = 0;
-        vert.z = RenderDevice::GetDepth();
-
-        // top left
-        vert.x = renderX;
-        vert.y = renderY;
-        pvr_prim(&vert, sizeof(vert));
-
-        // top right
-        vert.x = renderX + lmaoWidth;
-        vert.y = renderY;
-        pvr_prim(&vert, sizeof(vert));
-
-        // bottom left
-        vert.x = renderX;
-        vert.y = renderY + lmaoHeight;
-        pvr_prim(&vert, sizeof(vert));
-
-        // bottom right
-        vert.flags = PVR_CMD_VERTEX_EOL;
-        vert.x = renderX + lmaoWidth;
-        vert.y = renderY + lmaoHeight;
-        pvr_prim(&vert, sizeof(vert));
-    }
-}
-#endif
 void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
     switch (inkEffect) {
@@ -1387,11 +1219,13 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
     int srcBlend;
     int dstBlend;
 
-    if (!InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
+    if (!RenderDevice::InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
         return;
     }
 
-    DrawRectanglePoly(x, y, width, height, srcBlend, dstBlend, color | (alpha << 24));
+    RenderDevice::PrepareColoredPoly(y, srcBlend, dstBlend);
+
+    RenderDevice::DrawColoredPoly(x, y, width, height, color | (alpha << 24));
 #else
     int32 pitch         = currentScreen->pitch - width;
     validDraw           = true;
@@ -3053,131 +2887,6 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
         }
     }
 }
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-void DrawPoly(
-        int32 x, int32 y,
-        int32 width, int32 height,
-        int32 sprX0, int32 sprX1,
-        int32 sprY0, int32 sprY1,
-        GFXSurface* surface,
-        int srcBlend, int dstBlend, int32 alpha
-) {
-    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
-
-    constexpr float scaleX = renderWidth / screenWidth;
-    constexpr float scaleY = renderHeight / screenHeight;
-
-    const auto surfaceWidth = static_cast<float>(surface->width);
-    const auto surfaceHeight = static_cast<float>(surface->height);
-
-    const float x0 = static_cast<float>(x) * scaleX;
-    const float x1 = x0 + (static_cast<float>(width) * scaleX);
-    const float y0 = static_cast<float>(y) * scaleY;
-    const float y1 = y0 + static_cast<float>(height) * scaleY;
-
-    float u0 = static_cast<float>(sprX0) / surfaceWidth;
-    float u1 = static_cast<float>(sprX1) / surfaceWidth;
-
-    float v0 = static_cast<float>(sprY0) / surfaceHeight;
-    float v1 = static_cast<float>(sprY1) / surfaceHeight;
-
-    // DCFIXME: gotta check for palette changes and split the sprite
-    // for now, we just take the first one
-    const uint8* lineBuffer  = &gfxLineBuffer[y];
-    const auto gamePaletteBankIndex = static_cast<uint32>(*lineBuffer);
-    uint32 pvrPaletteBankIndex = gamePaletteBankIndex;
-
-    if (gamePaletteBankIndex >= 4) {
-        const uint32 corrected = gamePaletteBankIndex % 4;
-
-        printf("[pvr] WARNING: palette bank index exceeds 4: %lu; applying mod, using this instead: %lu\n",
-               gamePaletteBankIndex,
-               corrected);
-
-        pvrPaletteBankIndex = corrected;
-    }
-
-    const uint32 pvrPaletteBankOffset = 256 * pvrPaletteBankIndex;
-
-    auto rgb565toargb1555 = [](uint16 color16) -> uint16 {
-        return (color16 & 0x1F) | ((color16 >> 1) & 0x7FE0);
-    };
-
-    uint16 *activePalette = fullPalette[gamePaletteBankIndex];
-
-    pvr_set_pal_format(PVR_PAL_ARGB1555);
-
-    // first color (0) is always completely translucent
-    pvr_set_pal_entry(pvrPaletteBankOffset, rgb565toargb1555(activePalette[0]));
-
-    // DCFIXME: do we need to populate the palette entries for EVERY sprite we render?
-    // now set every other color with the opaque bit set
-    for (int i = 1; i < PALETTE_BANK_SIZE; ++i) {
-        const uint16 color16 = rgb565toargb1555(activePalette[i]) | 0x8000;
-        pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32)color16);
-    }
-
-    pvr_poly_cxt_t context;
-    pvr_poly_cxt_txr(
-        &context,
-        PVR_LIST_TR_POLY,
-        PVR_TXRFMT_PAL8BPP | PVR_TXRFMT_8BPP_PAL(pvrPaletteBankIndex),
-        surface->width,
-        surface->height,
-        surface->texture,
-        PVR_FILTER_NEAREST
-    );
-
-    context.blend.src = srcBlend;
-    context.blend.dst = dstBlend;
-
-    pvr_poly_hdr_t header;
-    pvr_poly_compile(&header, &context);
-
-    {
-        pvr_prim(&header, sizeof(header));
-
-        pvr_vertex_t vert {};
-
-        vert.flags = PVR_CMD_VERTEX;
-        vert.argb = 0x00ffffff | (alpha << 24);
-        vert.oargb = 0;
-        vert.z = RenderDevice::GetDepth();
-
-        // top left
-        vert.x = x0;
-        vert.y = y0;
-        vert.u = u0;
-        vert.v = v0;
-        pvr_prim(&vert, sizeof(vert));
-
-        // top right
-        vert.x = x1;
-        vert.y = y0;
-        vert.u = u1;
-        vert.v = v0;
-        pvr_prim(&vert, sizeof(vert));
-
-        // bottom left
-        vert.x = x0;
-        vert.y = y1;
-        vert.u = u0;
-        vert.v = v1;
-        pvr_prim(&vert, sizeof(vert));
-
-        // bottom right
-        vert.flags = PVR_CMD_VERTEX_EOL;
-        vert.x = x1;
-        vert.y = y1;
-        vert.u = u1;
-        vert.v = v1;
-        pvr_prim(&vert, sizeof(vert));
-    }
-}
-#endif
 void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 sprX, int32 sprY, int32 direction, int32 inkEffect, int32 alpha,
                              int32 sheetID)
 {
@@ -3217,7 +2926,7 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
     int srcBlend;
     int dstBlend;
 
-    if (!InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
+    if (!RenderDevice::InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
         return;
     }
 
@@ -3279,13 +2988,15 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
 
     validDraw = true;
 
-    DrawPoly(xClipped, yClipped,
-             widthClipped, heightClipped,
-             sprX0, sprX1,
-             sprY0, sprY1,
-             surface,
-             srcBlend, dstBlend,
-             alpha);
+    RenderDevice::PrepareTexturedPoly(yClipped, srcBlend, dstBlend, surface);
+
+    RenderDevice::DrawTexturedPoly(
+            xClipped, yClipped,
+            widthClipped, heightClipped,
+            sprX0, sprX1,
+            sprY0, sprY1,
+            surface,
+            alpha);
 #else
     int32 widthFlip  = width;
     int32 heightFlip = height;
