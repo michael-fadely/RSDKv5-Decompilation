@@ -1583,6 +1583,9 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
 }
 void RSDK::DrawLayerVScroll(TileLayer *layer)
 {
+    // DCTODO: DrawLayerVScroll
+    // (using early return so I can still statically analyze stuff!)
+    return;
     if (!layer->xsize || !layer->ysize)
         return;
 
@@ -1725,6 +1728,9 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
 }
 void RSDK::DrawLayerRotozoom(TileLayer *layer)
 {
+    // DCTODO: DrawLayerRotozoom
+    // (using early return so I can still statically analyze stuff!)
+    return;
     if (!layer->xsize || !layer->ysize)
         return;
 

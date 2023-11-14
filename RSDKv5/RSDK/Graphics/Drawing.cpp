@@ -3638,6 +3638,9 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
 void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int32 width, int32 height, int32 sprX, int32 sprY, int32 scaleX,
                               int32 scaleY, int32 direction, int16 rotation, int32 inkEffect, int32 alpha, int32 sheetID)
 {
+    // DCTODO: DrawSpriteRotozoom
+    // (using early return so I can still statically analyze stuff!)
+    return;
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -3989,6 +3992,9 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
 
 void RSDK::DrawDeformedSprite(uint16 sheetID, int32 inkEffect, int32 alpha)
 {
+    // DCTODO: DrawDeformedSprite
+    // (using early return so I can still statically analyze stuff!)
+    return;
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -4371,6 +4377,9 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
 }
 void RSDK::DrawAniTile(uint16 sheetID, uint16 tileIndex, uint16 srcX, uint16 srcY, uint16 width, uint16 height)
 {
+    // DCTODO: DrawAniTile
+    // (using early return so I can still statically analyze stuff!)
+    return;
 
     if (sheetID < SURFACE_COUNT && tileIndex < TILE_COUNT) {
         GFXSurface *surface = &gfxSurface[sheetID];
@@ -4514,6 +4523,9 @@ void RSDK::DrawString(Animator *animator, Vector2 *position, String *string, int
 }
 void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint32 color)
 {
+    // DCTODO: DrawDevString
+    // (using early return so I can still statically analyze stuff!)
+    return;
     uint16 color16 = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
 
     int32 charOffset   = 0;
