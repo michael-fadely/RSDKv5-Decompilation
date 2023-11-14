@@ -40,12 +40,12 @@ bool32 RSDK::InitStorage()
 //    dataStorage[DATASET_STG].storageLimit = (3 * 1024 * 1024) - (640 * 1024); // sonic renders on title screen
 //    dataStorage[DATASET_STG].storageLimit = (5 * 1024 * 1024); // oh god
 //    dataStorage[DATASET_STG].storageLimit = (6 * 1024 * 1024) + ((512 + 64) * 1024); // oh god!!!
-    dataStorage[DATASET_STG].storageLimit = (6 * 1024 * 1024); // ok...
+    dataStorage[DATASET_STG].storageLimit = (4 * 1024 * 1024); // ok...
 
     dataStorage[DATASET_MUS].storageLimit = 1;
     dataStorage[DATASET_SFX].storageLimit = 1;
     dataStorage[DATASET_STR].storageLimit = 32 * 1024;
-    dataStorage[DATASET_TMP].storageLimit = 512 * 1024;
+    dataStorage[DATASET_TMP].storageLimit = (1024 * 1024) + (512 * 1024);
 #else
     dataStorage[DATASET_STG].storageLimit = 24 * 1024 * 1024; // 24MB
     dataStorage[DATASET_MUS].storageLimit = 8 * 1024 * 1024;  //  8MB
