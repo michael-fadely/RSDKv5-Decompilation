@@ -2934,59 +2934,59 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
         return;
     }
 
-    int32 xClipped = x;
-    int32 yClipped = y;
+    int32 marginLeft   = 0;
+    int32 marginRight  = 0;
+    int32 marginTop    = 0;
+    int32 marginBottom = 0;
 
-    int32 sprX0 = sprX;
-    int32 sprX1 = sprX + width;
-
-    int32 sprY0 = sprY;
-    int32 sprY1 = sprY + height;
-
-    if (xClipped + width > currentScreen->clipBound_X2) {
-        const int32 widthClipped = currentScreen->clipBound_X2 - xClipped;
-        sprX1 -= width - widthClipped;
+    if (x + width > currentScreen->clipBound_X2) {
+        marginRight = width - (currentScreen->clipBound_X2 - x);
     }
 
-    if (xClipped < currentScreen->clipBound_X1) {
-        const int32 difference = currentScreen->clipBound_X1 - xClipped;
-        xClipped = currentScreen->clipBound_X1;
-        sprX0 += difference;
+    if (x < currentScreen->clipBound_X1) {
+        marginLeft = currentScreen->clipBound_X1 - x;
     }
 
-    if (yClipped + height > currentScreen->clipBound_Y2) {
-        const int32 heightClipped = currentScreen->clipBound_Y2 - yClipped;
-        sprY1 -= height - heightClipped;
+    if (y + height > currentScreen->clipBound_Y2) {
+        marginBottom = height - (currentScreen->clipBound_Y2 - y);
     }
 
-    if (yClipped < currentScreen->clipBound_Y1) {
-        const int32 difference = currentScreen->clipBound_Y1 - yClipped;
-        yClipped = currentScreen->clipBound_Y1;
-        sprY0 += difference;
+    if (y < currentScreen->clipBound_Y1) {
+        marginTop = currentScreen->clipBound_Y1 - y;
     }
 
-    const int32 widthClipped = sprX1 - sprX0;
-    const int32 heightClipped = sprY1 - sprY0;
+    const int32 widthClipped = width - (marginLeft + marginRight);
+    const int32 heightClipped = height - (marginTop + marginBottom);
 
     if (widthClipped <= 0 || heightClipped <= 0) {
         return;
     }
 
+    validDraw = true;
+
+    int32 sprX0;
+    int32 sprX1;
+    int32 sprY0;
+    int32 sprY1;
+
     if (direction & FLIP_X) {
-        const int32 right = (sprX + width) - 1;
-        const int32 difference = (xClipped - x) - 1;
-        sprX0 = right - difference;
-        sprX1 = sprX0 - widthClipped;
+        sprX0 = sprX + (width - marginLeft);
+        sprX1 = sprX + marginRight;
+    } else {
+        sprX0 = sprX + marginLeft;
+        sprX1 = sprX + (width - marginRight);
     }
 
     if (direction & FLIP_Y) {
-        const int32 bottom = (sprY + width) - 1;
-        const int32 difference = (yClipped - y) - 1;
-        sprY0 = bottom - difference;
-        sprY1 = sprY0 - heightClipped;
+        sprY0 = sprY + (height - marginTop);
+        sprY1 = sprY + marginBottom;
+    } else {
+        sprY0 = sprY + marginTop;
+        sprY1 = sprY + (height - marginBottom);
     }
 
-    validDraw = true;
+    const int32 xClipped = x + marginLeft;
+    const int32 yClipped = y + marginTop;
 
     RenderDevice::PrepareTexturedPoly(yClipped, srcBlend, dstBlend, surface);
 
