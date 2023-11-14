@@ -286,7 +286,7 @@ void RSDK::InitSystemSurfaces()
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     gfxSurface[0].width    = TILE_SIZE * 32;
     gfxSurface[0].height   = TILE_SIZE * 32;
-    gfxSurface[0].lineSize = 9; // 16px
+    gfxSurface[0].lineSize = 9; // 512px
     // texture is allocated on demand
 #else
     gfxSurface[0].width    = TILE_SIZE;
