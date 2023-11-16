@@ -73,11 +73,13 @@ public:
     static void PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, GFXSurface* surface);
     static void DrawTexturedPoly(
             int32 x, int32 y,
+            int32 ox, int32 oy,
             int32 width, int32 height,
             int32 sprX0, int32 sprX1,
             int32 sprY0, int32 sprY1,
-            GFXSurface* surface,
-            int32 alpha
+            int32 rotation,
+            int32 alpha,
+            GFXSurface *surface
     );
 
     static void PrepareColoredPoly(int32 y, int srcBlend, int dstBlend);

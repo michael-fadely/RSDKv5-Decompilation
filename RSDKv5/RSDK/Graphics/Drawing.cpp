@@ -2992,11 +2992,13 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
 
     RenderDevice::DrawTexturedPoly(
             xClipped, yClipped,
+            xClipped, yClipped,
             widthClipped, heightClipped,
             sprX0, sprX1,
             sprY0, sprY1,
-            surface,
-            alpha);
+            0,
+            alpha,
+            surface);
 #else
     int32 widthFlip  = width;
     int32 heightFlip = height;
@@ -3638,9 +3640,6 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
 void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int32 width, int32 height, int32 sprX, int32 sprY, int32 scaleX,
                               int32 scaleY, int32 direction, int16 rotation, int32 inkEffect, int32 alpha, int32 sheetID)
 {
-    // DCTODO: DrawSpriteRotozoom
-    // (using early return so I can still statically analyze stuff!)
-    return;
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -3668,6 +3667,109 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
     if (!(rotation & 0x1FF))
         angle = rotation & 0x1FF;
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    GFXSurface *surface = &gfxSurface[sheetID];
+
+    if (surface->texture == nullptr) {
+        return;
+    }
+
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
+    int srcBlend;
+    int dstBlend;
+
+    if (!RenderDevice::InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
+        return;
+    }
+
+    if (direction < FLIP_NONE || direction > FLIP_XY) {
+        return;
+    }
+
+    int32 newX;
+    int32 newY;
+
+    if (direction & FLIP_X) {
+        newX = x - width - pivotX;
+    } else {
+        newX = x + pivotX;
+    }
+
+    if (direction & FLIP_Y) {
+        newY = y - height - pivotY;
+    } else {
+        newY = y + pivotY;
+    }
+
+    int32 marginLeft   = 0;
+    int32 marginRight  = 0;
+    int32 marginTop    = 0;
+    int32 marginBottom = 0;
+
+    if (newX + width > currentScreen->clipBound_X2) {
+        marginRight = width - (currentScreen->clipBound_X2 - newX);
+    }
+
+    if (newX < currentScreen->clipBound_X1) {
+        marginLeft = currentScreen->clipBound_X1 - newX;
+    }
+
+    if (newY + height > currentScreen->clipBound_Y2) {
+        marginBottom = height - (currentScreen->clipBound_Y2 - newY);
+    }
+
+    if (newY < currentScreen->clipBound_Y1) {
+        marginTop = currentScreen->clipBound_Y1 - newY;
+    }
+
+    const int32 widthClipped = width - (marginLeft + marginRight);
+    const int32 heightClipped = height - (marginTop + marginBottom);
+
+    if (widthClipped <= 0 || heightClipped <= 0) {
+        return;
+    }
+
+    validDraw = true;
+
+    int32 sprX0;
+    int32 sprX1;
+    int32 sprY0;
+    int32 sprY1;
+
+    if (direction & FLIP_X) {
+        sprX0 = sprX + width;
+        sprX1 = sprX;
+    } else {
+        sprX0 = sprX;
+        sprX1 = sprX + width;
+    }
+
+    if (direction & FLIP_Y) {
+        sprY0 = sprY + height;
+        sprY1 = sprY;
+    } else {
+        sprY0 = sprY;
+        sprY1 = sprY + height;
+    }
+
+    const int32 yClipped = newY + marginTop;
+
+    RenderDevice::PrepareTexturedPoly(yClipped, srcBlend, dstBlend, surface);
+
+    // DCTODO: scale
+    RenderDevice::DrawTexturedPoly(
+            newX, newY,
+            x, y,
+            width, height,
+            sprX0, sprX1,
+            sprY0, sprY1,
+            512 - angle,
+            alpha,
+            surface);
+#else
     int32 sine        = sin512LookupTable[angle];
     int32 cosine      = cos512LookupTable[angle];
     int32 fullScaleXS = scaleX * sine >> 9;
@@ -3988,6 +4090,7 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
                 break;
         }
     }
+#endif
 }
 
 void RSDK::DrawDeformedSprite(uint16 sheetID, int32 inkEffect, int32 alpha)

@@ -677,11 +677,13 @@ void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, RSDK
 // static
 void RenderDevice::DrawTexturedPoly(
         int32 x, int32 y,
+        int32 ox, int32 oy,
         int32 width, int32 height,
         int32 sprX0, int32 sprX1,
         int32 sprY0, int32 sprY1,
-        GFXSurface* surface,
-        int32 alpha
+        int32 rotation,
+        int32 alpha,
+        GFXSurface *surface
 ) {
     constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
     constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
@@ -694,10 +696,57 @@ void RenderDevice::DrawTexturedPoly(
     const auto surfaceWidth = static_cast<float>(surface->width);
     const auto surfaceHeight = static_cast<float>(surface->height);
 
-    const float x0 = static_cast<float>(x) * scaleX;
-    const float x1 = x0 + (static_cast<float>(width) * scaleX);
-    const float y0 = static_cast<float>(y) * scaleY;
-    const float y1 = y0 + static_cast<float>(height) * scaleY;
+    const float depth = GetDepth();
+
+    vec3f p0 {
+        .x = static_cast<float>(x) * scaleX,
+        .y = static_cast<float>(y) * scaleY,
+        .z = depth
+    };
+
+    vec3f p3 {
+        .x = p0.x + (static_cast<float>(width) * scaleX),
+        .y = p0.y + static_cast<float>(height) * scaleY,
+        .z = depth
+    };
+
+    vec3f p1 {
+        .x = p3.x,
+        .y = p0.y,
+        .z = depth
+    };
+
+    vec3f p2 {
+        .x = p0.x,
+        .y = p3.y,
+        .z = depth
+    };
+
+    if (rotation) {
+        const float cx = static_cast<float>(ox) * scaleX;
+        const float cy = static_cast<float>(oy) * scaleY;
+
+        const float radians = static_cast<float>(rotation) * (float)M_TWOPI / 512.0f;
+
+        const float s = sinf(radians);
+        const float c = cosf(radians);
+
+        auto rotate = [cx, cy, s, c](vec3f& p) {
+            p.x -= cx;
+            p.y -= cy;
+
+            auto px = p.x * c - p.y * s;
+            auto py = p.x * s + p.y * c;
+
+            p.x = px + cx;
+            p.y = py + cy;
+        };
+
+        rotate(p0);
+        rotate(p1);
+        rotate(p2);
+        rotate(p3);
+    }
 
     float u0 = static_cast<float>(sprX0) / surfaceWidth;
     float u1 = static_cast<float>(sprX1) / surfaceWidth;
@@ -711,33 +760,33 @@ void RenderDevice::DrawTexturedPoly(
         vert.flags = PVR_CMD_VERTEX;
         vert.argb = 0x00ffffff | (alpha << 24);
         vert.oargb = 0;
-        vert.z = GetDepth();
+        vert.z = depth;
 
         // top left
-        vert.x = x0;
-        vert.y = y0;
+        vert.x = p0.x;
+        vert.y = p0.y;
         vert.u = u0;
         vert.v = v0;
         pvr_prim(&vert, sizeof(vert));
 
         // top right
-        vert.x = x1;
-        vert.y = y0;
+        vert.x = p1.x;
+        vert.y = p1.y;
         vert.u = u1;
         vert.v = v0;
         pvr_prim(&vert, sizeof(vert));
 
         // bottom left
-        vert.x = x0;
-        vert.y = y1;
+        vert.x = p2.x;
+        vert.y = p2.y;
         vert.u = u0;
         vert.v = v1;
         pvr_prim(&vert, sizeof(vert));
 
         // bottom right
         vert.flags = PVR_CMD_VERTEX_EOL;
-        vert.x = x1;
-        vert.y = y1;
+        vert.x = p3.x;
+        vert.y = p3.y;
         vert.u = u1;
         vert.v = v1;
         pvr_prim(&vert, sizeof(vert));
