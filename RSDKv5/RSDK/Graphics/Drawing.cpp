@@ -4334,6 +4334,37 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                     pivotY = y - (countY * (TILE_SIZE >> 1));
                 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                for (int32 ty = 0; ty < countY; ++ty) {
+                    const int32 screenY = (ty * TILE_SIZE) + pivotY;
+
+                    for (int32 tx = 0; tx < countX; ++tx) {
+                        uint16 tile = tiles[tx + (ty * countX)];
+
+                        if (tile >= 0xFFFF) {
+                            continue;
+                        }
+
+                        // DCFIXME: copy/pasted code for tile atlas stuff
+                        tile &= 0xFFF;
+                        const int32 flip = tile / TILE_COUNT;
+                        tile %= TILE_COUNT;
+
+                        const int32 tilesetX = TILE_SIZE * ((int32) tile % 32); // DCFIXME: hard-coded tile atlas dimensions
+                        const int32 tilesetY = TILE_SIZE * ((int32) tile / 32); // DCFIXME: hard-coded tile atlas dimensions
+
+                        const int32 screenX = (tx * TILE_SIZE) + pivotX;
+
+                        DrawSpriteFlipped(screenX, screenY,
+                                          TILE_SIZE, TILE_SIZE,
+                                          tilesetX, tilesetY,
+                                          flip,
+                                          sceneInfo.entity->inkEffect,
+                                          sceneInfo.entity->alpha,
+                                          0);
+                    }
+                }
+#else
                 for (int32 ty = 0; ty < countY; ++ty) {
                     for (int32 tx = 0; tx < countX; ++tx) {
                         uint16 tile = tiles[tx + (ty * countX)];
@@ -4343,6 +4374,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         }
                     }
                 }
+#endif
                 break;
 
             case FX_ROTATE: // Flip
@@ -4356,6 +4388,47 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                     pivotY = -(countY * (TILE_SIZE >> 1));
                 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                for (int32 ty = 0; ty < countY; ++ty) {
+                    const int32 screenY = y + (ty * TILE_SIZE);
+
+                    for (int32 tx = 0; tx < countX; ++tx) {
+                        uint16 tile = tiles[tx + (ty * countX)];
+
+                        if (tile >= 0xFFFF) {
+                            continue;
+                        }
+
+                        // DCFIXME: copy/pasted code for tile atlas stuff
+                        tile &= 0xFFF;
+                        int32 flip = tile / TILE_COUNT;
+                        tile %= TILE_COUNT;
+
+                        const int32 tilesetX = TILE_SIZE * ((int32) tile % 32); // DCFIXME: hard-coded tile atlas dimensions
+                        const int32 tilesetY = TILE_SIZE * ((int32) tile / 32); // DCFIXME: hard-coded tile atlas dimensions
+
+                        const int32 screenX = x + (tx * TILE_SIZE);
+
+                        int32 rotation = sceneInfo.entity->rotation;
+
+                        if (flip & FLIP_Y) {
+                            rotation += 0x100;
+                            flip ^= FLIP_Y;
+                        }
+
+                        DrawSpriteRotozoom(screenX, screenY,
+                                           pivotX, pivotY,
+                                           TILE_SIZE, TILE_SIZE,
+                                           tilesetX, tilesetY,
+                                           0x200, 0x200,
+                                           flip & FLIP_X,
+                                           static_cast<int16>(rotation), // lmao
+                                           sceneInfo.entity->inkEffect,
+                                           sceneInfo.entity->alpha,
+                                           0);
+                    }
+                }
+#else
                 for (int32 ty = 0; ty < countY; ++ty) {
                     for (int32 tx = 0; tx < countX; ++tx) {
                         uint16 tile = tiles[tx + (ty * countX)];
@@ -4388,6 +4461,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         }
                     }
                 }
+#endif
                 break;
 
             case FX_SCALE: // Scale
@@ -4401,6 +4475,48 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                     pivotY = -(countY * (TILE_SIZE >> 1));
                 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                for (int32 ty = 0; ty < countY; ++ty) {
+                    const int32 screenY = y + (ty * TILE_SIZE);
+
+                    for (int32 tx = 0; tx < countX; ++tx) {
+                        uint16 tile = tiles[tx + (ty * countX)];
+
+                        if (tile >= 0xFFFF) {
+                            continue;
+                        }
+
+                        // DCFIXME: copy/pasted code for tile atlas stuff
+                        tile &= 0xFFF;
+                        int32 flip = tile / TILE_COUNT;
+                        tile %= TILE_COUNT;
+
+                        const int32 tilesetX = TILE_SIZE * ((int32) tile % 32); // DCFIXME: hard-coded tile atlas dimensions
+                        const int32 tilesetY = TILE_SIZE * ((int32) tile / 32); // DCFIXME: hard-coded tile atlas dimensions
+
+                        const int32 screenX = x + (tx * TILE_SIZE);
+                        int32 rotation;
+
+                        if (flip & FLIP_Y) {
+                            rotation = 0x100;
+                            flip ^= FLIP_Y;
+                        } else {
+                            rotation = 0;
+                        }
+
+                        DrawSpriteRotozoom(screenX, screenY,
+                                           pivotX, pivotY,
+                                           TILE_SIZE, TILE_SIZE,
+                                           tilesetX, tilesetY,
+                                           sceneInfo.entity->scale.x, sceneInfo.entity->scale.y,
+                                           flip & FLIP_X,
+                                           static_cast<int16>(rotation),
+                                           sceneInfo.entity->inkEffect,
+                                           sceneInfo.entity->alpha,
+                                           0);
+                    }
+                }
+#else
                 for (int32 ty = 0; ty < countY; ++ty) {
                     for (int32 tx = 0; tx < countX; ++tx) {
                         uint16 tile = tiles[tx + (ty * countX)];
@@ -4433,6 +4549,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         }
                     }
                 }
+#endif
                 break;
 
             case FX_SCALE | FX_ROTATE: // Flip + Scale + Rotation
@@ -4446,6 +4563,46 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                     pivotY = -(countY * (TILE_SIZE >> 1));
                 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                for (int32 ty = 0; ty < countY; ++ty) {
+                    const int32 screenY = y + (ty * TILE_SIZE);
+
+                    for (int32 tx = 0; tx < countX; ++tx) {
+                        uint16 tile = tiles[tx + (ty * countX)];
+
+                        if (tile >= 0xFFFF) {
+                            continue;
+                        }
+
+                        // DCFIXME: copy/pasted code for tile atlas stuff
+                        tile &= 0xFFF;
+                        int32 flip = tile / TILE_COUNT;
+                        tile %= TILE_COUNT;
+
+                        const int32 tilesetX = TILE_SIZE * ((int32) tile % 32); // DCFIXME: hard-coded tile atlas dimensions
+                        const int32 tilesetY = TILE_SIZE * ((int32) tile / 32); // DCFIXME: hard-coded tile atlas dimensions
+
+                        const int32 screenX = x + (tx * TILE_SIZE);
+                        int32 rotation = sceneInfo.entity->rotation;
+
+                        if (flip & FLIP_Y) {
+                            rotation += 0x100;
+                            flip ^= FLIP_Y;
+                        }
+
+                        DrawSpriteRotozoom(screenX, screenY,
+                                           pivotX, pivotY,
+                                           TILE_SIZE, TILE_SIZE,
+                                           tilesetX, tilesetY,
+                                           sceneInfo.entity->scale.x, sceneInfo.entity->scale.y,
+                                           flip & FLIP_X,
+                                           static_cast<int16>(rotation),
+                                           sceneInfo.entity->inkEffect,
+                                           sceneInfo.entity->alpha,
+                                           0);
+                    }
+                }
+#else
                 for (int32 ty = 0; ty < countY; ++ty) {
                     for (int32 tx = 0; tx < countX; ++tx) {
                         uint16 tile = tiles[tx + (ty * countX)];
@@ -4478,6 +4635,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         }
                     }
                 }
+#endif
                 break;
         }
     }
