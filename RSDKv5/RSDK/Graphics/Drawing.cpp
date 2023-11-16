@@ -3689,44 +3689,51 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
         return;
     }
 
+    // DCFIXME: we should avoid using floating point for scaling if possible
+    const auto scaleXf = (float)scaleX / 512.0f;
+    const auto scaleYf = (float)scaleY / 512.0f;
+
+    const auto scaledPivotX = (int32)((float)pivotX * scaleXf);
+    const auto scaledPivotY = (int32)((float)pivotY * scaleYf);
+
+    const auto scaledWidth = (int32)((float)width * scaleXf);
+    const auto scaledHeight = (int32)((float)height * scaleYf);
+
     int32 newX;
     int32 newY;
 
     if (direction & FLIP_X) {
-        newX = x - width - pivotX;
+        newX = x - scaledWidth - scaledPivotX;
     } else {
-        newX = x + pivotX;
+        newX = x + scaledPivotX;
     }
 
     if (direction & FLIP_Y) {
-        newY = y - height - pivotY;
+        newY = y - scaledHeight - scaledPivotY;
     } else {
-        newY = y + pivotY;
+        newY = y + scaledPivotY;
     }
 
-    int32 marginLeft   = 0;
-    int32 marginRight  = 0;
-    int32 marginTop    = 0;
-    int32 marginBottom = 0;
+    int32 widthClipped = scaledWidth;
+    int32 heightClipped = scaledHeight;
+    int32 marginTop = 0;
 
-    if (newX + width > currentScreen->clipBound_X2) {
-        marginRight = width - (currentScreen->clipBound_X2 - newX);
+    if (newX + scaledWidth > currentScreen->clipBound_X2) {
+        widthClipped -= currentScreen->clipBound_X2 - (newX + scaledWidth);
     }
 
     if (newX < currentScreen->clipBound_X1) {
-        marginLeft = currentScreen->clipBound_X1 - newX;
+        widthClipped -= currentScreen->clipBound_X1 - newX;
     }
 
-    if (newY + height > currentScreen->clipBound_Y2) {
-        marginBottom = height - (currentScreen->clipBound_Y2 - newY);
+    if (newY + scaledHeight > currentScreen->clipBound_Y2) {
+        heightClipped -= currentScreen->clipBound_Y2 - (newY + scaledHeight);
     }
 
     if (newY < currentScreen->clipBound_Y1) {
         marginTop = currentScreen->clipBound_Y1 - newY;
+        heightClipped -= marginTop;
     }
-
-    const int32 widthClipped = width - (marginLeft + marginRight);
-    const int32 heightClipped = height - (marginTop + marginBottom);
 
     if (widthClipped <= 0 || heightClipped <= 0) {
         return;
@@ -3755,15 +3762,12 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
         sprY1 = sprY + height;
     }
 
-    const int32 yClipped = newY + marginTop;
+    RenderDevice::PrepareTexturedPoly(newY + marginTop, srcBlend, dstBlend, surface);
 
-    RenderDevice::PrepareTexturedPoly(yClipped, srcBlend, dstBlend, surface);
-
-    // DCTODO: scale
     RenderDevice::DrawTexturedPoly(
             newX, newY,
             x, y,
-            width, height,
+            scaledWidth, scaledHeight,
             sprX0, sprX1,
             sprY0, sprY1,
             512 - angle,
