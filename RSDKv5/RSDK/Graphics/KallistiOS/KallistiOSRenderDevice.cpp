@@ -39,7 +39,7 @@ void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
     pvr_prim(&vert, sizeof(vert));
 
     // top right
-    vert.x = 640.0f;
+    vert.x = 640.0f; // DCFIXME: hard-coded render dimensions used
     vert.y = 0.0f;
     vert.z = 1.0f;
     vert.u = static_cast<float>(screenSize.x) / static_cast<float>(kost.width);
@@ -48,7 +48,7 @@ void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
 
     // bottom left
     vert.x = 0.0f;
-    vert.y = 480.0f;
+    vert.y = 480.0f; // DCFIXME: hard-coded render dimensions used
     vert.z = 1.0f;
     vert.u = 0.0f;
     vert.v = static_cast<float>(screenSize.y) / static_cast<float>(kost.height);
@@ -56,8 +56,8 @@ void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
 
     // bottom right
     vert.flags = PVR_CMD_VERTEX_EOL;
-    vert.x = 640.0f;
-    vert.y = 480.0f;
+    vert.x = 640.0f; // DCFIXME: hard-coded render dimensions used
+    vert.y = 480.0f; // DCFIXME: hard-coded render dimensions used
     vert.z = 1.0f;
     vert.u = static_cast<float>(screenSize.x) / static_cast<float>(kost.width);
     vert.v = static_cast<float>(screenSize.y) / static_cast<float>(kost.height);
@@ -68,6 +68,7 @@ void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
 // static
 bool RenderDevice::Init()
 {
+#if defined(KOS_HARDWARE_RENDERER)
     pvr_init_params_t pvrParams = {
         // bin sizes
         {
@@ -80,7 +81,7 @@ bool RenderDevice::Init()
 
         // vertex buffer size
         // 512 KB is the default used by pvr_init_defaults(). might need adjusting.
-        128 * 1024, // UNDONE: was 512 * 1024
+        128 * 1024,
 
         // dma enabled? (no)
         0,
@@ -91,6 +92,9 @@ bool RenderDevice::Init()
         // autosort disabled?
         0
     };
+#else
+#error pvr_init_params_t needs re-configuring for the software renderer!
+#endif
 
     if (pvr_init(&pvrParams) < 0) {
         while (true) {
@@ -110,16 +114,8 @@ bool RenderDevice::Init()
     displayCount = 1;
     displayWidth[0] = 640;
     displayHeight[0] = 480;
-
-    int32 bufferWidth  = videoSettings.fsWidth;
-    int32 bufferHeight = videoSettings.fsHeight;
-    if (videoSettings.fsWidth <= 0 || videoSettings.fsHeight <= 0) {
-        bufferWidth  = displayWidth[0];
-        bufferHeight = displayHeight[0];
-    }
-
-    viewSize.x = bufferWidth;
-    viewSize.y = bufferHeight;
+    viewSize.x = static_cast<float>(displayWidth[0]);
+    viewSize.y = static_cast<float>(displayHeight[0]);
 
     uint32 width;
     uint32 height;
@@ -173,17 +169,10 @@ bool RenderDevice::Init()
 
     printf("pvr setup complete. pvr_mem_available: %lu\n", pvr_mem_available());
 
-    viewSize.x = 640.0f;
-    viewSize.y = 480.0f;
-
     screenTextures[0].width = width;
     screenTextures[0].height = height;
 
-    int32 maxPixHeight = 0;
     for (int32 s = 0; s < SCREEN_COUNT; ++s) {
-        if (videoSettings.pixHeight > maxPixHeight)
-            maxPixHeight = videoSettings.pixHeight;
-
         screens[s].size.y = videoSettings.pixHeight;
 
         float viewAspect  = viewSize.x / viewSize.y;
@@ -203,8 +192,8 @@ bool RenderDevice::Init()
         SetScreenSize(s, screenWidth, screens[s].size.y);
     }
 
-    pixelSize.x = screens[0].size.x;
-    pixelSize.y = screens[0].size.y;
+    pixelSize.x = static_cast<float>(screens[0].size.x);
+    pixelSize.y = static_cast<float>(screens[0].size.y);
 
     engine.inFocus = 1;
 
@@ -411,7 +400,7 @@ inline uint32 CalculatePvrPaletteBankOffset(uint32 pvrPaletteBankIndex) {
 
 // static
 uint32 RenderDevice::GetGamePaletteBankIndex(int32 y) {
-    const uint8* lineBuffer  = &gfxLineBuffer[CLAMP(y, 0, 239)]; // DCWIP: hard-coded height
+    const uint8* lineBuffer = &gfxLineBuffer[CLAMP(y, 0, screens[0].size.y - 1)];
     return static_cast<uint32>(*lineBuffer);
 }
 
@@ -596,13 +585,8 @@ void RenderDevice::DrawTexturedQuad(
         int32 sprY0, int32 sprY1,
         GFXSurface* surface
 ) {
-    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
-
-    constexpr float scaleX = renderWidth / screenWidth;
-    constexpr float scaleY = renderHeight / screenHeight;
+    const float scaleX = viewSize.x / pixelSize.x;
+    const float scaleY = viewSize.y / pixelSize.y;
 
     const auto surfaceWidth = static_cast<float>(surface->width);
     const auto surfaceHeight = static_cast<float>(surface->height);
@@ -685,13 +669,8 @@ void RenderDevice::DrawTexturedPoly(
         int32 alpha,
         GFXSurface *surface
 ) {
-    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
-
-    constexpr float scaleX = renderWidth / screenWidth;
-    constexpr float scaleY = renderHeight / screenHeight;
+    const float scaleX = viewSize.x / pixelSize.x;
+    const float scaleY = viewSize.y / pixelSize.y;
 
     const auto surfaceWidth = static_cast<float>(surface->width);
     const auto surfaceHeight = static_cast<float>(surface->height);
@@ -823,13 +802,8 @@ void RenderDevice::DrawColoredPoly(
         int32 width, int32 height,
         uint32 color
 ) {
-    constexpr float renderWidth  = 640.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float renderHeight = 480.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float screenWidth  = 320.0f; // DCWIP: hard-coded render dimensions used
-    constexpr float screenHeight = 240.0f; // DCWIP: hard-coded render dimensions used
-
-    constexpr float scaleX = renderWidth / screenWidth;
-    constexpr float scaleY = renderHeight / screenHeight;
+    const float scaleX = viewSize.x / pixelSize.x;
+    const float scaleY = viewSize.y / pixelSize.y;
 
     const float renderX = static_cast<float>(x) * scaleX;
     const float renderY = static_cast<float>(y) * scaleY;
