@@ -988,11 +988,11 @@ void RSDK::LoadStageGIF(char *filepath)
         // use one of the additional tileset buffers to re-orient the tileset into a 512x512 texture
         uint8* const srcTiles = &tilesetPixels[0];
         uint8* const dstTiles = &tilesetPixels[TILESET_SIZE];
-        constexpr size_t tilesPerRow = 32;
+        constexpr size_t tilesPerRow = KOS_ATLAS_WIDTH_TILES;
 
         for (size_t i = 0; i < TILE_COUNT; ++i) {
-            const size_t dstColumn = i % 32;
-            const size_t dstRow = i / 32;
+            const size_t dstColumn = i % tilesPerRow;
+            const size_t dstRow = i / tilesPerRow;
 
             uint8* srcPixels = &srcTiles[TILE_DATASIZE * i];
             uint8* dstPixels = &dstTiles[(dstColumn * TILE_SIZE) + (dstRow * tilesPerRow * TILE_DATASIZE)];
@@ -1351,8 +1351,8 @@ void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
     const int32 flip = layout / TILE_COUNT;
     layout %= TILE_COUNT;
 
-    const int32 tilesetX = TILE_SIZE * ((int32)layout % 32);
-    const int32 tilesetY = TILE_SIZE * ((int32)layout / 32);
+    const int32 tilesetX = TILE_SIZE * ((int32)layout % KOS_ATLAS_WIDTH_TILES);
+    const int32 tilesetY = TILE_SIZE * ((int32)layout / KOS_ATLAS_WIDTH_TILES);
 
     int32 sprX0 = tilesetX;
     int32 sprX1 = tilesetX;

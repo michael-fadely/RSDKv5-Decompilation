@@ -284,10 +284,10 @@ void RSDK::InitSystemSurfaces()
     GEN_HASH_MD5("TileBuffer", gfxSurface[0].hash);
     gfxSurface[0].scope    = SCOPE_GLOBAL;
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    gfxSurface[0].width    = TILE_SIZE * 32;
-    gfxSurface[0].height   = TILE_SIZE * 32;
-    gfxSurface[0].lineSize = 9; // 512px
-    // texture is allocated on demand
+    gfxSurface[0].width    = KOS_ATLAS_WIDTH_PIXELS;
+    gfxSurface[0].height   = KOS_ATLAS_HEIGHT_PIXELS;
+    gfxSurface[0].lineSize = KOS_ATLAS_LINE_SIZE_SHIFT;
+    // texture is allocated when tileset is loaded
 #else
     gfxSurface[0].width    = TILE_SIZE;
     gfxSurface[0].height   = TILE_COUNT * TILE_SIZE;
@@ -602,11 +602,16 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
     if (alphaR + alphaG + alphaB) {
         #if RETRO_PLATFORM == RETRO_KALLISTIOS
         validDraw = true;
-        uint32 shittyAlpha = (alphaR + alphaG + alphaB) / 3;
-        shittyAlpha = CLAMP(shittyAlpha, 0x00, 0xFF);
+
+        // DCFIXME: this is a very bad approximation of the alpha used for software rendering
+        uint32 badAlpha = (alphaR + alphaG + alphaB) / 3;
+        badAlpha = CLAMP(badAlpha, 0x00, 0xFF);
+
+        const auto width = currentScreen->size.x;
+        const auto height = currentScreen->size.y;
+
         RenderDevice::PrepareColoredPoly(0, PVR_BLEND_SRCALPHA, PVR_BLEND_INVSRCALPHA);
-        // DCWIP: hard-coded screen dimensions (320, 240)
-        RenderDevice::DrawColoredPoly(0, 0, 320, 240, color | (shittyAlpha << 24));
+        RenderDevice::DrawColoredPoly(0, 0, width, height, color | (badAlpha << 24));
         #else
         validDraw        = true;
         uint16 clrBlendR = blendLookupTable[0x20 * alphaR + rgb32To16_B[(color >> 0x10) & 0xFF]];
@@ -4350,8 +4355,8 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         const int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32) tile % 32); // DCFIXME: hard-coded tile atlas dimensions
-                        const int32 tilesetY = TILE_SIZE * ((int32) tile / 32); // DCFIXME: hard-coded tile atlas dimensions
+                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
+                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
 
                         const int32 screenX = (tx * TILE_SIZE) + pivotX;
 
@@ -4404,8 +4409,8 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32) tile % 32); // DCFIXME: hard-coded tile atlas dimensions
-                        const int32 tilesetY = TILE_SIZE * ((int32) tile / 32); // DCFIXME: hard-coded tile atlas dimensions
+                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
+                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
 
                         const int32 screenX = x + (tx * TILE_SIZE);
 
@@ -4422,7 +4427,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                                            tilesetX, tilesetY,
                                            0x200, 0x200,
                                            flip & FLIP_X,
-                                           static_cast<int16>(rotation), // lmao
+                                           static_cast<int16>(rotation),
                                            sceneInfo.entity->inkEffect,
                                            sceneInfo.entity->alpha,
                                            0);
@@ -4491,8 +4496,8 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32) tile % 32); // DCFIXME: hard-coded tile atlas dimensions
-                        const int32 tilesetY = TILE_SIZE * ((int32) tile / 32); // DCFIXME: hard-coded tile atlas dimensions
+                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
+                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
 
                         const int32 screenX = x + (tx * TILE_SIZE);
                         int32 rotation;
@@ -4579,8 +4584,8 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32) tile % 32); // DCFIXME: hard-coded tile atlas dimensions
-                        const int32 tilesetY = TILE_SIZE * ((int32) tile / 32); // DCFIXME: hard-coded tile atlas dimensions
+                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
+                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
 
                         const int32 screenX = x + (tx * TILE_SIZE);
                         int32 rotation = sceneInfo.entity->rotation;
