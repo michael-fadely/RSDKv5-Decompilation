@@ -144,7 +144,14 @@ bool32 RSDK::LoadDataPack(const char *filePath, size_t fileOffset, bool32 useBuf
             dataFileList[f].packID        = dataPackCount;
         }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && !RETRO_USE_ORIGINAL_CODE
+        if (dataPacks[dataPackCount].fileBuffer != NULL) {
+            free(dataPacks[dataPackCount].fileBuffer);
+            dataPacks[dataPackCount].fileBuffer = NULL;
+        }
+#else
         dataPacks[dataPackCount].fileBuffer = NULL;
+#endif
         if (useBuffer) {
             dataPacks[dataPackCount].fileBuffer = (uint8 *)malloc(info.fileSize);
             Seek_Set(&info, 0);
