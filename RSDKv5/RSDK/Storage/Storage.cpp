@@ -30,20 +30,13 @@ bool32 RSDK::InitStorage()
 {
     // Storage limits.
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    // DCFIXME: untested memory limits
-    //dataStorage[DATASET_STG].storageLimit = 24 * 1024; // 24KB
-    //dataStorage[DATASET_MUS].storageLimit = 8 * 1024;  // 8KB
-    //dataStorage[DATASET_SFX].storageLimit = 64 * 1024; // 64KB // 32 * 1024; // 32 KB
-    //dataStorage[DATASET_STR].storageLimit = 1 * 1024;  // 1KB
-    //dataStorage[DATASET_TMP].storageLimit = 8 * 1024;  // 8KB
-
 //    dataStorage[DATASET_STG].storageLimit = (3 * 1024 * 1024) - (640 * 1024); // sonic renders on title screen
 //    dataStorage[DATASET_STG].storageLimit = (5 * 1024 * 1024); // oh god
 //    dataStorage[DATASET_STG].storageLimit = (6 * 1024 * 1024) + ((512 + 64) * 1024); // oh god!!!
     dataStorage[DATASET_STG].storageLimit = (4 * 1024 * 1024); // ok...
 
-    dataStorage[DATASET_MUS].storageLimit = 1;
-    dataStorage[DATASET_SFX].storageLimit = 1;
+    dataStorage[DATASET_MUS].storageLimit = 0;
+    dataStorage[DATASET_SFX].storageLimit = 0;
     dataStorage[DATASET_STR].storageLimit = 32 * 1024;
     dataStorage[DATASET_TMP].storageLimit = (1024 * 1024) + (512 * 1024);
 #else
@@ -58,6 +51,12 @@ bool32 RSDK::InitStorage()
         dataStorage[s].usedStorage = 0;
         dataStorage[s].entryCount  = 0;
         dataStorage[s].clearCount  = 0;
+
+        // DCWIP
+        if (dataStorage[s].storageLimit == 0) {
+            dataStorage[s].memoryTable = NULL;
+            continue;
+        }
 
         dataStorage[s].memoryTable = (uint32 *)malloc(dataStorage[s].storageLimit);
 
