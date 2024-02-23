@@ -4832,6 +4832,27 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
 
             for (int32 c = 0; c < lineSize; ++c) {
                 if (drawX >= 0 && drawX < currentScreen->size.x - 7) {
+#if defined(KOS_HARDWARE_RENDERER)
+                    // DCFIXME: vram_s used to avoid creating another texture
+                    // DCFIXME: on-screen coordinates are incorrect - this is just to make the debug menu usable
+                    uint16 *frameBuffer = &vram_s[drawX + y * 640];
+
+                    if ((*curChar < '\t' || *curChar > '\n') && *curChar != ' ') {
+                        uint8 *textStencilPtr = &devTextStencil[8 * *curChar];
+
+                        for (int32 h = 0; h < 8; ++h) {
+                            for (int32 w = 0; w < 8; ++w) {
+                                if (((*textStencilPtr >> w) & 1) != 0)
+                                    *frameBuffer = color16;
+
+                                ++frameBuffer;
+                            }
+
+                            ++textStencilPtr;
+                            frameBuffer += 640 - 8;
+                        }
+                    }
+#else
                     uint16 *frameBuffer = &currentScreen->frameBuffer[drawX + y * currentScreen->pitch];
 
                     if ((*curChar < '\t' || *curChar > '\n') && *curChar != ' ') {
@@ -4849,6 +4870,7 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
                             frameBuffer += currentScreen->pitch - 8;
                         }
                     }
+#endif
 
                     ++curChar;
                     drawX += 8;
