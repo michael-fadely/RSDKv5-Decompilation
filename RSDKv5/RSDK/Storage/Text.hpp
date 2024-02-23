@@ -164,6 +164,14 @@ inline void InitString(String *string, const char *text, uint32 textLength)
         if (string->size == 0)
             string->size = 1;
 
+        // DCFIXME: preventing heap corruption caused by GC
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && !RETRO_USE_ORIGINAL_CODE
+        if (string->chars != NULL) {
+            RemoveStorageEntry((void **)&string->chars);
+            string->chars = NULL;
+        }
+#endif
+
         AllocateStorage((void **)&string->chars, sizeof(uint16) * string->size, DATASET_STR, false);
 
         for (uint32 pos = 0; text[pos] != '\0'; ++pos)
