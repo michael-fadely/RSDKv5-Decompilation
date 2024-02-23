@@ -1,8 +1,15 @@
 #include "RSDK/Core/RetroEngine.hpp"
 #include "main.hpp"
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS && RSDK_DEBUG
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#if RSDK_DEBUG
 #include <arch/gdb.h>
+#endif
+
+#include <kos.h>
+
+KOS_INIT_FLAGS(INIT_IRQ | INIT_CONTROLLER);
+
 #endif
 
 #if RETRO_STANDALONE
