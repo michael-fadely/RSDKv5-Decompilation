@@ -383,6 +383,19 @@ bool32 RSDK::CompareStrings(String *string1, String *string2, bool32 exactMatch)
 
 void RSDK::InitStringList(String *stringList, int32 size)
 {
+    // DCTODO: submit this to upstream
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && !RETRO_USE_ORIGINAL_CODE
+    if (stringList->chars != NULL) {
+        RemoveStorageEntry((void**)&stringList->chars);
+        stringList->chars = NULL;
+    }
+
+    AllocateStorage((void **)&stringList->chars, sizeof(uint16) * size, DATASET_STR, false);
+
+    stringList->size = size;
+    if (stringList->length > (uint16)size)
+        stringList->length = size;
+#else
     uint16 *text = NULL;
 
     AllocateStorage((void **)&text, sizeof(uint16) * size, DATASET_STR, false);
@@ -393,6 +406,7 @@ void RSDK::InitStringList(String *stringList, int32 size)
     stringList->size = size;
     if (stringList->length > (uint16)size)
         stringList->length = size;
+#endif
 }
 
 void RSDK::LoadStringList(String *stringList, const char *filePath, uint32 charSize)
