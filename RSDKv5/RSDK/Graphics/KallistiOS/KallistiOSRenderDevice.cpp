@@ -90,7 +90,7 @@ bool RenderDevice::Init()
         0,
 
         // autosort disabled?
-        0
+        1
     };
 #else
 #error pvr_init_params_t needs re-configuring for the software renderer!
@@ -570,6 +570,9 @@ void RenderDevice::PrepareTexturedQuad(int32 y, GFXSurface* surface) {
                 PVR_FILTER_NEAREST
         );
 
+        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
+        context.depth.write = 0;
+
         pvr_sprite_hdr_t header;
         pvr_sprite_compile(&header, &context);
 
@@ -647,6 +650,9 @@ void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, RSDK
                 surface->texture,
                 PVR_FILTER_NEAREST
         );
+
+        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
+        context.depth.write = 0;
 
         context.blend.src = srcBlend;
         context.blend.dst = dstBlend;
@@ -785,6 +791,9 @@ void RenderDevice::PrepareColoredPoly(int32 y, int srcBlend, int dstBlend) {
                          nullptr)) {
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+
+        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
+        context.depth.write = 0;
 
         context.blend.src = srcBlend;
         context.blend.dst = dstBlend;
