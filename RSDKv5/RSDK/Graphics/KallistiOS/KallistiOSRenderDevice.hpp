@@ -54,6 +54,7 @@ public:
     static void PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPaletteBankIndex);
     static bool InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend);
 
+private:
     static bool PreparePrimitive(int primitiveType,
                                  uint32 gamePaletteBankIndex,
                                  uint32 pvrPaletteBankIndex,
@@ -61,16 +62,17 @@ public:
                                  int dstBlend,
                                  pvr_ptr_t texture);
 
-    static void PrepareTexturedQuad(int32 y, GFXSurface* surface);
+public:
+    static void PrepareTexturedQuad(int32 y, const GFXSurface* surface);
     static void DrawTexturedQuad(
             int32 x, int32 y,
             int32 width, int32 height,
             int32 sprX0, int32 sprX1,
             int32 sprY0, int32 sprY1,
-            GFXSurface* surface
+            const GFXSurface* surface
     );
 
-    static void PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, GFXSurface* surface);
+    static void PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, const GFXSurface* surface);
     static void DrawTexturedPoly(
             int32 x, int32 y,
             int32 ox, int32 oy,
@@ -79,7 +81,7 @@ public:
             int32 sprY0, int32 sprY1,
             int32 rotation,
             int32 alpha,
-            GFXSurface *surface
+            const GFXSurface *surface
     );
 
     static void PrepareColoredPoly(int32 y, int srcBlend, int dstBlend);

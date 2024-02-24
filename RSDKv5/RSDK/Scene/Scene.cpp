@@ -1019,7 +1019,6 @@ void RSDK::LoadStageGIF(char *filepath)
         if (surface->texture != nullptr) {
             // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
             // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h)
-            // DCFIXME: pvr_txr_load_ex actually *always* twiddles, even if you don't want it
             pvr_txr_load_ex(
                 dstTiles,
                 surface->texture,
@@ -1388,10 +1387,8 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
-    RenderDevice::PrepareTexturedQuad(
-        currentScreen->clipBound_Y1 - (FROM_FIXED(scanline->position.y) & 0xF),
-        &gfxSurface[0]
-    );
+    const int32 prepY = currentScreen->clipBound_Y1 - (FROM_FIXED(scanline->position.y) & 0xF);
+    const auto* prepSurface = &gfxSurface[0];
 
     for (int32 cy = currentScreen->clipBound_Y1; cy < currentScreen->clipBound_Y2; cy += TILE_SIZE) {
         int32 x = scanline->position.x;
@@ -1427,6 +1424,7 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
                 continue;
             }
 
+            RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
             DrawByLayout(layout, screenX, screenY);
         }
 
@@ -1784,7 +1782,8 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
     if (currentScreen->clipBound_X1 < currentScreen->clipBound_X2 && currentScreen->clipBound_Y1 < currentScreen->clipBound_Y2) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
         ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
-        RenderDevice::PrepareTexturedQuad(currentScreen->clipBound_Y1, &gfxSurface[0]);
+        const int32 prepY = currentScreen->clipBound_Y1;
+        const auto* prepSurface = &gfxSurface[0];
 
         const int layerPixelHeight = currentScreen->clipBound_Y2 - currentScreen->clipBound_Y1;
         const int layerPixelWidth = currentScreen->clipBound_X2 - currentScreen->clipBound_X1;
@@ -1804,6 +1803,7 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
                 const int32 screenX = x + currentScreen->clipBound_X1;
                 const int32 screenY = y + currentScreen->clipBound_Y1;
 
+                RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
                 DrawByLayout(layout, screenX, screenY);
             }
 

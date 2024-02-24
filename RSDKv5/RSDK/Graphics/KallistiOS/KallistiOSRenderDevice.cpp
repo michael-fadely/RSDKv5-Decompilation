@@ -516,6 +516,7 @@ static pvr_ptr_t lastTexture = nullptr;
 static int lastSrcBlend = -1;
 static int lastDstBlend = -1;
 static PrimitiveTypes lastPrimitiveType = PrimitiveTypes_None;
+static bool lastPrimitiveWasConsumed = true;
 
 // static
 bool RenderDevice::PreparePrimitive(int primitiveType,
@@ -535,7 +536,7 @@ bool RenderDevice::PreparePrimitive(int primitiveType,
         || srcBlend != lastSrcBlend
         || dstBlend != lastDstBlend
         || texture != lastTexture) {
-        lastPrimitiveType = (PrimitiveTypes)primitiveType;
+        lastPrimitiveType = static_cast<PrimitiveTypes>(primitiveType);
         PaletteFlags::SetBank(gamePaletteBankIndex);
         lastSrcBlend = srcBlend;
         lastDstBlend = dstBlend;
@@ -549,7 +550,7 @@ bool RenderDevice::PreparePrimitive(int primitiveType,
 }
 
 // static
-void RenderDevice::PrepareTexturedQuad(int32 y, GFXSurface* surface) {
+void RenderDevice::PrepareTexturedQuad(int32 y, const GFXSurface* surface) {
     const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
     const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
 
@@ -559,6 +560,12 @@ void RenderDevice::PrepareTexturedQuad(int32 y, GFXSurface* surface) {
                          PVR_BLEND_SRCALPHA,
                          PVR_BLEND_INVSRCALPHA,
                          surface->texture)) {
+        if (!lastPrimitiveWasConsumed) {
+            printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
+        }
+
+        lastPrimitiveWasConsumed = false;
+
         pvr_sprite_cxt_t context;
         pvr_sprite_cxt_txr(
                 &context,
@@ -586,8 +593,14 @@ void RenderDevice::DrawTexturedQuad(
         int32 width, int32 height,
         int32 sprX0, int32 sprX1,
         int32 sprY0, int32 sprY1,
-        GFXSurface* surface
+        const GFXSurface* surface
 ) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedQuad) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedQuad BEFORE PREPPING!\n");
+    }
+
+    lastPrimitiveWasConsumed = true;
+
     const float scaleX = viewSize.x / pixelSize.x;
     const float scaleY = viewSize.y / pixelSize.y;
 
@@ -630,7 +643,7 @@ void RenderDevice::DrawTexturedQuad(
 }
 
 // static
-void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, RSDK::GFXSurface *surface) {
+void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, const GFXSurface *surface) {
     const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
     const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
 
@@ -640,6 +653,12 @@ void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, RSDK
                          srcBlend,
                          dstBlend,
                          surface->texture)) {
+        if (!lastPrimitiveWasConsumed) {
+            printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
+        }
+
+        lastPrimitiveWasConsumed = false;
+
         pvr_poly_cxt_t context;
         pvr_poly_cxt_txr(
                 &context,
@@ -673,8 +692,14 @@ void RenderDevice::DrawTexturedPoly(
         int32 sprY0, int32 sprY1,
         int32 rotation,
         int32 alpha,
-        GFXSurface *surface
+        const GFXSurface *surface
 ) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedPoly) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedPoly BEFORE PREPPING!\n");
+    }
+
+    lastPrimitiveWasConsumed = true;
+
     const float scaleX = viewSize.x / pixelSize.x;
     const float scaleY = viewSize.y / pixelSize.y;
 
@@ -789,6 +814,12 @@ void RenderDevice::PrepareColoredPoly(int32 y, int srcBlend, int dstBlend) {
                          srcBlend,
                          dstBlend,
                          nullptr)) {
+        if (!lastPrimitiveWasConsumed) {
+            printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
+        }
+
+        lastPrimitiveWasConsumed = false;
+
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
 
@@ -811,6 +842,12 @@ void RenderDevice::DrawColoredPoly(
         int32 width, int32 height,
         uint32 color
 ) {
+    if (lastPrimitiveType != PrimitiveTypes_ColoredPoly) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW ColoredPoly BEFORE PREPPING!\n");
+    }
+
+    lastPrimitiveWasConsumed = true;
+
     const float scaleX = viewSize.x / pixelSize.x;
     const float scaleY = viewSize.y / pixelSize.y;
 
