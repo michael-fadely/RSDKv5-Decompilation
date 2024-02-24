@@ -74,7 +74,7 @@ bool RenderDevice::Init()
         {
             PVR_BINSIZE_0, // opaque polygons
             PVR_BINSIZE_0, // opaque modifiers (disabled)
-            PVR_BINSIZE_16, // translucent polygons
+            PVR_BINSIZE_32, // translucent polygons
             PVR_BINSIZE_0, // translucent modifiers (disabled)
             PVR_BINSIZE_0  // punch-through polygons
         },
