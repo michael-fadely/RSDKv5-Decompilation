@@ -18,7 +18,21 @@ struct KOSTexture
 static KOSTexture screenTextures[SCREEN_COUNT] {};
 
 #if defined(KOS_HARDWARE_RENDERER)
-static float drawDepth = 1.0f;
+namespace {
+enum PrimitiveTypes {
+    PrimitiveTypes_None,
+    PrimitiveTypes_TexturedQuad,
+    PrimitiveTypes_TexturedPoly,
+    PrimitiveTypes_ColoredPoly,
+};
+
+float drawDepth = 1.0f;
+pvr_ptr_t lastTexture = nullptr;
+int lastSrcBlend = -1;
+int lastDstBlend = -1;
+PrimitiveTypes lastPrimitiveType = PrimitiveTypes_None;
+bool lastPrimitiveWasConsumed = true;
+}
 #endif
 
 #if !defined(KOS_HARDWARE_RENDERER)
@@ -175,7 +189,7 @@ bool RenderDevice::Init()
     for (int32 s = 0; s < SCREEN_COUNT; ++s) {
         screens[s].size.y = videoSettings.pixHeight;
 
-        float viewAspect  = viewSize.x / viewSize.y;
+        const float viewAspect  = viewSize.x / viewSize.y;
         int32 screenWidth = (int32)((viewAspect * videoSettings.pixHeight) + 3) & 0xFFFFFFFC;
         if (screenWidth < videoSettings.pixWidth)
             screenWidth = videoSettings.pixWidth;
@@ -201,7 +215,7 @@ bool RenderDevice::Init()
     videoSettings.dimMax      = 1.0;
     videoSettings.dimPercent  = 1.0;
 
-    int32 size = videoSettings.pixWidth >= SCREEN_YSIZE ? videoSettings.pixWidth : SCREEN_YSIZE;
+    const int32 size = videoSettings.pixWidth >= SCREEN_YSIZE ? videoSettings.pixWidth : SCREEN_YSIZE;
     scanlines  = (ScanlineInfo *)malloc(size * sizeof(ScanlineInfo));
     memset(scanlines, 0, size * sizeof(ScanlineInfo));
 
@@ -362,6 +376,7 @@ void RenderDevice::ShowCursor(bool)
 void RenderDevice::BeginScene() {
 #if defined(KOS_HARDWARE_RENDERER)
     SetDepth(0);
+    lastPrimitiveType = PrimitiveTypes_None;
 
     pvr_scene_begin();
     pvr_list_begin(PVR_LIST_TR_POLY); // DCWIP
@@ -429,7 +444,7 @@ void RenderDevice::PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPal
         return (color16 & 0x1F) | ((color16 >> 1) & 0x7FE0);
     };
 
-    uint16 *activePalette = fullPalette[gamePaletteBankIndex];
+    const uint16 *activePalette = fullPalette[gamePaletteBankIndex];
 
     pvr_set_pal_format(PVR_PAL_ARGB1555);
 
@@ -505,19 +520,6 @@ bool RenderDevice::InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
     }
 }
 
-enum PrimitiveTypes {
-    PrimitiveTypes_None,
-    PrimitiveTypes_TexturedQuad,
-    PrimitiveTypes_TexturedPoly,
-    PrimitiveTypes_ColoredPoly,
-};
-
-static pvr_ptr_t lastTexture = nullptr;
-static int lastSrcBlend = -1;
-static int lastDstBlend = -1;
-static PrimitiveTypes lastPrimitiveType = PrimitiveTypes_None;
-static bool lastPrimitiveWasConsumed = true;
-
 // static
 bool RenderDevice::PreparePrimitive(int primitiveType,
                                     uint32 gamePaletteBankIndex,
@@ -545,8 +547,7 @@ bool RenderDevice::PreparePrimitive(int primitiveType,
         return true;
     }
 
-    // DCFIXME: this should just return false, but sprites were breaking the debug menu render
-    return primitiveType != PrimitiveTypes_TexturedQuad;
+    return false;
 }
 
 // static
@@ -612,11 +613,11 @@ void RenderDevice::DrawTexturedQuad(
     const float y0 = static_cast<float>(y) * scaleY;
     const float y1 = y0 + static_cast<float>(height) * scaleY;
 
-    float u0 = static_cast<float>(sprX0) / surfaceWidth;
-    float u1 = static_cast<float>(sprX1) / surfaceWidth;
+    const float u0 = static_cast<float>(sprX0) / surfaceWidth;
+    const float u1 = static_cast<float>(sprX1) / surfaceWidth;
 
-    float v0 = static_cast<float>(sprY0) / surfaceHeight;
-    float v1 = static_cast<float>(sprY1) / surfaceHeight;
+    const float v0 = static_cast<float>(sprY0) / surfaceHeight;
+    const float v1 = static_cast<float>(sprY1) / surfaceHeight;
 
     pvr_sprite_txr_t vert {};
 
@@ -716,7 +717,7 @@ void RenderDevice::DrawTexturedPoly(
 
     vec3f p3 {
         .x = p0.x + (static_cast<float>(width) * scaleX),
-        .y = p0.y + static_cast<float>(height) * scaleY,
+        .y = p0.y + (static_cast<float>(height) * scaleY),
         .z = depth
     };
 
@@ -736,8 +737,7 @@ void RenderDevice::DrawTexturedPoly(
         const float cx = static_cast<float>(ox) * scaleX;
         const float cy = static_cast<float>(oy) * scaleY;
 
-        const float radians = static_cast<float>(rotation) * (float)M_TWOPI / 512.0f;
-
+        const float radians = static_cast<float>(rotation) * static_cast<float>(M_TWOPI) / 512.0f;
         const float s = sinf(radians);
         const float c = cosf(radians);
 
@@ -745,8 +745,8 @@ void RenderDevice::DrawTexturedPoly(
             p.x -= cx;
             p.y -= cy;
 
-            auto px = p.x * c - p.y * s;
-            auto py = p.x * s + p.y * c;
+            const auto px = p.x * c - p.y * s;
+            const auto py = p.x * s + p.y * c;
 
             p.x = px + cx;
             p.y = py + cy;
@@ -758,11 +758,11 @@ void RenderDevice::DrawTexturedPoly(
         rotate(p3);
     }
 
-    float u0 = static_cast<float>(sprX0) / surfaceWidth;
-    float u1 = static_cast<float>(sprX1) / surfaceWidth;
+    const float u0 = static_cast<float>(sprX0) / surfaceWidth;
+    const float u1 = static_cast<float>(sprX1) / surfaceWidth;
 
-    float v0 = static_cast<float>(sprY0) / surfaceHeight;
-    float v1 = static_cast<float>(sprY1) / surfaceHeight;
+    const float v0 = static_cast<float>(sprY0) / surfaceHeight;
+    const float v1 = static_cast<float>(sprY1) / surfaceHeight;
 
     {
         pvr_vertex_t vert {};
