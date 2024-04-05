@@ -32,6 +32,16 @@ int lastSrcBlend = -1;
 int lastDstBlend = -1;
 PrimitiveTypes lastPrimitiveType = PrimitiveTypes_None;
 bool lastPrimitiveWasConsumed = true;
+
+void ResetLastState() {
+    lastTexture = nullptr;
+    lastSrcBlend = -1;
+    lastDstBlend = -1;
+    lastPrimitiveType = PrimitiveTypes_None;
+    // DCWIP: does resetting lastPrimitiveWasConsumed make sense???
+    lastPrimitiveWasConsumed = true;
+}
+
 }
 #endif
 
@@ -379,15 +389,24 @@ void RenderDevice::BeginScene() {
     lastPrimitiveType = PrimitiveTypes_None;
 
     pvr_scene_begin();
-    pvr_list_begin(PVR_LIST_TR_POLY); // DCWIP
+    // DCWIP: rendering everything as transparent
+    if (pvr_list_begin(PVR_LIST_TR_POLY) == -1) {
+        printf("[pvr] [NG] pvr_list_begin(PVR_LIST_TR_POLY) returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+    }
 #endif
 }
 
 // static
 void RenderDevice::EndScene() {
 #if defined(KOS_HARDWARE_RENDERER)
-    pvr_list_finish(); // DCWIP
-    pvr_scene_finish();
+    // DCWIP: rendering everything as transparent
+    if (pvr_list_finish() == -1) {
+        printf("[pvr] [NG] pvr_list_finish() returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+    }
+
+    if (pvr_scene_finish() == -1) {
+        printf("[pvr] [NG] pvr_scene_finish() returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+    }
 #endif
 }
 
@@ -584,7 +603,10 @@ void RenderDevice::PrepareTexturedQuad(int32 y, const GFXSurface* surface) {
         pvr_sprite_hdr_t header;
         pvr_sprite_compile(&header, &context);
 
-        pvr_prim(&header, sizeof(header));
+        if (pvr_prim(&header, sizeof(header)) == -1) {
+            printf("[pvr] [NG] pvr_prim for quad header failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            ResetLastState();
+        }
     }
 }
 
@@ -598,6 +620,7 @@ void RenderDevice::DrawTexturedQuad(
 ) {
     if (lastPrimitiveType != PrimitiveTypes_TexturedQuad) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedQuad BEFORE PREPPING!\n");
+        return;
     }
 
     lastPrimitiveWasConsumed = true;
@@ -640,7 +663,9 @@ void RenderDevice::DrawTexturedQuad(
     vert.buv = PVR_PACK_16BIT_UV(u1, v0);
     vert.cuv = PVR_PACK_16BIT_UV(u1, v1);
 
-    pvr_prim(&vert, sizeof(vert));
+    if (pvr_prim(&vert, sizeof(vert)) == -1) {
+        printf("[pvr] [NG] pvr_prim for quad body failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+    }
 }
 
 // static
@@ -680,7 +705,10 @@ void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, cons
         pvr_poly_hdr_t header;
         pvr_poly_compile(&header, &context);
 
-        pvr_prim(&header, sizeof(header));
+        if (pvr_prim(&header, sizeof(header)) == -1) {
+            printf("[pvr] [NG] pvr_prim for textured poly header failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            ResetLastState();
+        }
     }
 }
 
@@ -697,6 +725,7 @@ void RenderDevice::DrawTexturedPoly(
 ) {
     if (lastPrimitiveType != PrimitiveTypes_TexturedPoly) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedPoly BEFORE PREPPING!\n");
+        return;
     }
 
     lastPrimitiveWasConsumed = true;
@@ -733,7 +762,7 @@ void RenderDevice::DrawTexturedPoly(
         .z = depth
     };
 
-    if (rotation) {
+    if (rotation != 0) {
         const float cx = static_cast<float>(ox) * scaleX;
         const float cy = static_cast<float>(oy) * scaleY;
 
@@ -777,21 +806,33 @@ void RenderDevice::DrawTexturedPoly(
         vert.y = p0.y;
         vert.u = u0;
         vert.v = v0;
-        pvr_prim(&vert, sizeof(vert));
+
+        if (pvr_prim(&vert, sizeof(vert)) == -1) {
+            printf("[pvr] [NG] pvr_prim for textured poly point 1/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            // DCFIXME: pvr_prim failed. now what?
+        }
 
         // top right
         vert.x = p1.x;
         vert.y = p1.y;
         vert.u = u1;
         vert.v = v0;
-        pvr_prim(&vert, sizeof(vert));
+
+        if (pvr_prim(&vert, sizeof(vert)) == -1) {
+            printf("[pvr] [NG] pvr_prim for textured poly point 2/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            // DCFIXME: pvr_prim failed. now what?
+        }
 
         // bottom left
         vert.x = p2.x;
         vert.y = p2.y;
         vert.u = u0;
         vert.v = v1;
-        pvr_prim(&vert, sizeof(vert));
+
+        if (pvr_prim(&vert, sizeof(vert)) == -1) {
+            printf("[pvr] [NG] pvr_prim for textured poly point 3/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            // DCFIXME: pvr_prim failed. now what?
+        }
 
         // bottom right
         vert.flags = PVR_CMD_VERTEX_EOL;
@@ -799,7 +840,11 @@ void RenderDevice::DrawTexturedPoly(
         vert.y = p3.y;
         vert.u = u1;
         vert.v = v1;
-        pvr_prim(&vert, sizeof(vert));
+
+        if (pvr_prim(&vert, sizeof(vert)) == -1) {
+            printf("[pvr] [NG] pvr_prim for textured poly point 4/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            // DCFIXME: pvr_prim failed. now what?
+        }
     }
 }
 
@@ -832,7 +877,10 @@ void RenderDevice::PrepareColoredPoly(int32 y, int srcBlend, int dstBlend) {
         pvr_poly_hdr_t header;
         pvr_poly_compile(&header, &context);
 
-        pvr_prim(&header, sizeof(header));
+        if (pvr_prim(&header, sizeof(header)) == -1) {
+            printf("[pvr] [NG] pvr_prim for colored poly header failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            ResetLastState();
+        }
     }
 }
 
@@ -844,6 +892,7 @@ void RenderDevice::DrawColoredPoly(
 ) {
     if (lastPrimitiveType != PrimitiveTypes_ColoredPoly) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW ColoredPoly BEFORE PREPPING!\n");
+        return;
     }
 
     lastPrimitiveWasConsumed = true;
@@ -867,22 +916,38 @@ void RenderDevice::DrawColoredPoly(
         // top left
         vert.x = renderX;
         vert.y = renderY;
-        pvr_prim(&vert, sizeof(vert));
+
+        if (pvr_prim(&vert, sizeof(vert)) == -1) {
+            printf("[pvr] [NG] pvr_prim for colored poly point 1/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            // DCFIXME: pvr_prim failed. now what?
+        }
 
         // top right
         vert.x = renderX + lmaoWidth;
         vert.y = renderY;
-        pvr_prim(&vert, sizeof(vert));
+
+        if (pvr_prim(&vert, sizeof(vert)) == -1) {
+            printf("[pvr] [NG] pvr_prim for colored poly point 2/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            // DCFIXME: pvr_prim failed. now what?
+        }
 
         // bottom left
         vert.x = renderX;
         vert.y = renderY + lmaoHeight;
-        pvr_prim(&vert, sizeof(vert));
+
+        if (pvr_prim(&vert, sizeof(vert)) == -1) {
+            printf("[pvr] [NG] pvr_prim for colored poly point 3/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            // DCFIXME: pvr_prim failed. now what?
+        }
 
         // bottom right
         vert.flags = PVR_CMD_VERTEX_EOL;
         vert.x = renderX + lmaoWidth;
         vert.y = renderY + lmaoHeight;
-        pvr_prim(&vert, sizeof(vert));
+
+        if (pvr_prim(&vert, sizeof(vert)) == -1) {
+            printf("[pvr] [NG] pvr_prim for colored poly point 4/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
+            // DCFIXME: pvr_prim failed. now what?
+        }
     }
 }
