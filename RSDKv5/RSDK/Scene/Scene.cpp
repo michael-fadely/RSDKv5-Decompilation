@@ -1344,7 +1344,7 @@ void RSDK::CopyTileLayer(uint16 dstLayerID, int32 dstStartX, int32 dstStartY, ui
     }
 }
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#ifdef KOS_HARDWARE_RENDERER
 void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
     layout &= 0xFFF;
     const int32 flip = layout / TILE_COUNT;
@@ -1385,12 +1385,15 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
     if (!layer->xsize || !layer->ysize)
         return;
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#if defined(KOS_HARDWARE_RENDERER)
     ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
-    const int32 prepY = currentScreen->clipBound_Y1 - (FROM_FIXED(scanline->position.y) & 0xF);
+    const int32 prepY = currentScreen->clipBound_Y1;
     const auto* prepSurface = &gfxSurface[0];
 
-    for (int32 cy = currentScreen->clipBound_Y1; cy < currentScreen->clipBound_Y2; cy += TILE_SIZE) {
+    const int32 sheetY = FROM_FIXED(scanline->position.y) & 0xF;
+    int32 scanlineIncrement = TILE_SIZE - sheetY;
+
+    for (int32 cy = currentScreen->clipBound_Y1 - sheetY; cy < currentScreen->clipBound_Y2; cy += TILE_SIZE) {
         int32 x = scanline->position.x;
 
         {
@@ -1405,12 +1408,14 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
         const int32 fromFixedX = FROM_FIXED(x);
         const int32 fromFixedY = FROM_FIXED(scanline->position.y);
 
-        const int32 screenY = cy - (fromFixedY & 0xF);
+        // DCFIXME: only the first scanline's y offset is used
+        const int32 screenY = cy;
 
         const int32 xMax = (currentScreen->size.x + (fromFixedX & 0xF));
         const int32 ty = fromFixedY >> 4;
 
-        for (int cx = 0; cx < xMax; cx += TILE_SIZE) {
+        // DCFIXME: doesn't compensate for clipping, but somehow not an issue?
+        for (int32 cx = 0; cx < xMax; cx += TILE_SIZE) {
             const int32 screenX = cx - (fromFixedX & 0xF);
 
             if (screenX >= currentScreen->size.x) {
@@ -1420,15 +1425,14 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
             const int tx = ((fromFixedX + cx) / TILE_SIZE) % layer->xsize;
             const uint16 layout = layer->layout[tx + (ty << layer->widthShift)];
 
-            if (layout >= 0xFFFF) {
-                continue;
+            if (layout != 0xFFFF) {
+                RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
+                DrawByLayout(layout, screenX, screenY);
             }
-
-            RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
-            DrawByLayout(layout, screenX, screenY);
         }
 
-        scanline += TILE_SIZE;
+        scanline += scanlineIncrement;
+        scanlineIncrement = TILE_SIZE;
     }
 #else
     int32 lineTileCount    = (currentScreen->pitch >> 4) - 1;
@@ -1781,40 +1785,39 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
     uint16 *activePalette = fullPalette[0];
     if (currentScreen->clipBound_X1 < currentScreen->clipBound_X2 && currentScreen->clipBound_Y1 < currentScreen->clipBound_Y2) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-        ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
         const int32 prepY = currentScreen->clipBound_Y1;
         const auto* prepSurface = &gfxSurface[0];
 
-        const int layerPixelHeight = currentScreen->clipBound_Y2 - currentScreen->clipBound_Y1;
-        const int layerPixelWidth = currentScreen->clipBound_X2 - currentScreen->clipBound_X1;
-        int ty = FROM_FIXED(scanline->position.y) >> 4;
-        const int32 offsetY = FROM_FIXED(scanline->position.y) & 0xF;
+        ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
 
-        for (int y = 0; y < layerPixelHeight; y += TILE_SIZE) {
+        int32 ty = FROM_FIXED(scanline->position.y) >> 4;
+
+        const int32 offsetY = FROM_FIXED(scanline->position.y) & 0xF;
+        int32 scanlineIncrement = TILE_SIZE - offsetY;
+
+        for (int32 screenY = currentScreen->clipBound_Y1 - offsetY; screenY < currentScreen->clipBound_Y2; screenY += TILE_SIZE) {
+            int32 tx = (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x)) >> 4;
+            uint16* layout = &layer->layout[tx + (ty << layer->widthShift)];
+
             const int32 offsetX = (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x)) & 0xF;
 
-            for (int x = 0; x < layerPixelWidth; x += TILE_SIZE) {
-                const int tx = (x + (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x))) / TILE_SIZE;
-
-                const int layoutIndex = (tx % layer->xsize) + (ty << layer->widthShift);
-                const uint16 layout = layer->layout[layoutIndex];
-
-                if (layout == 0xFFFF) {
-                    continue;
+            for (int32 screenX = currentScreen->clipBound_X1 - offsetX; screenX < currentScreen->clipBound_X2; screenX += TILE_SIZE) {
+                if (*layout != 0xFFFF) {
+                    RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
+                    DrawByLayout(*layout, screenX, screenY);
                 }
 
-                const int32 screenX = (x + currentScreen->clipBound_X1) - offsetX;
-                const int32 screenY = (y + currentScreen->clipBound_Y1) + offsetY; // DCWIP: add or subtract offsetY?
-
-                RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
-                DrawByLayout(layout, screenX, screenY);
+                ++layout;
+                if (++tx == layer->xsize) {
+                    tx = 0;
+                    layout -= layer->xsize;
+                }
             }
 
-            if (++ty == layer->ysize) {
-                ty = 0;
-            }
+            ty = (ty + 1) % layer->ysize;
 
-            scanline += TILE_SIZE;
+            scanline += scanlineIncrement;
+            scanlineIncrement = TILE_SIZE;
         }
 #else
         int32 lineSize = (currentScreen->clipBound_X2 - currentScreen->clipBound_X1) >> 4;
