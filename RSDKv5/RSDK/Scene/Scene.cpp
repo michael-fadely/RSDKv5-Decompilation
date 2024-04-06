@@ -1788,8 +1788,11 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
         const int layerPixelHeight = currentScreen->clipBound_Y2 - currentScreen->clipBound_Y1;
         const int layerPixelWidth = currentScreen->clipBound_X2 - currentScreen->clipBound_X1;
         int ty = FROM_FIXED(scanline->position.y) >> 4;
+        const int32 offsetY = FROM_FIXED(scanline->position.y) & 0xF;
 
         for (int y = 0; y < layerPixelHeight; y += TILE_SIZE) {
+            const int32 offsetX = (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x)) & 0xF;
+
             for (int x = 0; x < layerPixelWidth; x += TILE_SIZE) {
                 const int tx = (x + (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x))) / TILE_SIZE;
 
@@ -1800,8 +1803,8 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
                     continue;
                 }
 
-                const int32 screenX = x + currentScreen->clipBound_X1;
-                const int32 screenY = y + currentScreen->clipBound_Y1;
+                const int32 screenX = (x + currentScreen->clipBound_X1) - offsetX;
+                const int32 screenY = (y + currentScreen->clipBound_Y1) + offsetY; // DCWIP: add or subtract offsetY?
 
                 RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
                 DrawByLayout(layout, screenX, screenY);
