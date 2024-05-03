@@ -692,6 +692,7 @@ size_t RSDK::SKU::UserDB::GetSize()
 
 RSDK::SKU::UserDBStorage::UserDBStorage()
 {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     unknown = 0;
 
     this->loadCallback[0] = UserDBStorage_LoadCB1;
@@ -711,11 +712,15 @@ RSDK::SKU::UserDBStorage::UserDBStorage()
     this->saveCallback[5] = UserDBStorage_SaveCB6;
     this->saveCallback[6] = UserDBStorage_SaveCB7;
     this->saveCallback[7] = UserDBStorage_SaveCB8;
+#endif
 }
 
 // UserDB Management
 uint16 RSDK::SKU::UserDBStorage::InitUserDB(const char *name, va_list list)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return -1;
+#else
     int32 tableID = -1;
     uint32 uuid   = 0;
     GenerateHashCRC(&uuid, (char *)name);
@@ -739,9 +744,13 @@ uint16 RSDK::SKU::UserDBStorage::InitUserDB(const char *name, va_list list)
     userDB->parent->RefreshSortList();
 
     return tableID;
+#endif
 }
 uint16 RSDK::SKU::UserDBStorage::LoadUserDB(const char *filename, void (*callback)(int32 status))
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return -1;
+#else
     int32 tableID = -1;
     uint32 uuid   = 0;
     GenerateHashCRC(&uuid, (char *)filename);
@@ -774,9 +783,13 @@ uint16 RSDK::SKU::UserDBStorage::LoadUserDB(const char *filename, void (*callbac
     userDB->uuid   = uuid;
 
     return tableID;
+#endif
 }
 bool32 RSDK::SKU::UserDBStorage::SaveUserDB(uint16 tableID, void (*callback)(int32 status))
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return false;
+#else
     UserDB *userDB = &userDBStorage->userDB[tableID];
 
     bool32 success = false;
@@ -794,9 +807,11 @@ bool32 RSDK::SKU::UserDBStorage::SaveUserDB(uint16 tableID, void (*callback)(int
     }
 
     return success;
+#endif
 }
 void RSDK::SKU::UserDBStorage::ClearUserDB(uint16 tableID)
 {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (tableID == (uint16)-1)
         return;
 
@@ -804,14 +819,20 @@ void RSDK::SKU::UserDBStorage::ClearUserDB(uint16 tableID)
     if (userDB->loaded) {
         userDB->Clear();
     }
+#endif
 }
 void RSDK::SKU::UserDBStorage::ClearAllUserDBs()
 {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     for (int32 i = 0; i < RETRO_USERDB_MAX; ++i) ClearUserDB(i);
+#endif
 }
 
 bool32 RSDK::SKU::UserDBStorage::LoadCB(uint16 tableID, int32 status)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return false;
+#else
     bool32 succeeded = false;
     if (status == STATUS_OK) {
         UserDB *userDB = &userDBStorage->userDB[tableID];
@@ -832,9 +853,13 @@ bool32 RSDK::SKU::UserDBStorage::LoadCB(uint16 tableID, int32 status)
     }
 
     return succeeded;
+#endif
 }
 bool32 RSDK::SKU::UserDBStorage::SaveCB(uint16 tableID, int32 status)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return false;
+#else
     RemoveStorageEntry((void **)&userDBStorage->writeBuffer[tableID]);
     if (status != STATUS_OK)
         userDBStorage->userDB[tableID].valid = false;
@@ -845,6 +870,7 @@ bool32 RSDK::SKU::UserDBStorage::SaveCB(uint16 tableID, int32 status)
         return true;
     }
     return false;
+#endif
 }
 
 // =======================
@@ -854,14 +880,21 @@ bool32 RSDK::SKU::UserDBStorage::SaveCB(uint16 tableID, int32 status)
 // UserDB Row Sorting
 uint16 RSDK::SKU::SetupUserDBRowSorting(uint16 tableID)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return 0;
+#else
     if (tableID == (uint16)-1)
         return 0;
     userDBStorage->userDB[tableID].parent->RefreshSortList();
 
     return userDBStorage->userDB[tableID].sortedRowCount;
+#endif
 }
 int32 RSDK::SKU::AddUserDBRowSortFilter(uint16 tableID, int32 type, const char *name, void *value)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return 0;
+#else
     if (tableID == (uint16)-1)
         return 0;
     UserDB *userDB = &userDBStorage->userDB[tableID];
@@ -870,9 +903,13 @@ int32 RSDK::SKU::AddUserDBRowSortFilter(uint16 tableID, int32 type, const char *
 
     userDB->parent->AddSortFilter(name, value);
     return userDB->sortedRowCount;
+#endif
 }
 int32 RSDK::SKU::SortUserDBRows(uint16 tableID, int32 type, const char *name, bool32 sortAscending)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return 0;
+#else
     if (tableID == (uint16)-1)
         return 0;
 
@@ -882,9 +919,13 @@ int32 RSDK::SKU::SortUserDBRows(uint16 tableID, int32 type, const char *name, bo
 
     userDB->parent->SortRows(type, (char *)name, sortAscending);
     return userDB->sortedRowCount;
+#endif
 }
 int32 RSDK::SKU::GetSortedUserDBRowCount(uint16 tableID)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return 0;
+#else
     if (tableID == (uint16)-1)
         return 0;
 
@@ -893,9 +934,13 @@ int32 RSDK::SKU::GetSortedUserDBRowCount(uint16 tableID)
         return 0;
 
     return userDB->sortedRowCount;
+#endif
 }
 int32 RSDK::SKU::GetSortedUserDBRowID(uint16 tableID, uint16 sortedRowID)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return -1;
+#else
     if (tableID == (uint16)-1)
         return -1;
 
@@ -904,38 +949,57 @@ int32 RSDK::SKU::GetSortedUserDBRowID(uint16 tableID, uint16 sortedRowID)
         return -1;
 
     return userDB->sortedRowIDs[sortedRowID];
+#endif
 }
 
 // UserDB Values
 bool32 RSDK::SKU::GetUserDBValue(uint16 tableID, uint32 rowID, int32 type, char *name, void *value)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return false;
+#else
     if (tableID == (uint16)-1 || rowID == (uint16)-1 || !userDBStorage->userDB[tableID].active)
         return false;
     return userDBStorage->userDB[tableID].rows[rowID].GetValue(type, name, value);
+#endif
 }
 bool32 RSDK::SKU::SetUserDBValue(uint16 tableID, uint32 rowID, int32 type, char *name, void *value)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return false;
+#else
     if (tableID == (uint16)-1 || rowID == (uint16)-1 || !userDBStorage->userDB[tableID].active)
         return false;
 
     return userDBStorage->userDB[tableID].rows[rowID].AddValue(type, name, value);
+#endif
 }
 
 // UserDB Misc
-bool32 RSDK::SKU::GetUserDBRowsChanged(uint16 tableID) { return userDBStorage->userDB[tableID].rowsChanged; }
+bool32 RSDK::SKU::GetUserDBRowsChanged(uint16 tableID)
+{
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    return false;
+#else
+    return userDBStorage->userDB[tableID].rowsChanged;
+#endif
+}
 void RSDK::SKU::GetUserDBRowCreationTime(uint16 tableID, uint16 rowID, char *buf, size_t size, char *format)
 {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (tableID != (uint16)-1 && rowID != (uint16)-1) {
         UserDB *userDB = &userDBStorage->userDB[tableID];
         if (userDB->active)
             strftime(buf, size, format, &userDB->rows[rowID].createTime);
     }
+#endif
 }
 
 // =======================
 // USER DB CALLBACKS
 // =======================
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 void RSDK::SKU::UserDBStorage_LoadCB1(int32 status)
 {
     if (userDBStorage->dbLoadCB[0])
@@ -1017,6 +1081,7 @@ void RSDK::SKU::UserDBStorage_SaveCB8(int32 status)
     if (userDBStorage->dbSaveCB[7])
         userDBStorage->dbSaveCB[7](7, status);
 }
+#endif
 
 #endif
 
