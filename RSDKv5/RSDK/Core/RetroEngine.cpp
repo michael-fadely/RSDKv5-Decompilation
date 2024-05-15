@@ -1071,7 +1071,11 @@ void RSDK::LoadGameConfig()
                         uint8 red                      = ReadInt8(&info);
                         uint8 green                    = ReadInt8(&info);
                         uint8 blue                     = ReadInt8(&info);
+                        #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
                         globalPalette[i][(r << 4) + c] = rgb32To16_B[blue] | rgb32To16_G[green] | rgb32To16_R[red];
+                        #else
+                        globalPalette[i][(r << 4) + c] = PACK_RGB888(red, green, blue);
+                        #endif
                     }
                 }
                 else {

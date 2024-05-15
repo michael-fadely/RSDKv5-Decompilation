@@ -1,6 +1,8 @@
 #ifndef PALETTE_H
 #define PALETTE_H
 
+#include "../Core/RetroEngine.hpp"
+
 namespace RSDK
 {
 
@@ -12,9 +14,13 @@ union Color {
     uint32 color;
 };
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
+
 extern uint16 rgb32To16_R[0x100];
 extern uint16 rgb32To16_G[0x100];
 extern uint16 rgb32To16_B[0x100];
+
+#endif
 
 extern uint16 globalPalette[PALETTE_BANK_COUNT][PALETTE_BANK_SIZE];
 extern uint16 activeGlobalRows[PALETTE_BANK_COUNT];
@@ -33,8 +39,8 @@ extern uint16 *tintLookupTable;
 extern uint16 tintLookupTable[0x10000];
 #endif
 
+// DCFIXME: this should only build when KOS_HARDWARE_RENDERER is defined
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-
 
 class PaletteFlags
 {
@@ -105,6 +111,8 @@ public:
 
 #define PACK_RGB888(r, g, b) RGB888_TO_RGB565(r, g, b)
 
+#define PACK_RGB888_32(color32) RGB888_TO_RGB565(((color32 >> 16) & 0xFF), ((color32 >> 8) & 0xFF), (color32 & 0xFF))
+
 #if RETRO_REV02
 void LoadPalette(uint8 bankID, const char *filePath, uint16 disabledRows);
 #endif
@@ -133,12 +141,20 @@ inline void SetPaletteEntry(uint8 bankID, uint8 index, uint32 color)
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     PaletteFlags::MarkDirty(bankID);
 #endif
+    #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
     fullPalette[bankID][index] = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
+    #else
+    fullPalette[bankID][index] = PACK_RGB888_32(color);
+    #endif
 }
 
 inline void SetPaletteMask(uint32 color)
 {
+    #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
     maskColor = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
+    #else
+    maskColor = PACK_RGB888_32(color);
+    #endif
 }
 
 #if RETRO_REV02

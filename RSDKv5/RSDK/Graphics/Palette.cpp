@@ -6,9 +6,13 @@ using namespace RSDK;
 #include "Legacy/PaletteLegacy.cpp"
 #endif
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
+
 uint16 RSDK::rgb32To16_R[0x100];
 uint16 RSDK::rgb32To16_G[0x100];
 uint16 RSDK::rgb32To16_B[0x100];
+
+#endif
 
 uint16 RSDK::globalPalette[PALETTE_BANK_COUNT][PALETTE_BANK_SIZE];
 uint16 RSDK::activeGlobalRows[PALETTE_BANK_COUNT];
@@ -48,7 +52,11 @@ void RSDK::LoadPalette(uint8 bankID, const char *filename, uint16 disabledRows)
                     uint8 red                         = ReadInt8(&info);
                     uint8 green                       = ReadInt8(&info);
                     uint8 blue                        = ReadInt8(&info);
+                    #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
                     fullPalette[bankID][(r << 4) + c] = rgb32To16_B[blue] | rgb32To16_G[green] | rgb32To16_R[red];
+                    #else
+                    fullPalette[bankID][(r << 4) + c] = PACK_RGB888(red, green, blue);
+                    #endif
                 }
             }
             else {

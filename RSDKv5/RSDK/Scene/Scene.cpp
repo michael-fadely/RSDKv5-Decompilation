@@ -245,7 +245,11 @@ void RSDK::LoadSceneFolder()
                         uint8 red                     = ReadInt8(&info);
                         uint8 green                   = ReadInt8(&info);
                         uint8 blue                    = ReadInt8(&info);
+                        #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
                         stagePalette[p][(r << 4) + c] = rgb32To16_B[blue] | rgb32To16_G[green] | rgb32To16_R[red];
+                        #else
+                        stagePalette[p][(r << 4) + c] = PACK_RGB888(red, green, blue);
+                        #endif
                     }
                 }
                 else {
@@ -979,13 +983,18 @@ void RSDK::LoadStageGIF(char *filepath)
                     uint8 red                    = (tileset.palette[(r << 4) + c] >> 0x10);
                     uint8 green                  = (tileset.palette[(r << 4) + c] >> 0x08);
                     uint8 blue                   = (tileset.palette[(r << 4) + c] >> 0x00);
+                    #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
                     fullPalette[0][(r << 4) + c] = rgb32To16_B[blue] | rgb32To16_G[green] | rgb32To16_R[red];
+                    #else
+                    fullPalette[0][(r << 4) + c] = PACK_RGB888(red, green, blue);
+                    #endif
                 }
             }
         }
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
         // use one of the additional tileset buffers to re-orient the tileset into a 512x512 texture
+        // DCTODO: reduce size of tilesetPixels to just what we need
         uint8* const srcTiles = &tilesetPixels[0];
         uint8* const dstTiles = &tilesetPixels[TILESET_SIZE];
         constexpr size_t tilesPerRow = KOS_ATLAS_WIDTH_TILES;

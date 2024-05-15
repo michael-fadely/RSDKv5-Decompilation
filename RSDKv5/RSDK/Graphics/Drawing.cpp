@@ -272,11 +272,13 @@ void RSDK::GenerateBlendLookupTable()
     }
 #endif
 
+    #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
     for (int32 c = 0; c < 0x100; ++c) {
         rgb32To16_R[c] = (c & 0xFFF8) << 8;
         rgb32To16_G[c] = (c & 0xFFFC) << 3;
         rgb32To16_B[c] = c >> 3;
     }
+    #endif
 }
 
 void RSDK::InitSystemSurfaces()
@@ -614,9 +616,15 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
         RenderDevice::DrawColoredPoly(0, 0, width, height, color | (badAlpha << 24));
         #else
         validDraw        = true;
+        #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
         uint16 clrBlendR = blendLookupTable[0x20 * alphaR + rgb32To16_B[(color >> 0x10) & 0xFF]];
         uint16 clrBlendG = blendLookupTable[0x20 * alphaG + rgb32To16_B[(color >> 0x08) & 0xFF]];
         uint16 clrBlendB = blendLookupTable[0x20 * alphaB + rgb32To16_B[(color >> 0x00) & 0xFF]];
+        #else
+        uint16 clrBlendR = blendLookupTable[0x20 * alphaR + (((color >> 0x10) & 0xFF) >> 3)];
+        uint16 clrBlendG = blendLookupTable[0x20 * alphaG + (((color >> 0x08) & 0xFF) >> 3)];
+        uint16 clrBlendB = blendLookupTable[0x20 * alphaB + ((color & 0xFF) >> 3)];
+        #endif
 
         uint16 *fbBlendR = &blendLookupTable[0x20 * (0xFF - alphaR)];
         uint16 *fbBlendG = &blendLookupTable[0x20 * (0xFF - alphaG)];
@@ -810,7 +818,11 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
         drawY2 = v;
     }
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
     uint16 color16      = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
+#else
+    uint16 color16 = PACK_RGB888_32(color);
+#endif
     uint16 *frameBuffer = &currentScreen->frameBuffer[drawX1 + drawY1 * currentScreen->pitch];
 
     switch (inkEffect) {
@@ -1235,7 +1247,11 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
     int32 pitch         = currentScreen->pitch - width;
     validDraw           = true;
     uint16 *frameBuffer = &currentScreen->frameBuffer[x + (y * currentScreen->pitch)];
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
     uint16 color16      = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
+#else
+    uint16 color16 = PACK_RGB888_32(color);
+#endif
 
     switch (inkEffect) {
         case INK_NONE: {
@@ -1460,7 +1476,11 @@ void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha,
 
             // validDraw              = true;
             uint16 *frameBuffer = &currentScreen->frameBuffer[top * currentScreen->pitch];
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
             uint16 color16      = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
+#else
+            uint16 color16 = PACK_RGB888_32(color);
+#endif
 
             switch (inkEffect) {
                 default: break;
@@ -1747,7 +1767,11 @@ void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRad
             int32 or2           = outerRadius * outerRadius;
             validDraw           = true;
             uint16 *frameBuffer = &currentScreen->frameBuffer[left + top * currentScreen->pitch];
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
             uint16 color16      = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
+#else
+            uint16 color16 = PACK_RGB888_32(color);
+#endif
             int32 pitch         = (left + currentScreen->pitch - right);
 
             switch (inkEffect) {
@@ -2027,7 +2051,11 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
         ProcessScanEdge(vertices[0].x, vertices[0].y, vertices[vertCount - 1].x, vertices[vertCount - 1].y);
 
         uint16 *frameBuffer = &currentScreen->frameBuffer[topScreen * currentScreen->pitch];
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
         uint16 color16      = rgb32To16_B[b] | rgb32To16_G[g] | rgb32To16_R[r];
+#else
+        uint16 color16 = PACK_RGB888(r, g, b);
+#endif
 
         edge = &scanEdgeBuffer[topScreen];
         switch (inkEffect) {
@@ -4793,10 +4821,11 @@ void RSDK::DrawString(Animator *animator, Vector2 *position, String *string, int
 }
 void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint32 color)
 {
-    // DCTODO: DrawDevString
-    // (using early return so I can still statically analyze stuff!)
-    return;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
     uint16 color16 = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
+#else
+    uint16 color16 = PACK_RGB888_32(color);
+#endif
 
     int32 charOffset   = 0;
     bool32 linesRemain = true;
