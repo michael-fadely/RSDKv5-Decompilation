@@ -109,9 +109,30 @@ void DefragmentAndGarbageCollectStorage(StorageDataSets set);
 void RemoveStorageEntry_(void **dataPtr, const char* file, size_t line);
 void CopyStorage(uint32 **src, uint32 **dst);
 void GarbageCollectStorage(StorageDataSets dataSet);
+// DCWIP
+inline void MaybeRemoveStorageEntryAndNullify_(void **dataPtr, const char *file, size_t line) {
+    if (dataPtr && *dataPtr) {
+        RemoveStorageEntry_(dataPtr, file, line);
+        *dataPtr = NULL;
+    }
+}
+// DCWIP
+inline void
+RemoveAndAllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char *file, size_t line) {
+    if (!dataPtr) {
+        return;
+    }
+
+    MaybeRemoveStorageEntryAndNullify_(dataPtr, file, line);
+    AllocateStorage_(dataPtr, size, dataSet, clear, file, line);
+}
 
 #define RemoveStorageEntry(dataPtr) RemoveStorageEntry_(dataPtr, __FILE__, __LINE__)
 #define AllocateStorage(dataPtr, size, dataSet, clear) AllocateStorage_(dataPtr, size, dataSet, clear, __FILE__, __LINE__)
+// DCWIP
+#define RemoveAndAllocateStorage(dataPtr, size, dataSet, clear) RemoveAndAllocateStorage_(dataPtr, size, dataSet, clear, __FILE__, __LINE__)
+// DCWIP
+#define MaybeRemoveStorageEntryAndNullify(dataPtr) MaybeRemoveStorageEntryAndNullify_(dataPtr, __FILE__, __LINE__)
 
 #if RETRO_REV0U
 #include "Legacy/UserStorageLegacy.hpp"

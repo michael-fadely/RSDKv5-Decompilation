@@ -70,7 +70,8 @@ void RSDK::LoadSceneFolder()
         // Reload
         DefragmentAndGarbageCollectStorage(DATASET_STG);
         sceneInfo.filter = sceneInfo.listData[sceneInfo.listPos].filter;
-        PrintLog(PRINT_NORMAL, "Reloading Scene \"%s - %s\" with filter %d", list->name, sceneInfo.listData[sceneInfo.listPos].name,
+        // DCWIP: added leading \n
+        PrintLog(PRINT_NORMAL, "\nReloading Scene \"%s - %s\" with filter %d", list->name, sceneInfo.listData[sceneInfo.listPos].name,
                  sceneInfo.listData[sceneInfo.listPos].filter);
 
 #if RETRO_USE_MOD_LOADER
@@ -148,7 +149,8 @@ void RSDK::LoadSceneFolder()
 #if RETRO_REV02
     forceHardReset   = false;
     sceneInfo.filter = sceneEntry->filter;
-    PrintLog(PRINT_NORMAL, "Loading Scene \"%s - %s\" with filter %d", list->name, sceneEntry->name, sceneEntry->filter);
+    // DCWIP: added leading \n
+    PrintLog(PRINT_NORMAL, "\nLoading Scene \"%s - %s\" with filter %d", list->name, sceneEntry->name, sceneEntry->filter);
 #endif
 
 #if !RETRO_REV02
@@ -412,7 +414,12 @@ void RSDK::LoadSceneAssets()
             layer->scrollSpeed    = ReadInt16(&info) << 8;
             layer->scrollPos      = 0;
 
+            // DCWIP
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && !RETRO_USE_ORIGINAL_CODE
+            MaybeRemoveStorageEntryAndNullify((void**)&layer->layout);
+#else
             layer->layout = NULL;
+#endif
             if (layer->xsize || layer->ysize) {
                 AllocateStorage((void **)&layer->layout, sizeof(uint16) * (1UL << layer->widthShift) * (1UL << layer->heightShift), DATASET_STG, true);
                 memset(layer->layout, 0xFF, sizeof(uint16) * (1UL << layer->widthShift) * (1UL << layer->heightShift));
@@ -421,6 +428,10 @@ void RSDK::LoadSceneAssets()
             int32 size = layer->xsize;
             if (size <= layer->ysize)
                 size = layer->ysize;
+            // DCWIP
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && !RETRO_USE_ORIGINAL_CODE
+            MaybeRemoveStorageEntryAndNullify((void**)&layer->lineScroll);
+#endif
             AllocateStorage((void **)&layer->lineScroll, TILE_SIZE * size, DATASET_STG, true);
 
             layer->scrollInfoCount = ReadInt16(&info);
@@ -705,8 +716,17 @@ void RSDK::LoadSceneAssets()
             if (sceneInfo.filter & tempEntityList[i].filter)
                 memcpy(&objectEntityList[activeSlot++], &tempEntityList[i], sizeof(EntityBase));
 
+            // DCWIP
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            if (activeSlot >= SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT) {
+                printf("\t[NG] SLOT OVERFLOW: activeSlot >= SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT (%ld >= %d)\n",
+                       activeSlot, SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT);
+                break;
+            }
+#else
             if (activeSlot >= SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT)
                 break;
+#endif
         }
 
 #if !RETRO_USE_ORIGINAL_CODE

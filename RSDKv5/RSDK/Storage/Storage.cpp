@@ -93,6 +93,13 @@ void RSDK::ReleaseStorage()
 
 void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line)
 {
+    // DCWIP
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if (dataPtr && *dataPtr) {
+        printf("\t[UH] WARNING: NON-NULL ALLOC FROM: %s:%u\n", file, line);
+    }
+#endif
+
     uint32 inputSize = size;
     uint32 **data = (uint32 **)dataPtr;
     *data         = NULL;
@@ -184,35 +191,40 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
                 memset(*data, 0, size);
         }
 
-        printf("[%s] ", *dataPtr == NULL ? "NG" : "OK");
+        // DCWIP
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        if (*dataPtr == NULL) {
+            printf("[%s] ", *dataPtr == NULL ? "NG" : "OK");
 
-        switch (dataSet) {
-            case DATASET_STG:
-                printf("DATASET_STG");
-                break;
-            case DATASET_MUS:
-                printf("DATASET_MUS");
-                break;
-            case DATASET_SFX:
-                printf("DATASET_SFX");
-                break;
-            case DATASET_STR:
-                printf("DATASET_STR");
-                break;
-            case DATASET_TMP:
-                printf("DATASET_TMP");
-                break;
-            default:
-                printf("idk");
-                break;
-        }
+            switch (dataSet) {
+                case DATASET_STG:
+                    printf("DATASET_STG");
+                    break;
+                case DATASET_MUS:
+                    printf("DATASET_MUS");
+                    break;
+                case DATASET_SFX:
+                    printf("DATASET_SFX");
+                    break;
+                case DATASET_STR:
+                    printf("DATASET_STR");
+                    break;
+                case DATASET_TMP:
+                    printf("DATASET_TMP");
+                    break;
+                default:
+                    printf("idk");
+                    break;
+            }
 
-        if (storage) {
-            printf(" %lu (%lu free) (from %s:%u)\n", inputSize, storage->storageLimit - (sizeof(int32) * storage->usedStorage), file, line);
+            if (storage) {
+                printf(" %lu (%lu free) (from %s:%u)\n", inputSize,
+                       storage->storageLimit - (sizeof(int32) * storage->usedStorage), file, line);
+            } else {
+                printf("\n");
+            }
         }
-        else {
-            printf("\n");
-        }
+#endif
     }
 
 }
@@ -324,7 +336,17 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
     // If defragmentation occurred, then we need to update every single
     // pointer to allocated memory to point to their new locations in the buffer.
     if (unusedStorage != 0) {
+        // DCWIP
+        #if RETRO_PLATFORM == RETRO_KALLISTIOS
+        if (unusedStorage > dataStorage[set].usedStorage) {
+            printf("WARNING: GC OVERFLOW!!!\n");
+            dataStorage[set].usedStorage = 0;
+        } else {
+            dataStorage[set].usedStorage -= unusedStorage;
+        }
+        #else
         dataStorage[set].usedStorage -= unusedStorage;
+        #endif
 
         uint32 *currentHeader = dataStorage[set].memoryTable;
 
