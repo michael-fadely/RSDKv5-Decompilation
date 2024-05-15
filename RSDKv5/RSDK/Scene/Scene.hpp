@@ -1,6 +1,10 @@
 #ifndef SCENE_H
 #define SCENE_H
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include "../Core/Stub.hpp"
+#endif
+
 namespace RSDK
 {
 
@@ -171,7 +175,9 @@ extern uint8 currentSceneFilter;
 
 extern SceneInfo sceneInfo;
 
+#if !defined(KOS_HARDWARE_RENDERER)
 extern uint8 tilesetPixels[TILESET_SIZE * 4];
+#endif
 
 void LoadSceneFolder();
 void LoadSceneAssets();
@@ -286,6 +292,9 @@ void CopyTileLayer(uint16 dstLayerID, int32 dstStartX, int32 dstStartY, uint16 s
 
 inline void CopyTile(uint16 dest, uint16 src, uint16 count)
 {
+#if defined(KOS_HARDWARE_RENDERER)
+    DC_STUB();
+#else
     if (dest > TILE_COUNT)
         dest = TILE_COUNT - 1;
 
@@ -315,6 +324,7 @@ inline void CopyTile(uint16 dest, uint16 src, uint16 count)
             *destPixelsXY++ = *srcPixelsXY++;
         }
     }
+#endif
 }
 
 inline ScanlineInfo *GetScanlines() { return scanlines; }

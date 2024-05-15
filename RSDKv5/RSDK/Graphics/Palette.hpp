@@ -90,11 +90,11 @@ public:
     }
 
     static inline uint8 GetBank() {
-        return (uint8)(m_PaletteFlags & ActiveBankMask);
+        return static_cast<uint8>(m_PaletteFlags & ActiveBankMask);
     }
 
     static inline void SetBank(uint8 newBankID) {
-        m_PaletteFlags = (m_PaletteFlags & ~ActiveBankMask) | ((uint16)newBankID & ActiveBankMask);
+        m_PaletteFlags = (m_PaletteFlags & ~ActiveBankMask) | (static_cast<uint16>(newBankID) & ActiveBankMask);
     }
 
     static inline bool BankIsSameNoCheck(uint8 newBankID) {

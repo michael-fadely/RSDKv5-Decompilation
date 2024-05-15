@@ -6,7 +6,9 @@ using namespace RSDK;
 #include "Legacy/SceneLegacy.cpp"
 #endif
 
+#if !defined(KOS_HARDWARE_RENDERER)
 uint8 RSDK::tilesetPixels[TILESET_SIZE * 4];
+#endif
 
 ScanlineInfo *RSDK::scanlines = NULL;
 TileLayer RSDK::tileLayers[LAYER_COUNT];
@@ -969,6 +971,15 @@ void RSDK::LoadStageGIF(char *filepath)
     ImageGIF tileset;
 
     if (tileset.Load(filepath, true) && tileset.width == TILE_SIZE && tileset.height <= TILE_COUNT * TILE_SIZE) {
+#if defined(KOS_HARDWARE_RENDERER)
+        uint8_t* tilesetPixels = nullptr;
+        AllocateStorage(reinterpret_cast<void**>(&tilesetPixels), 2 * TILESET_SIZE, DATASET_STG, false);
+
+        if (tilesetPixels == nullptr) {
+            printf("[NG] Failed to allocate for tile set!!!: %s\n", filepath);
+            return;
+        }
+#endif
         tileset.pixels = tilesetPixels;
         tileset.Load(NULL, false);
 
@@ -1597,6 +1608,7 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
     // DCTODO: DrawLayerVScroll
     // (using early return so I can still statically analyze stuff!)
     return;
+#if !defined(KOS_HARDWARE_RENDERER)
     if (!layer->xsize || !layer->ysize)
         return;
 
@@ -1736,12 +1748,14 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
         ++scanline;
         ++frameBuffer;
     }
+#endif
 }
 void RSDK::DrawLayerRotozoom(TileLayer *layer)
 {
     // DCTODO: DrawLayerRotozoom
     // (using early return so I can still statically analyze stuff!)
     return;
+#if !defined(KOS_HARDWARE_RENDERER)
     if (!layer->xsize || !layer->ysize)
         return;
 
@@ -1782,6 +1796,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
         frameBuffer += fbOffset;
         ++scanline;
     }
+#endif
 }
 void RSDK::DrawLayerBasic(TileLayer *layer)
 {

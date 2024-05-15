@@ -295,7 +295,11 @@ void RSDK::InitSystemSurfaces()
     gfxSurface[0].height   = TILE_COUNT * TILE_SIZE;
     gfxSurface[0].lineSize = 4; // 16px
 #endif
+#if defined(KOS_HARDWARE_RENDERER)
+    gfxSurface[0].pixels   = nullptr;
+#else
     gfxSurface[0].pixels   = tilesetPixels;
+#endif
 
 #if RETRO_REV02
     GEN_HASH_MD5("EngineText", gfxSurface[1].hash);
@@ -4678,7 +4682,7 @@ void RSDK::DrawAniTile(uint16 sheetID, uint16 tileIndex, uint16 srcX, uint16 src
     // DCTODO: DrawAniTile
     // (using early return so I can still statically analyze stuff!)
     return;
-
+#if !defined(KOS_HARDWARE_RENDERER)
     if (sheetID < SURFACE_COUNT && tileIndex < TILE_COUNT) {
         GFXSurface *surface = &gfxSurface[sheetID];
 
@@ -4737,6 +4741,7 @@ void RSDK::DrawAniTile(uint16 sheetID, uint16 tileIndex, uint16 srcX, uint16 src
             }
         }
     }
+#endif
 }
 
 void RSDK::DrawString(Animator *animator, Vector2 *position, String *string, int32 startFrame, int32 endFrame, int32 align, int32 spacing,
