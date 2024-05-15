@@ -12,9 +12,12 @@ struct Image {
         height  = 0;
         palette = NULL;
         pixels  = NULL;
+#if !RETRO_USE_ORIGINAL_CODE
+        depth = 0;
+#endif
     }
 #if !RETRO_USE_ORIGINAL_CODE
-    ~Image() { RemoveStorageEntry((void **)&palette); }
+    virtual ~Image() { RemoveStorageEntry((void **)&palette); }
 #endif
 
     virtual bool32 Load(const char *fileName, bool32 loadHeader) { return false; }
@@ -58,13 +61,18 @@ struct GifDecoder {
     uint32 prefix[4096];
 };
 
-struct ImageGIF : public Image {
-    ImageGIF() { AllocateStorage((void **)&decoder, sizeof(GifDecoder), DATASET_TMP, true); }
+struct ImageGIF final : public Image {
+    ImageGIF() {
 #if !RETRO_USE_ORIGINAL_CODE
-    ~ImageGIF() { RemoveStorageEntry((void **)&decoder); }
+        decoder = NULL;
+#endif
+        AllocateStorage((void **)&decoder, sizeof(GifDecoder), DATASET_TMP, true);
+    }
+#if !RETRO_USE_ORIGINAL_CODE
+    ~ImageGIF() override { RemoveStorageEntry((void **)&decoder); }
 #endif
 
-    bool32 Load(const char *fileName, bool32 loadHeader);
+    bool32 Load(const char *fileName, bool32 loadHeader) override;
 
     GifDecoder *decoder;
 };
@@ -86,8 +94,8 @@ enum PNGCompressionFilters {
     PNGFILTER_PAETH,
 };
 
-struct ImagePNG : public Image {
-    bool32 Load(const char *fileName, bool32 loadHeader);
+struct ImagePNG final : public Image {
+    bool32 Load(const char *fileName, bool32 loadHeader) override;
 
     void UnpackPixels_Greyscale(uint8 *pixelData);
     void UnpackPixels_GreyscaleA(uint8 *pixelData);
