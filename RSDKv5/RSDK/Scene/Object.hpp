@@ -16,7 +16,7 @@ namespace RSDK
 #define RESERVE_ENTITY_COUNT (0x40)
 #define TEMPENTITY_COUNT     (0x100)
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-#define SCENEENTITY_COUNT    (1024)
+#define SCENEENTITY_COUNT    (0x800)
 #else
 #define SCENEENTITY_COUNT    (0x800)
 #endif
