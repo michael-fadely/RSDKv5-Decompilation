@@ -306,7 +306,6 @@ bool32 RSDK::LoadFile(FileInfo *info, const char *filename, uint8 fileMode)
         sprintf_s(fullFilePath, sizeof(fullFilePath), "%s", pathBuf);
     }
 #endif
-#endif
 
     if (!info->externalFile && fileMode == FMODE_RB && useDataPack) {
         return OpenDataFile(info, filename);
