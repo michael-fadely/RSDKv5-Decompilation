@@ -712,6 +712,19 @@ void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, cons
     }
 }
 
+__noinline
+void rotate(vec3f& p, float cx, float cy, float s, float c) {
+    p.x -= cx;
+    p.y -= cy;
+
+    const auto px = p.x * c - p.y * s;
+    const auto py = p.x * s + p.y * c;
+
+    p.x = px + cx;
+    p.y = py + cy;
+};
+
+
 // static
 void RenderDevice::DrawTexturedPoly(
         int32 x, int32 y,
@@ -761,7 +774,7 @@ void RenderDevice::DrawTexturedPoly(
         .y = p3.y,
         .z = depth
     };
-
+#if 0 /* TODO: Oleg Endo needs to find out why GCC14.1.0 shits itself and ICEs here. */
     if (rotation != 0) {
         const float cx = static_cast<float>(ox) * scaleX;
         const float cy = static_cast<float>(oy) * scaleY;
@@ -786,7 +799,7 @@ void RenderDevice::DrawTexturedPoly(
         rotate(p2);
         rotate(p3);
     }
-
+#endif
     const float u0 = static_cast<float>(sprX0) / surfaceWidth;
     const float u1 = static_cast<float>(sprX1) / surfaceWidth;
 

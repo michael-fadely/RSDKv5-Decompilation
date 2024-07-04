@@ -6,6 +6,10 @@ using namespace RSDK;
 #include "Legacy/UserStorageLegacy.cpp"
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include <kos.h>
+#endif
+
 // Macro to access the header variables of a block of memory.
 // Note that this is pointless if the pointer is already pointing directly at the header rather than the memory after it.
 #define HEADER(memory, header_value) memory[-HEADER_SIZE + header_value]
@@ -33,12 +37,12 @@ bool32 RSDK::InitStorage()
 //    dataStorage[DATASET_STG].storageLimit = (3 * 1024 * 1024) - (640 * 1024); // sonic renders on title screen
 //    dataStorage[DATASET_STG].storageLimit = (5 * 1024 * 1024); // oh god
 //    dataStorage[DATASET_STG].storageLimit = (6 * 1024 * 1024) + ((512 + 64) * 1024); // oh god!!!
-    dataStorage[DATASET_STG].storageLimit = (4 * 1024 * 1024); // ok...
+    dataStorage[DATASET_STG].storageLimit = ((DBL_MEM? 8 : 4) * 1024 * 1024); // ok...
 
     dataStorage[DATASET_MUS].storageLimit = 0;
     dataStorage[DATASET_SFX].storageLimit = 0;
-    dataStorage[DATASET_STR].storageLimit = 32 * 1024;
-    dataStorage[DATASET_TMP].storageLimit = (3 * 1024 * 1024);
+    dataStorage[DATASET_STR].storageLimit = (DBL_MEM? 2 : 1) * 32 * 1024;
+    dataStorage[DATASET_TMP].storageLimit = ((DBL_MEM? 6 : 3) * 1024 * 1024);
 #else
     dataStorage[DATASET_STG].storageLimit = 24 * 1024 * 1024; // 24MB
     dataStorage[DATASET_MUS].storageLimit = 8 * 1024 * 1024;  //  8MB
