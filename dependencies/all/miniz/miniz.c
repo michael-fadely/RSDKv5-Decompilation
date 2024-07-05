@@ -25,8 +25,6 @@
  *
  **************************************************************************/
 
-
-
 typedef unsigned char mz_validate_uint16[sizeof(mz_uint16) == 2 ? 1 : -1];
 typedef unsigned char mz_validate_uint32[sizeof(mz_uint32) == 4 ? 1 : -1];
 typedef unsigned char mz_validate_uint64[sizeof(mz_uint64) == 8 ? 1 : -1];
@@ -2982,7 +2980,6 @@ void tinfl_decompressor_free(tinfl_decompressor *pDecomp)
  *
  **************************************************************************/
 
-
 #ifndef MINIZ_NO_ARCHIVE_APIS
 
 #ifdef __cplusplus
@@ -3110,9 +3107,6 @@ static FILE *mz_freopen(const char *pPath, const char *pMode, FILE *pStream)
 #endif /* #ifdef MINIZ_NO_STDIO */
 
 #define MZ_TOLOWER(c) ((((c) >= 'A') && ((c) <= 'Z')) ? ((c) - 'A' + 'a') : (c))
-
-
-extern int utime(const char *path, struct utimbuf *times);
 
 /* Various ZIP archive enums. To completely avoid cross platform compiler alignment and platform endian issues, miniz.c doesn't use structs for any of this stuff. */
 enum
