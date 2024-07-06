@@ -558,6 +558,10 @@ extern "C" {
 #endif
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include <kos.h>
+#endif
+
 // DCFIXME: No video support for now
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
 #include <theora/theoradec.h>
