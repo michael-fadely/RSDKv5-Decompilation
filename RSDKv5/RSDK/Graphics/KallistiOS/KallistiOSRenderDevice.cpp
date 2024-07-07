@@ -28,6 +28,7 @@ enum PrimitiveTypes {
 
 float drawDepth = 1.0f;
 pvr_ptr_t lastTexture = nullptr;
+pvr_dr_state_t drState = 0;
 int lastSrcBlend = -1;
 int lastDstBlend = -1;
 PrimitiveTypes lastPrimitiveType = PrimitiveTypes_None;
@@ -105,7 +106,7 @@ bool RenderDevice::Init()
 
         // vertex buffer size
         // 512 KB is the default used by pvr_init_defaults(). might need adjusting.
-        128 * 1024,
+        256 * 1024,
 
         // dma enabled? (no)
         0,
@@ -114,6 +115,9 @@ bool RenderDevice::Init()
         0,
 
         // autosort disabled?
+        1,
+
+        // Overflow buffer count
         1
     };
 #else
@@ -344,9 +348,12 @@ void RenderDevice::InitFPSCap()
     DC_STUB();
 }
 // static
-bool RenderDevice::CheckFPSCap()
-{
+bool RenderDevice::CheckFPSCap() {
+    // Render idle time as a red bar.
+    vid_border_color(255, 0, 0);
     pvr_wait_ready();
+    // Render scene time as a green bar.
+    vid_border_color(0, 255, 0);
     return true;
 }
 // static
@@ -393,12 +400,16 @@ void RenderDevice::BeginScene() {
     if (pvr_list_begin(PVR_LIST_TR_POLY) == -1) {
         printf("[pvr] [NG] pvr_list_begin(PVR_LIST_TR_POLY) returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
     }
+
+    pvr_dr_init(&drState);
 #endif
 }
 
 // static
 void RenderDevice::EndScene() {
 #if defined(KOS_HARDWARE_RENDERER)
+    pvr_dr_finish();
+
     // DCWIP: rendering everything as transparent
     if (pvr_list_finish() == -1) {
         printf("[pvr] [NG] pvr_list_finish() returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
@@ -407,6 +418,9 @@ void RenderDevice::EndScene() {
     if (pvr_scene_finish() == -1) {
         printf("[pvr] [NG] pvr_scene_finish() returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
     }
+
+    // Render CPU time as a blue bar.
+    vid_border_color(0, 0, 255);
 #endif
 }
 
@@ -600,13 +614,9 @@ void RenderDevice::PrepareTexturedQuad(int32 y, const GFXSurface* surface) {
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
 
-        pvr_sprite_hdr_t header;
-        pvr_sprite_compile(&header, &context);
-
-        if (pvr_prim(&header, sizeof(header)) == -1) {
-            printf("[pvr] [NG] pvr_prim for quad header failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            ResetLastState();
-        }
+        auto *header = reinterpret_cast<pvr_sprite_hdr_t *>(pvr_dr_target(drState));
+        pvr_sprite_compile(header, &context);
+        pvr_dr_commit(header);
     }
 }
 
@@ -642,30 +652,32 @@ void RenderDevice::DrawTexturedQuad(
     const float v0 = static_cast<float>(sprY0) / surfaceHeight;
     const float v1 = static_cast<float>(sprY1) / surfaceHeight;
 
-    pvr_sprite_txr_t vert {};
+    auto *vert = reinterpret_cast<pvr_sprite_txr_t *>(pvr_dr_target(drState));
 
-    vert.flags = PVR_CMD_VERTEX_EOL;
-    vert.ax = x0;
-    vert.ay = y0;
-    vert.az = GetDepth();
+    vert->flags = PVR_CMD_VERTEX_EOL;
+    vert->ax = x0;
+    vert->ay = y0;
+    vert->az = GetDepth();
 
-    vert.bx = x1;
-    vert.by = y0;
-    vert.bz = vert.az;
+    vert->bx = x1;
+    vert->by = y0;
+    vert->bz = vert->az;
 
-    vert.cx = x1;
-    vert.cy = y1;
-    vert.cz = vert.az;
+    vert->cx = x1;
+    pvr_dr_commit(vert);
+    vert = reinterpret_cast<pvr_sprite_txr_t *>(pvr_dr_target(drState));
 
-    vert.dx = x0;
-    vert.dy = y1;
-    vert.auv = PVR_PACK_16BIT_UV(u0, v0);
-    vert.buv = PVR_PACK_16BIT_UV(u1, v0);
-    vert.cuv = PVR_PACK_16BIT_UV(u1, v1);
+     *((float*)&vert->flags) = y1;
+    vert->ax = GetDepth();
 
-    if (pvr_prim(&vert, sizeof(vert)) == -1) {
-        printf("[pvr] [NG] pvr_prim for quad body failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-    }
+    vert->ay = x0;
+    vert->az = y1;
+
+    *((uint32_t*)&vert->by) = PVR_PACK_16BIT_UV(u0, v0);
+    *((uint32_t*)&vert->bz) = PVR_PACK_16BIT_UV(u1, v0);
+    *((uint32_t*)&vert->cx) = PVR_PACK_16BIT_UV(u1, v1);
+
+    pvr_dr_commit(reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(vert)));
 }
 
 // static
@@ -702,13 +714,9 @@ void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, cons
         context.blend.src = srcBlend;
         context.blend.dst = dstBlend;
 
-        pvr_poly_hdr_t header;
-        pvr_poly_compile(&header, &context);
-
-        if (pvr_prim(&header, sizeof(header)) == -1) {
-            printf("[pvr] [NG] pvr_prim for textured poly header failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            ResetLastState();
-        }
+        auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
+        pvr_poly_compile(header, &context);
+        pvr_dr_commit(header);
     }
 }
 
@@ -800,57 +808,58 @@ void RenderDevice::DrawTexturedPoly(
     const float v1 = static_cast<float>(sprY1) / surfaceHeight;
 
     {
-        pvr_vertex_t vert {};
+        auto *vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
 
-        vert.flags = PVR_CMD_VERTEX;
-        vert.argb = 0x00ffffff | (alpha << 24);
-        vert.oargb = 0;
-        vert.z = depth;
+        vert->flags = PVR_CMD_VERTEX;
+        vert->argb = 0x00ffffff | (alpha << 24);
+        vert->oargb = 0;
+        vert->z = depth;
 
         // top left
-        vert.x = p0.x;
-        vert.y = p0.y;
-        vert.u = u0;
-        vert.v = v0;
+        vert->x = p0.x;
+        vert->y = p0.y;
+        vert->u = u0;
+        vert->v = v0;
 
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for textured poly point 1/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
+        pvr_dr_commit(vert);
+        vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
 
         // top right
-        vert.x = p1.x;
-        vert.y = p1.y;
-        vert.u = u1;
-        vert.v = v0;
+        vert->flags = PVR_CMD_VERTEX;
+        vert->argb = 0x00ffffff | (alpha << 24);
+        vert->oargb = 0;
+        vert->z = depth;
+        vert->x = p1.x;
+        vert->y = p1.y;
+        vert->u = u1;
+        vert->v = v0;
 
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for textured poly point 2/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
+        pvr_dr_commit(vert);
+        vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
 
         // bottom left
-        vert.x = p2.x;
-        vert.y = p2.y;
-        vert.u = u0;
-        vert.v = v1;
+        vert->flags = PVR_CMD_VERTEX;
+        vert->argb = 0x00ffffff | (alpha << 24);
+        vert->oargb = 0;
+        vert->z = depth;
+        vert->x = p2.x;
+        vert->y = p2.y;
+        vert->u = u0;
+        vert->v = v1;
 
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for textured poly point 3/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
+        pvr_dr_commit(vert);
+        vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
 
         // bottom right
-        vert.flags = PVR_CMD_VERTEX_EOL;
-        vert.x = p3.x;
-        vert.y = p3.y;
-        vert.u = u1;
-        vert.v = v1;
-
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for textured poly point 4/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
+        vert->flags = PVR_CMD_VERTEX_EOL;
+        vert->argb = 0x00ffffff | (alpha << 24);
+        vert->oargb = 0;
+        vert->z = depth;
+        vert->x = p3.x;
+        vert->y = p3.y;
+        vert->u = u1;
+        vert->v = v1;
+        pvr_dr_commit(vert);
     }
 }
 
@@ -880,13 +889,9 @@ void RenderDevice::PrepareColoredPoly(int32 y, int srcBlend, int dstBlend) {
         context.blend.src = srcBlend;
         context.blend.dst = dstBlend;
 
-        pvr_poly_hdr_t header;
-        pvr_poly_compile(&header, &context);
-
-        if (pvr_prim(&header, sizeof(header)) == -1) {
-            printf("[pvr] [NG] pvr_prim for colored poly header failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            ResetLastState();
-        }
+        auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
+        pvr_poly_compile(header, &context);
+        pvr_dr_commit(header);
     }
 }
 
@@ -912,48 +917,48 @@ void RenderDevice::DrawColoredPoly(
     const float lmaoHeight = static_cast<float>(height) * scaleY;
 
     {
-        pvr_vertex_t vert {};
+        auto* vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
 
-        vert.flags = PVR_CMD_VERTEX;
-        vert.argb = color;
-        vert.oargb = 0;
-        vert.z = GetDepth();
+        vert->flags = PVR_CMD_VERTEX;
+        vert->argb = color;
+        vert->oargb = 0;
+        vert->z = GetDepth();
 
         // top left
-        vert.x = renderX;
-        vert.y = renderY;
+        vert->x = renderX;
+        vert->y = renderY;
+        pvr_dr_commit(vert);
 
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for colored poly point 1/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
-
+        vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
         // top right
-        vert.x = renderX + lmaoWidth;
-        vert.y = renderY;
+        vert->flags = PVR_CMD_VERTEX;
+        vert->argb = color;
+        vert->oargb = 0;
+        vert->z = GetDepth();
+        vert->x = renderX + lmaoWidth;
+        vert->y = renderY;
 
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for colored poly point 2/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
+        pvr_dr_commit(vert);
 
+        vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
         // bottom left
-        vert.x = renderX;
-        vert.y = renderY + lmaoHeight;
+        vert->flags = PVR_CMD_VERTEX;
+        vert->argb = color;
+        vert->oargb = 0;
+        vert->z = GetDepth();
+        vert->x = renderX;
+        vert->y = renderY + lmaoHeight;
+        pvr_dr_commit(vert);
 
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for colored poly point 3/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
-
+        vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
         // bottom right
-        vert.flags = PVR_CMD_VERTEX_EOL;
-        vert.x = renderX + lmaoWidth;
-        vert.y = renderY + lmaoHeight;
+        vert->flags = PVR_CMD_VERTEX_EOL;
+        vert->argb = color;
+        vert->oargb = 0;
+        vert->z = GetDepth();
+        vert->x = renderX + lmaoWidth;
+        vert->y = renderY + lmaoHeight;
 
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for colored poly point 4/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
+        pvr_dr_commit(vert);
     }
 }
