@@ -18,7 +18,7 @@ option(RSDK_DEBUG "Enable debugging" ON)
 target_compile_definitions(RetroEngine PUBLIC RSDK_DEBUG=$<BOOL:${RSDK_DEBUG}>)
 target_compile_definitions(${GAME_NAME} PUBLIC RSDK_DEBUG=$<BOOL:${RSDK_DEBUG}>)
 
-option(KOS_USER_DIR "Root directory for the KOS VFS which get set as the RSDK User directory." "/cd/")
+set(KOS_USER_DIR "/cd/" CACHE STRING "Root directory for the KOS VFS which get set as the RSDK User directory.")
 target_compile_definitions(RetroEngine PUBLIC KOS_USER_DIR="${KOS_USER_DIR}")
 
 # Disable some unneeded features to reduce executable size
