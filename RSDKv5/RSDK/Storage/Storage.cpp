@@ -29,22 +29,23 @@ DataStorage RSDK::dataStorage[DATASET_MAX];
 bool32 RSDK::InitStorage()
 {
     // Storage limits.
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-//    dataStorage[DATASET_STG].storageLimit = (3 * 1024 * 1024) - (640 * 1024); // sonic renders on title screen
-//    dataStorage[DATASET_STG].storageLimit = (5 * 1024 * 1024); // oh god
-//    dataStorage[DATASET_STG].storageLimit = (6 * 1024 * 1024) + ((512 + 64) * 1024); // oh god!!!
-    dataStorage[DATASET_STG].storageLimit = (4 * 1024 * 1024); // ok...
-
-    dataStorage[DATASET_MUS].storageLimit = 0;
-    dataStorage[DATASET_SFX].storageLimit = 0;
-    dataStorage[DATASET_STR].storageLimit = 32 * 1024;
-    dataStorage[DATASET_TMP].storageLimit = (3 * 1024 * 1024);
-#else
-    dataStorage[DATASET_STG].storageLimit = 24 * 1024 * 1024; // 24MB
-    dataStorage[DATASET_MUS].storageLimit = 8 * 1024 * 1024;  //  8MB
-    dataStorage[DATASET_SFX].storageLimit = 32 * 1024 * 1024; // 32MB
-    dataStorage[DATASET_STR].storageLimit = 2 * 1024 * 1024;  //  2MB
-    dataStorage[DATASET_TMP].storageLimit = 8 * 1024 * 1024;  //  8MB
+#if RETRO_PLATFORM == RETRO_KALLISTIOS  /* SAYGA DREAMCAST: Where Sonic Belongs! */
+                                                                       // RAM: 32  / 16  MB
+                                                                       // -----------------
+    dataStorage[DATASET_STG].storageLimit = (DBL_MEM? 4 : 4) * 1024 * 1024; // 4   / 4   MB
+    dataStorage[DATASET_MUS].storageLimit = (DBL_MEM? 4 : 0) * 1024 * 1024; // 4   / 0   MB
+    dataStorage[DATASET_SFX].storageLimit = (DBL_MEM? 2 : 0) * 1024 * 1024; // 2   / 0   MB
+    dataStorage[DATASET_STR].storageLimit = (DBL_MEM? 2 : 1) *   32 * 1024; // 64  / 32  KB
+    dataStorage[DATASET_TMP].storageLimit = (DBL_MEM? 6 : 3) * 1024 * 1024; // 6   / 3   MB
+                                                                     //   -----------------
+#else                                                                // Total: 16+ / 7+  MB 
+                                        /* PCs AND BORING SHIT */
+    dataStorage[DATASET_STG].storageLimit = 24 * 1024 * 1024; // 24 MB
+    dataStorage[DATASET_MUS].storageLimit =  8 * 1024 * 1024; //  8 MB
+    dataStorage[DATASET_SFX].storageLimit = 32 * 1024 * 1024; // 32 MB
+    dataStorage[DATASET_STR].storageLimit =  2 * 1024 * 1024; //  2 MB
+    dataStorage[DATASET_TMP].storageLimit =  8 * 1024 * 1024; //  8 MB
+                                                       // Total: 74 MB LMAO, YEAH RIGHT.
 #endif
 
     for (int32 s = 0; s < DATASET_MAX; ++s) {
