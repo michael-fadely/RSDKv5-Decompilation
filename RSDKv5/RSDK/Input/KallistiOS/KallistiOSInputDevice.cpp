@@ -30,6 +30,14 @@ void SKU::KallistiOSInputDevice::ProcessInput(int32 controllerID) {
     retro.keyLeft.press |= (state.buttons & CONT_DPAD_LEFT) != 0;
     retro.keyRight.press |= (state.buttons & CONT_DPAD_RIGHT) != 0;
 
+    float fjoyx = (state.joyx / 128.0f);
+    float fjoyy = (state.joyy / 128.0f);
+
+    retro.keyUp.press |= (fjoyy <= -0.6f);
+    retro.keyDown.press |= (fjoyy >= 0.6f);
+    retro.keyLeft.press |= (fjoyx <= -0.6f);
+    retro.keyLeft.press |= (fjoyx >= 0.6f);
+
     retro.keyA.press |= (state.buttons & CONT_A) != 0;
     retro.keyB.press |= (state.buttons & CONT_B) != 0;
     retro.keyC.press |= (state.buttons & CONT_C) != 0;

@@ -770,7 +770,13 @@ void RenderDevice::DrawTexturedPoly(
         const float s = sinf(radians);
         const float c = cosf(radians);
 
-        auto rotate = [cx, cy, s, c](vec3f& p) {
+        auto rotate = [cx, cy, s, c](vec3f& p) 
+        /* Allowing this to get inlined causes an ICE in SH-GCC14.
+           Remove __noinline once it's fixed, becaue it's bullshit. */
+#if __GNUC__ >= 14
+        __noinline
+#endif 
+        {
             p.x -= cx;
             p.y -= cy;
 

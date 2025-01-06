@@ -1,17 +1,6 @@
 #include "RSDK/Core/RetroEngine.hpp"
 #include "main.hpp"
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-#if RSDK_DEBUG
-#include <arch/gdb.h>
-#endif
-
-#include <kos.h>
-
-KOS_INIT_FLAGS(INIT_IRQ | INIT_CONTROLLER);
-
-#endif
-
 #if RETRO_STANDALONE
 #define LinkGameLogic RSDK::LinkGameLogic
 #else
@@ -89,10 +78,18 @@ void android_main(struct android_app *ap)
 int main(int argc, char *argv[]) { return RSDK_main(argc, argv, (void *)LinkGameLogic); }
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+KOS_INIT_FLAGS(INIT_IRQ | INIT_CONTROLLER | INIT_CDROM);
+#endif
 int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
 {
-#if RETRO_PLATFORM == RETRO_KALLISTIOS && RSDK_DEBUG
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#if RSDK_DEBUG
     gdb_init();
+#endif
+    cont_btn_callback(0, CONT_RESET_BUTTONS, [](uint8_t, uint32_t) {
+        exit(EXIT_SUCCESS);
+    });
 #endif
 
     RSDK::linkGameLogic = (RSDK::LogicLinkHandle)linkLogicPtr;

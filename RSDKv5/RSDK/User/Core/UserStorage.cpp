@@ -1234,7 +1234,7 @@ void RSDK::SKU::InitUserDirectory()
 
 #elif RETRO_PLATFORM == RETRO_KALLISTIOS
 
-    SKU::SetUserFileCallbacks("/cd/", NULL, NULL);
+    SKU::SetUserFileCallbacks(KOS_USER_DIR, NULL, NULL);
 
 #else
 

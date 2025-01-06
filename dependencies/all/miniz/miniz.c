@@ -3109,6 +3109,15 @@ static FILE *mz_freopen(const char *pPath, const char *pMode, FILE *pStream)
 #endif /* #ifdef _MSC_VER */
 #endif /* #ifdef MINIZ_NO_STDIO */
 
+/* Required temporary fix for a Newlib bug in that it never declares this
+   function for the SuperH architecture, and now, in GCC14, implicit 
+   function declarations are deprecated and become hard errors.
+   
+   This is currently being fixed in KOS and will be removed shortly. */
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && __GNUC__ >= 14
+extern int utime(const char *path, struct utimbuf *times);
+#endif
+
 #define MZ_TOLOWER(c) ((((c) >= 'A') && ((c) <= 'Z')) ? ((c) - 'A' + 'a') : (c))
 
 /* Various ZIP archive enums. To completely avoid cross platform compiler alignment and platform endian issues, miniz.c doesn't use structs for any of this stuff. */
