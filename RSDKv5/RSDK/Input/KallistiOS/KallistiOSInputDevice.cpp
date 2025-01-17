@@ -36,7 +36,7 @@ void SKU::KallistiOSInputDevice::ProcessInput(int32 controllerID) {
     retro.keyUp.press |= (fjoyy <= -0.6f);
     retro.keyDown.press |= (fjoyy >= 0.6f);
     retro.keyLeft.press |= (fjoyx <= -0.6f);
-    retro.keyLeft.press |= (fjoyx >= 0.6f);
+    retro.keyRight.press |= (fjoyx >= 0.6f);
 
     retro.keyA.press |= (state.buttons & CONT_A) != 0;
     retro.keyB.press |= (state.buttons & CONT_B) != 0;
