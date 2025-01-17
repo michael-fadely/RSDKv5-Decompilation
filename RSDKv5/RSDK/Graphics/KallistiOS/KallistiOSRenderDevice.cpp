@@ -772,7 +772,7 @@ void RenderDevice::DrawTexturedPoly(
 
         auto rotate = [cx, cy, s, c](vec3f& p) 
         /* Allowing this to get inlined causes an ICE in SH-GCC14.
-           Remove __noinline once it's fixed, becaue it's bullshit. */
+           Remove __noinline once it's fixed, because it's bullshit. */
 #if __GNUC__ >= 14
         __noinline
 #endif 
