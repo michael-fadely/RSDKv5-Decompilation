@@ -1244,6 +1244,8 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         return;
     }
 
+    validDraw = true;
+
     RenderDevice::PrepareColoredPoly(y, srcBlend, dstBlend);
 
     RenderDevice::DrawColoredPoly(x, y, width, height, color | (alpha << 24));
