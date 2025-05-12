@@ -114,7 +114,14 @@ bool RenderDevice::Init()
         0,
 
         // autosort disabled?
-        1
+        1,
+
+        // Overflow buffer count
+        // gained 75 KiB by disabling
+        0,
+
+        // Disable vertex double-buffering
+        0
     };
 #else
 #error pvr_init_params_t needs re-configuring for the software renderer!
