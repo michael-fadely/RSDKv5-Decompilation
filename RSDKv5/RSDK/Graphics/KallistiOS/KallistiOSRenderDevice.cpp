@@ -219,7 +219,9 @@ bool RenderDevice::Init()
             screenWidth = DEFAULT_PIXWIDTH;
 #endif
 
+#if !defined(KOS_HARDWARE_RENDERER)
         memset(&screens[s].frameBuffer, 0, sizeof(screens[s].frameBuffer));
+#endif
         SetScreenSize(s, screenWidth, screens[s].size.y);
     }
 

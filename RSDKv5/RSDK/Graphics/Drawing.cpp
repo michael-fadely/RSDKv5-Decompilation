@@ -308,7 +308,6 @@ void RSDK::InitSystemSurfaces()
     gfxSurface[1].height   = 128 * 8;
     gfxSurface[1].lineSize = 3; // 8px
     gfxSurface[1].pixels   = devTextStencil;
-    // DCTODO: allocate texture?
 #endif
 }
 
@@ -827,6 +826,10 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
 #else
     uint16 color16 = PACK_RGB888_32(color);
 #endif
+
+#if defined(KOS_HARDWARE_RENDERER)
+    // DCTODO: DrawLine
+#else
     uint16 *frameBuffer = &currentScreen->frameBuffer[drawX1 + drawY1 * currentScreen->pitch];
 
     switch (inkEffect) {
@@ -1180,6 +1183,7 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
             }
             break;
     }
+#endif
 }
 void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
@@ -1376,6 +1380,9 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
 }
 void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
+#if defined(KOS_HARDWARE_RENDERER)
+    // DCTODO: DrawCircle
+#else
     if (radius > 0) {
         switch (inkEffect) {
             default: break;
@@ -1710,6 +1717,7 @@ void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha,
             }
         }
     }
+#endif
 }
 void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRadius, uint32 color, int32 alpha, int32 inkEffect,
                              bool32 screenRelative)
@@ -1772,6 +1780,10 @@ void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRad
             int32 ir2           = innerRadius * innerRadius;
             int32 or2           = outerRadius * outerRadius;
             validDraw           = true;
+
+#if defined(KOS_HARDWARE_RENDERER)
+            // DCTODO: DrawCircleOutline
+#else
             uint16 *frameBuffer = &currentScreen->frameBuffer[left + top * currentScreen->pitch];
 #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
             uint16 color16      = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
@@ -1992,12 +2004,16 @@ void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRad
                     }
                     break;
             }
+#endif
         }
     }
 }
 
 void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 b, int32 alpha, int32 inkEffect)
 {
+#if defined(KOS_HARDWARE_RENDERER)
+    // DCTODO: DrawFace
+#else
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -2252,9 +2268,13 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
                 break;
         }
     }
+#endif
 }
 void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, int32 alpha, int32 inkEffect)
 {
+#if defined(KOS_HARDWARE_RENDERER)
+    // DCTODO: DrawBlendedFace
+#else
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -2740,6 +2760,7 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
                 break;
         }
     }
+#endif
 }
 
 void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelative)
@@ -4138,9 +4159,6 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
 
 void RSDK::DrawDeformedSprite(uint16 sheetID, int32 inkEffect, int32 alpha)
 {
-    // DCTODO: DrawDeformedSprite
-    // (using early return so I can still statically analyze stuff!)
-    return;
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -4164,6 +4182,10 @@ void RSDK::DrawDeformedSprite(uint16 sheetID, int32 inkEffect, int32 alpha)
             break;
     }
 
+#if defined(KOS_HARDWARE_RENDERER)
+    // DCTODO: DrawDeformedSprite
+    validDraw = true;
+#else
     validDraw              = true;
     GFXSurface *surface    = &gfxSurface[sheetID];
     uint8 *pixels          = surface->pixels;
@@ -4344,6 +4366,7 @@ void RSDK::DrawDeformedSprite(uint16 sheetID, int32 inkEffect, int32 alpha)
             }
             break;
     }
+#endif
 }
 
 void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position, Vector2 *offset, bool32 screenRelative)
@@ -4681,10 +4704,9 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
 }
 void RSDK::DrawAniTile(uint16 sheetID, uint16 tileIndex, uint16 srcX, uint16 srcY, uint16 width, uint16 height)
 {
+#if defined(KOS_HARDWARE_RENDERER)
     // DCTODO: DrawAniTile
-    // (using early return so I can still statically analyze stuff!)
-    return;
-#if !defined(KOS_HARDWARE_RENDERER)
+#else
     if (sheetID < SURFACE_COUNT && tileIndex < TILE_COUNT) {
         GFXSurface *surface = &gfxSurface[sheetID];
 

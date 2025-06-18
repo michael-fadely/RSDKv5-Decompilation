@@ -91,8 +91,11 @@ struct GFXSurface {
 };
 
 struct ScreenInfo {
+    // DCFIXME: KOS_HARDWARE_RENDERER should be used here, but it's defined in a header, not during build
+#if !RETRO_USE_ORIGINAL_CODE && RETRO_PLATFORM != RETRO_KALLISTIOS
     // uint16 *frameBuffer;
     uint16 frameBuffer[SCREEN_XMAX * SCREEN_YSIZE];
+#endif
     Vector2 position;
     Vector2 size;
     Vector2 center;
