@@ -149,8 +149,10 @@ RenderDevice::WindowInfo RenderDevice::displayInfo;
 
 DrawList RSDK::drawGroups[DRAWGROUP_COUNT];
 
+#if !defined(KOS_HARDWARE_RENDERER)
 uint16 RSDK::blendLookupTable[0x20 * 0x100];
 uint16 RSDK::subtractLookupTable[0x20 * 0x100];
+#endif
 
 GFXSurface RSDK::gfxSurface[SURFACE_COUNT];
 
@@ -258,12 +260,14 @@ void RSDK::RenderDeviceBase::ProcessDimming()
 
 void RSDK::GenerateBlendLookupTable()
 {
+#if !defined(KOS_HARDWARE_RENDERER)
     for (int32 y = 0; y < 0x100; y++) {
         for (int32 x = 0; x < 0x20; x++) {
             blendLookupTable[x + (y * 0x20)]    = y * x >> 8;
             subtractLookupTable[x + (y * 0x20)] = y * (0x1F - x) >> 8;
         }
     }
+#endif
 
 #if !RETRO_REV02
     for (int32 i = 0; i < 0x10000; ++i) {
