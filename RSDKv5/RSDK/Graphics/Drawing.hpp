@@ -295,8 +295,10 @@ extern ScreenInfo screens[SCREEN_COUNT];
 extern CameraInfo cameras[CAMERA_COUNT];
 extern ScreenInfo *currentScreen;
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 extern int32 shaderCount;
 extern ShaderEntry shaderList[SHADER_COUNT];
+#endif
 
 extern VideoSettings videoSettings;
 extern VideoSettings videoSettingsBackup;

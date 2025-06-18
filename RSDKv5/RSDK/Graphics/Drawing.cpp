@@ -162,8 +162,10 @@ ScreenInfo RSDK::screens[SCREEN_COUNT];
 CameraInfo RSDK::cameras[CAMERA_COUNT];
 ScreenInfo *RSDK::currentScreen = NULL;
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 int32 RSDK::shaderCount = 0;
 ShaderEntry RSDK::shaderList[SHADER_COUNT];
+#endif
 
 bool32 RSDK::changedVideoSettings = false;
 VideoSettings RSDK::videoSettings;
