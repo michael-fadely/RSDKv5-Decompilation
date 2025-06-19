@@ -17,6 +17,30 @@ struct KOSTexture
 
 static KOSTexture screenTextures[SCREEN_COUNT] {};
 
+// ========== FAST SH4 UTILITY ROUTINES ==========
+
+//! Calculates 1.0f/sqrtf( \p x ), using a fast approximation.
+__always_inline float shz_inverse_sqrtf(float x) {
+    asm("fsrra %0" : "+f" (x));
+    return x;
+}
+
+//! Takes the inverse of \p p using a very fast approximation, returning a positive result.
+__always_inline float shz_inverse_posf(float x) {
+    return shz_inverse_sqrtf(x * x);
+}
+
+//! Divides \p num by \p denom using a very fast approximation, returning a positive result.
+__always_inline float shz_div_posf(float num, float denom) {
+    return num * shz_inverse_posf(denom);
+}
+
+// ===============================================
+
+// Global pixel scale factors based on pixel-to-screen size ratio
+static float pixelScaleX = 1.0f;
+static float pixelScaleY = 1.0f;
+
 #if defined(KOS_HARDWARE_RENDERER)
 namespace {
 enum PrimitiveTypes {
@@ -28,6 +52,7 @@ enum PrimitiveTypes {
 
 float drawDepth = 1.0f;
 pvr_ptr_t lastTexture = nullptr;
+pvr_dr_state_t drState = 0;
 int lastSrcBlend = -1;
 int lastDstBlend = -1;
 PrimitiveTypes lastPrimitiveType = PrimitiveTypes_None;
@@ -353,9 +378,12 @@ void RenderDevice::InitFPSCap()
     DC_STUB();
 }
 // static
-bool RenderDevice::CheckFPSCap()
-{
+bool RenderDevice::CheckFPSCap() {
+    // Render idle time as a green bar
+    vid_border_color(0, 255, 0);
     pvr_wait_ready();
+    // Render scene submission time as a red bar
+    vid_border_color(255, 0, 0);
     return true;
 }
 // static
@@ -397,17 +425,25 @@ void RenderDevice::BeginScene() {
     SetDepth(0);
     lastPrimitiveType = PrimitiveTypes_None;
 
+    // Update our cached values for pixel global pixel scaling.
+    pixelScaleX = viewSize.x / pixelSize.x;
+    pixelScaleY = viewSize.y / pixelSize.y;
+
     pvr_scene_begin();
     // DCWIP: rendering everything as transparent
     if (pvr_list_begin(PVR_LIST_TR_POLY) == -1) {
         printf("[pvr] [NG] pvr_list_begin(PVR_LIST_TR_POLY) returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
     }
+
+    pvr_dr_init(&drState);
 #endif
 }
 
 // static
 void RenderDevice::EndScene() {
 #if defined(KOS_HARDWARE_RENDERER)
+    pvr_dr_finish();
+
     // DCWIP: rendering everything as transparent
     if (pvr_list_finish() == -1) {
         printf("[pvr] [NG] pvr_list_finish() returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
@@ -416,6 +452,9 @@ void RenderDevice::EndScene() {
     if (pvr_scene_finish() == -1) {
         printf("[pvr] [NG] pvr_scene_finish() returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
     }
+
+    // Render CPU time as a blue bar.
+    vid_border_color(0, 0, 255);
 #endif
 }
 
@@ -609,13 +648,10 @@ void RenderDevice::PrepareTexturedQuad(int32 y, const GFXSurface* surface) {
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
 
-        pvr_sprite_hdr_t header;
-        pvr_sprite_compile(&header, &context);
-
-        if (pvr_prim(&header, sizeof(header)) == -1) {
-            printf("[pvr] [NG] pvr_prim for quad header failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            ResetLastState();
-        }
+        // Compile polygon header directly into SQ to avoid having to copy it.
+        auto *header = reinterpret_cast<pvr_sprite_hdr_t *>(pvr_dr_target(drState));
+        pvr_sprite_compile(header, &context);
+        pvr_dr_commit(header);
     }
 }
 
@@ -634,47 +670,42 @@ void RenderDevice::DrawTexturedQuad(
 
     lastPrimitiveWasConsumed = true;
 
-    const float scaleX = viewSize.x / pixelSize.x;
-    const float scaleY = viewSize.y / pixelSize.y;
+    // Compute constants up-front.
+    const float x0 = static_cast<float>(x) * pixelScaleX;
+    const float x1 = x0 + (static_cast<float>(width) * pixelScaleX);
+    const float y0 = static_cast<float>(y) * pixelScaleY;
+    const float y1 = y0 + (static_cast<float>(height) * pixelScaleY);
+    const float u0 = shz_div_posf(sprX0, surface->width);
+    const float v0 = shz_div_posf(sprY0, surface->height);
+    const float u1 = shz_div_posf(sprX1, surface->width);
+    const float v1 = shz_div_posf(sprY1, surface->height);
+    const float z  = GetDepth();
 
-    const auto surfaceWidth = static_cast<float>(surface->width);
-    const auto surfaceHeight = static_cast<float>(surface->height);
+    // First 32 bytes of a `pvr_sprite_txr_t` structure mapped to a SQ.
+    auto *spr1 = reinterpret_cast<pvr_sprite_txr_t *>(pvr_dr_target(drState));
+    spr1->ax = x0;
+    spr1->ay = y0;
+    spr1->az = z;
+    spr1->bx = x1;
+    spr1->by = y0;
+    spr1->bz = z;
+    spr1->cx = x1;
+    spr1->flags = PVR_CMD_VERTEX_EOL;
+    pvr_dr_commit(spr1);
 
-    const float x0 = static_cast<float>(x) * scaleX;
-    const float x1 = x0 + (static_cast<float>(width) * scaleX);
-    const float y0 = static_cast<float>(y) * scaleY;
-    const float y1 = y0 + static_cast<float>(height) * scaleY;
-
-    const float u0 = static_cast<float>(sprX0) / surfaceWidth;
-    const float u1 = static_cast<float>(sprX1) / surfaceWidth;
-
-    const float v0 = static_cast<float>(sprY0) / surfaceHeight;
-    const float v1 = static_cast<float>(sprY1) / surfaceHeight;
-
-    pvr_sprite_txr_t vert {};
-
-    vert.flags = PVR_CMD_VERTEX_EOL;
-    vert.ax = x0;
-    vert.ay = y0;
-    vert.az = GetDepth();
-
-    vert.bx = x1;
-    vert.by = y0;
-    vert.bz = vert.az;
-
-    vert.cx = x1;
-    vert.cy = y1;
-    vert.cz = vert.az;
-
-    vert.dx = x0;
-    vert.dy = y1;
-    vert.auv = PVR_PACK_16BIT_UV(u0, v0);
-    vert.buv = PVR_PACK_16BIT_UV(u1, v0);
-    vert.cuv = PVR_PACK_16BIT_UV(u1, v1);
-
-    if (pvr_prim(&vert, sizeof(vert)) == -1) {
-        printf("[pvr] [NG] pvr_prim for quad body failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-    }
+    /* NOTE: Disgusting manual pointer offsetting is due to the fact that KOS's
+             PVR DR API only returns `pvr_vertex_t*,` even though it works fine with
+             all geometry types. */
+    // Second 32 bytes of a 'pvr_sprite_txr_t' structure mapped to the second SQ.
+    auto *spr2 = reinterpret_cast<pvr_sprite_txr_t *>(reinterpret_cast<uintptr_t>(pvr_dr_target(drState)) - 32);
+    spr2->cy = y1;
+    spr2->cz = z;
+    spr2->dx = x0;
+    spr2->dy = y1;
+    spr2->auv = PVR_PACK_16BIT_UV(u0, v0);
+    spr2->buv = PVR_PACK_16BIT_UV(u1, v0);
+    spr2->cuv = PVR_PACK_16BIT_UV(u1, v1);
+    pvr_dr_commit(reinterpret_cast<uint8_t *>(spr2) + 32);
 }
 
 // static
@@ -711,13 +742,10 @@ void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, cons
         context.blend.src = srcBlend;
         context.blend.dst = dstBlend;
 
-        pvr_poly_hdr_t header;
-        pvr_poly_compile(&header, &context);
-
-        if (pvr_prim(&header, sizeof(header)) == -1) {
-            printf("[pvr] [NG] pvr_prim for textured poly header failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            ResetLastState();
-        }
+        // Compile polygon header directly into SQ to avoid having to copy it.
+        auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
+        pvr_poly_compile(header, &context);
+        pvr_dr_commit(header);
     }
 }
 
@@ -739,53 +767,68 @@ void RenderDevice::DrawTexturedPoly(
 
     lastPrimitiveWasConsumed = true;
 
-    const float scaleX = viewSize.x / pixelSize.x;
-    const float scaleY = viewSize.y / pixelSize.y;
+    // Compute constants up-front
+    const float x0 = static_cast<float>(x) * pixelScaleX;
+    const float y0 = static_cast<float>(y) * pixelScaleY;
+    const float x1 = x0 + (static_cast<float>(width)  * pixelScaleX);
+    const float y1 = y0 + (static_cast<float>(height) * pixelScaleY);
+    const float z  = GetDepth();
+    const float u0 = shz_div_posf(sprX0, surface->width);
+    const float v0 = shz_div_posf(sprY0, surface->height);
+    const float u1 = shz_div_posf(sprX1, surface->width);
+    const float v1 = shz_div_posf(sprY1, surface->height);
 
-    const auto surfaceWidth = static_cast<float>(surface->width);
-    const auto surfaceHeight = static_cast<float>(surface->height);
-
-    const float depth = GetDepth();
-
-    vec3f p0 {
-        .x = static_cast<float>(x) * scaleX,
-        .y = static_cast<float>(y) * scaleY,
-        .z = depth
-    };
-
-    vec3f p3 {
-        .x = p0.x + (static_cast<float>(width) * scaleX),
-        .y = p0.y + (static_cast<float>(height) * scaleY),
-        .z = depth
-    };
-
-    vec3f p1 {
-        .x = p3.x,
-        .y = p0.y,
-        .z = depth
-    };
-
-    vec3f p2 {
-        .x = p0.x,
-        .y = p3.y,
-        .z = depth
+    /* Since we have to potentially modify the vertex stream later on to apply
+       rotation to it, we're better off constructing it in RAM rather than 
+       using the PVR DR API to write to the SQs directly. SQs are read-only! */
+    pvr_vertex_t verts[4] = {
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = x0,
+            .y = y0,
+            .z = z,
+            .u = u0,
+            .v = v0,
+            .argb = 0x00ffffff | (alpha << 24)
+        },
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = x1,
+            .y = y0,
+            .z = z,
+            .u = u1,
+            .v = v0,
+            .argb = 0x00ffffff | (alpha << 24)            
+        },
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = x0,
+            .y = y1,
+            .z = z,
+            .u = u0,
+            .v = v1,
+            .argb = 0x00ffffff | (alpha << 24)
+        },
+        {
+            .flags = PVR_CMD_VERTEX_EOL,            
+            .x = x1,
+            .y = y1,
+            .z = z,
+            .u = u1,
+            .v = v1,
+            .argb = 0x00ffffff | (alpha << 24)   
+        }
     };
 
     if (rotation != 0) {
-        const float cx = static_cast<float>(ox) * scaleX;
-        const float cy = static_cast<float>(oy) * scaleY;
+        const float cx = static_cast<float>(ox) * pixelScaleX;
+        const float cy = static_cast<float>(oy) * pixelScaleY;
 
         const float radians = static_cast<float>(rotation) * static_cast<float>(M_TWOPI) / 512.0f;
         const float s = sinf(radians);
         const float c = cosf(radians);
 
-        auto rotate = [cx, cy, s, c](vec3f& p) 
-        /* Allowing this to get inlined causes an ICE in SH-GCC14.
-           Remove __noinline once it's fixed, because it's bullshit. */
-#if __GNUC__ >= 14
-        __noinline
-#endif 
-        {
+        auto rotate = [cx, cy, s, c](pvr_vertex_t& p) {
             p.x -= cx;
             p.y -= cy;
 
@@ -796,71 +839,16 @@ void RenderDevice::DrawTexturedPoly(
             p.y = py + cy;
         };
 
-        rotate(p0);
-        rotate(p1);
-        rotate(p2);
-        rotate(p3);
+        rotate(verts[0]);
+        rotate(verts[1]);
+        rotate(verts[2]);
+        rotate(verts[3]);
     }
 
-    const float u0 = static_cast<float>(sprX0) / surfaceWidth;
-    const float u1 = static_cast<float>(sprX1) / surfaceWidth;
-
-    const float v0 = static_cast<float>(sprY0) / surfaceHeight;
-    const float v1 = static_cast<float>(sprY1) / surfaceHeight;
-
-    {
-        pvr_vertex_t vert {};
-
-        vert.flags = PVR_CMD_VERTEX;
-        vert.argb = 0x00ffffff | (alpha << 24);
-        vert.oargb = 0;
-        vert.z = depth;
-
-        // top left
-        vert.x = p0.x;
-        vert.y = p0.y;
-        vert.u = u0;
-        vert.v = v0;
-
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for textured poly point 1/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
-
-        // top right
-        vert.x = p1.x;
-        vert.y = p1.y;
-        vert.u = u1;
-        vert.v = v0;
-
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for textured poly point 2/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
-
-        // bottom left
-        vert.x = p2.x;
-        vert.y = p2.y;
-        vert.u = u0;
-        vert.v = v1;
-
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for textured poly point 3/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
-
-        // bottom right
-        vert.flags = PVR_CMD_VERTEX_EOL;
-        vert.x = p3.x;
-        vert.y = p3.y;
-        vert.u = u1;
-        vert.v = v1;
-
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for textured poly point 4/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
-    }
+    /* This is the routine called by `pvr_prim()` under-the-hood when
+       the current list does not use DMA transfers and PVR DR mode is
+       enabled. We can call this directly to shave off a few cycles. */
+    sq_fast_cpy(SQ_MASK_DEST(PVR_TA_INPUT), verts, 4);
 }
 
 // static
@@ -889,13 +877,10 @@ void RenderDevice::PrepareColoredPoly(int32 y, int srcBlend, int dstBlend) {
         context.blend.src = srcBlend;
         context.blend.dst = dstBlend;
 
-        pvr_poly_hdr_t header;
-        pvr_poly_compile(&header, &context);
-
-        if (pvr_prim(&header, sizeof(header)) == -1) {
-            printf("[pvr] [NG] pvr_prim for colored poly header failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            ResetLastState();
-        }
+        // Compile polygon header directly into SQ to avoid having to copy it.
+        auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
+        pvr_poly_compile(header, &context);
+        pvr_dr_commit(header);
     }
 }
 
@@ -912,57 +897,49 @@ void RenderDevice::DrawColoredPoly(
 
     lastPrimitiveWasConsumed = true;
 
-    const float scaleX = viewSize.x / pixelSize.x;
-    const float scaleY = viewSize.y / pixelSize.y;
+    // Compute constants up-front.
+    const float x0 = static_cast<float>(x) * pixelScaleX;
+    const float y0 = static_cast<float>(y) * pixelScaleY;
+    const float x1 = x0 + static_cast<float>(width) * pixelScaleX;
+    const float y1 = y0 + static_cast<float>(height) * pixelScaleY;
+    const float z  = GetDepth();
 
-    const float renderX = static_cast<float>(x) * scaleX;
-    const float renderY = static_cast<float>(y) * scaleY;
-    const float lmaoWidth = static_cast<float>(width) * scaleX;
-    const float lmaoHeight = static_cast<float>(height) * scaleY;
+    // top left
+    auto* vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
+    vert->flags = PVR_CMD_VERTEX;
+    vert->argb = color;
+    vert->z = z;
+    vert->x = x0;
+    vert->y = y0;
+    pvr_dr_commit(vert);
 
-    {
-        pvr_vertex_t vert {};
+    // top right
+    vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
+    vert->flags = PVR_CMD_VERTEX;
+    vert->argb = color;
+    vert->z = z;
+    vert->x = x1;
+    vert->y = y0;
+    pvr_dr_commit(vert);
 
-        vert.flags = PVR_CMD_VERTEX;
-        vert.argb = color;
-        vert.oargb = 0;
-        vert.z = GetDepth();
+    /* NOTE: After you have submitted two vertices to the PVR DR API,
+             you can safely skip setting anything held constant for
+             all verts, since both of the 2 SQs already have the value. */
+    // bottom left
+    vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
+    //vert->flags = PVR_CMD_VERTEX;
+    //vert->argb = color;
+    vert->x = x0;
+    vert->y = y1;
+    //vert->z = z;
+    pvr_dr_commit(vert);
 
-        // top left
-        vert.x = renderX;
-        vert.y = renderY;
-
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for colored poly point 1/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
-
-        // top right
-        vert.x = renderX + lmaoWidth;
-        vert.y = renderY;
-
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for colored poly point 2/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
-
-        // bottom left
-        vert.x = renderX;
-        vert.y = renderY + lmaoHeight;
-
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for colored poly point 3/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
-
-        // bottom right
-        vert.flags = PVR_CMD_VERTEX_EOL;
-        vert.x = renderX + lmaoWidth;
-        vert.y = renderY + lmaoHeight;
-
-        if (pvr_prim(&vert, sizeof(vert)) == -1) {
-            printf("[pvr] [NG] pvr_prim for colored poly point 4/4 failed (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
-            // DCFIXME: pvr_prim failed. now what?
-        }
-    }
+    // bottom right
+    vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
+    vert->flags = PVR_CMD_VERTEX_EOL;
+    //vert->argb = color;
+    vert->x = x1;
+    vert->y = y1;
+    //vert->z = z;
+    pvr_dr_commit(vert);
 }
