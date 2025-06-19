@@ -988,8 +988,13 @@ void RSDK::ProcessObjectMovement(Entity *entity, Hitbox *outerBox, Hitbox *inner
 #endif
 
             if (entity->onGround) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
                 entity->velocity.x = entity->groundVel * cos256LookupTable[entity->angle & 0xFF] >> 8;
                 entity->velocity.y = entity->groundVel * sin256LookupTable[entity->angle & 0xFF] >> 8;
+#else
+                entity->velocity.x = entity->groundVel * Cos256(entity->angle) >> 8;
+                entity->velocity.y = entity->groundVel * Sin256(entity->angle) >> 8;
+#endif
             }
             else {
                 entity->groundVel = entity->velocity.x;
@@ -1613,13 +1618,23 @@ void RSDK::ProcessPathGrip()
     absSpeed &= 0x3FFFF;
     while (checkDist > -1) {
         if (checkDist >= 1) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
             xVel = cos256LookupTable[collisionEntity->angle] << 10;
             yVel = sin256LookupTable[collisionEntity->angle] << 10;
+#else
+            xVel = Cos256(collisionEntity->angle) << 10;
+            yVel = Sin256(collisionEntity->angle) << 10;
+#endif
             checkDist--;
         }
         else {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
             xVel      = absSpeed * cos256LookupTable[collisionEntity->angle] >> 8;
             yVel      = absSpeed * sin256LookupTable[collisionEntity->angle] >> 8;
+#else
+            xVel      = absSpeed * Cos256(collisionEntity->angle) >> 8;
+            yVel      = absSpeed * Sin256(collisionEntity->angle) >> 8;
+#endif
             checkDist = -1;
         }
 
@@ -1930,8 +1945,13 @@ void RSDK::ProcessPathGrip()
             else {
                 collisionEntity->onGround      = false;
                 collisionEntity->collisionMode = newCollisionMode;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
                 collisionEntity->velocity.x    = cos256LookupTable[collisionEntity->angle] * collisionEntity->groundVel >> 8;
                 collisionEntity->velocity.y    = sin256LookupTable[collisionEntity->angle] * collisionEntity->groundVel >> 8;
+#else
+                collisionEntity->velocity.x    = Cos256(collisionEntity->angle) * collisionEntity->groundVel >> 8;
+                collisionEntity->velocity.y    = Sin256(collisionEntity->angle) * collisionEntity->groundVel >> 8;
+#endif
                 if (collisionEntity->velocity.y < -TO_FIXED(16))
                     collisionEntity->velocity.y = -TO_FIXED(16);
 
@@ -1965,8 +1985,13 @@ void RSDK::ProcessPathGrip()
             else {
                 collisionEntity->onGround      = false;
                 collisionEntity->collisionMode = newCollisionMode;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
                 collisionEntity->velocity.x    = cos256LookupTable[collisionEntity->angle] * collisionEntity->groundVel >> 8;
                 collisionEntity->velocity.y    = sin256LookupTable[collisionEntity->angle] * collisionEntity->groundVel >> 8;
+#else
+                collisionEntity->velocity.x    = Cos256(collisionEntity->angle) * collisionEntity->groundVel >> 8;
+                collisionEntity->velocity.y    = Sin256(collisionEntity->angle) * collisionEntity->groundVel >> 8;
+#endif
 
                 if (collisionEntity->velocity.y < -TO_FIXED(16))
                     collisionEntity->velocity.y = -TO_FIXED(16);
@@ -2015,8 +2040,13 @@ void RSDK::ProcessPathGrip()
             else {
                 collisionEntity->onGround      = false;
                 collisionEntity->collisionMode = newCollisionMode;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
                 collisionEntity->velocity.x    = cos256LookupTable[collisionEntity->angle] * collisionEntity->groundVel >> 8;
                 collisionEntity->velocity.y    = sin256LookupTable[collisionEntity->angle] * collisionEntity->groundVel >> 8;
+#else
+                collisionEntity->velocity.x    = Cos256(collisionEntity->angle) * collisionEntity->groundVel >> 8;
+                collisionEntity->velocity.y    = Sin256(collisionEntity->angle) * collisionEntity->groundVel >> 8;
+#endif
 
                 if (collisionEntity->velocity.y < -TO_FIXED(16))
                     collisionEntity->velocity.y = -TO_FIXED(16);
@@ -2051,8 +2081,13 @@ void RSDK::ProcessPathGrip()
             else {
                 collisionEntity->onGround      = false;
                 collisionEntity->collisionMode = newCollisionMode;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
                 collisionEntity->velocity.x    = cos256LookupTable[collisionEntity->angle] * collisionEntity->groundVel >> 8;
                 collisionEntity->velocity.y    = sin256LookupTable[collisionEntity->angle] * collisionEntity->groundVel >> 8;
+#else
+                collisionEntity->velocity.x    = Cos256(collisionEntity->angle) * collisionEntity->groundVel >> 8;
+                collisionEntity->velocity.y    = Sin256(collisionEntity->angle) * collisionEntity->groundVel >> 8;
+#endif
 
                 if (collisionEntity->velocity.y < -TO_FIXED(16))
                     collisionEntity->velocity.y = -TO_FIXED(16);
