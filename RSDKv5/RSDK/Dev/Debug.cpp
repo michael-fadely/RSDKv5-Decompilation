@@ -1006,8 +1006,10 @@ void RSDK::DevMenu_VideoOptionsMenu()
     DrawDevString(devMenu.windowed ? "NO" : "YES", currentScreen->center.x + 80, dy, ALIGN_CENTER, 0xF0F080);
 
     dy += 8;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     DrawDevString("Screen Shader:", currentScreen->center.x - 96, dy, ALIGN_LEFT, selectionColors[3]);
     DrawDevString(shaderList[videoSettings.shaderID].name, currentScreen->center.x + 80, dy, ALIGN_CENTER, 0xF0F080);
+#endif
 
     dy += 16;
     DrawDevString("Confirm", currentScreen->center.x, dy, ALIGN_CENTER, selectionColors[4]);
@@ -1107,7 +1109,9 @@ void RSDK::DevMenu_VideoOptionsMenu()
             if (controller[CONT_ANY].keyStart.press || confirm) {
                 // do confirm
                 videoSettings.windowed = devMenu.windowed;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                 shaderList[0].linear   = !devMenu.windowed;
+#endif
                 if (!devMenu.windowScale)
                     videoSettings.shaderID = SHADER_NONE;
                 devMenu.windowScale++;

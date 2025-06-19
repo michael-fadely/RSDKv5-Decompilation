@@ -91,8 +91,11 @@ struct GFXSurface {
 };
 
 struct ScreenInfo {
+    // DCFIXME: KOS_HARDWARE_RENDERER should be used here, but it's defined in a header, not during build
+#if !RETRO_USE_ORIGINAL_CODE && RETRO_PLATFORM != RETRO_KALLISTIOS
     // uint16 *frameBuffer;
     uint16 frameBuffer[SCREEN_XMAX * SCREEN_YSIZE];
+#endif
     Vector2 position;
     Vector2 size;
     Vector2 center;
@@ -278,8 +281,11 @@ private:
 extern DrawList drawGroups[DRAWGROUP_COUNT];
 extern char drawGroupNames[0x10][0x10];
 
+// DCFIXME: KOS_HARDWARE_RENDERER should be used here, but it's defined in a header, not during build
+#if !RETRO_USE_ORIGINAL_CODE && RETRO_PLATFORM != RETRO_KALLISTIOS
 extern uint16 blendLookupTable[0x20 * 0x100];
 extern uint16 subtractLookupTable[0x20 * 0x100];
+#endif
 
 extern GFXSurface gfxSurface[SURFACE_COUNT];
 
@@ -289,8 +295,10 @@ extern ScreenInfo screens[SCREEN_COUNT];
 extern CameraInfo cameras[CAMERA_COUNT];
 extern ScreenInfo *currentScreen;
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 extern int32 shaderCount;
 extern ShaderEntry shaderList[SHADER_COUNT];
+#endif
 
 extern VideoSettings videoSettings;
 extern VideoSettings videoSettingsBackup;
