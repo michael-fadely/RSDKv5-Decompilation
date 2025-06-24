@@ -55,14 +55,31 @@ extern uint8 arcTan256LookupTable[0x100 * 0x100];
 void ClearTrigLookupTables();
 void CalculateTrigAngles();
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+// https://github.com/KallistiOS/KallistiOS/pull/754
+// when this ^ PR or equivalent is implemented, these functions can be replaced
+
+__always_inline float fast_isin(int angle) {
+    return __builtin_sinf(static_cast<float>(angle) / 10430.37835f);
+}
+
+__always_inline float fast_icos(int angle) {
+    return __builtin_cosf(static_cast<float>(angle) / 10430.37835f);
+}
+
+__always_inline float fast_itan(int angle) {
+    return __builtin_tanf(static_cast<float>(angle) / 10430.37835f);
+}
+#endif
+
 #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
 inline int32 Sin1024(int32 angle) { return sin1024LookupTable[angle & 0x3FF]; }
 inline int32 Cos1024(int32 angle) { return cos1024LookupTable[angle & 0x3FF]; }
 inline int32 Tan1024(int32 angle) { return tan1024LookupTable[angle & 0x3FF]; }
 #else
-int32 Sin1024(int32 angle);
-int32 Cos1024(int32 angle);
-int32 Tan1024(int32 angle);
+__always_inline int32 Sin1024(int32 angle) { return static_cast<int32>(fast_isin((angle & 0x3FF) << 6) * 1024); }
+__always_inline int32 Cos1024(int32 angle) { return static_cast<int32_t>(fast_icos((angle & 0x3FF) << 6) * 1024); }
+__always_inline int32 Tan1024(int32 angle) { return static_cast<int32_t>(fast_itan((angle & 0x3FF) << 6) * 1024); }
 #endif
 inline int32 ASin1024(int32 angle)
 {
@@ -86,9 +103,9 @@ inline int32 Sin512(int32 angle) { return sin512LookupTable[angle & 0x1FF]; }
 inline int32 Cos512(int32 angle) { return cos512LookupTable[angle & 0x1FF]; }
 inline int32 Tan512(int32 angle) { return tan512LookupTable[angle & 0x1FF]; }
 #else
-int32 Sin512(int32 angle);
-int32 Cos512(int32 angle);
-int32 Tan512(int32 angle);
+__always_inline int32 Sin512(int32 angle) { return static_cast<int32>(fast_isin((angle & 0x1FF) << 7) * 512); }
+__always_inline int32 Cos512(int32 angle) { return static_cast<int32_t>(fast_icos((angle & 0x1FF) << 7) * 512); }
+__always_inline int32 Tan512(int32 angle) { return static_cast<int32>(fast_itan((angle & 0x1FF) << 7) * 512); }
 #endif
 inline int32 ASin512(int32 angle)
 {
@@ -112,9 +129,9 @@ inline int32 Sin256(int32 angle) { return sin256LookupTable[angle & 0xFF]; }
 inline int32 Cos256(int32 angle) { return cos256LookupTable[angle & 0xFF]; }
 inline int32 Tan256(int32 angle) { return tan256LookupTable[angle & 0xFF]; }
 #else
-int32 Sin256(int32 angle);
-int32 Cos256(int32 angle);
-int32 Tan256(int32 angle);
+__always_inline int32 Sin256(int32 angle) { return static_cast<int32>(fast_isin((angle & 0xFF) << 8) * 256); }
+__always_inline int32 Cos256(int32 angle) { return static_cast<int32_t>(fast_icos((angle & 0xFF) << 8) * 256); }
+__always_inline int32 Tan256(int32 angle) { return static_cast<int32>(fast_itan((angle & 0xFF) << 8) * 256); }
 #endif
 inline int32 ASin256(int32 angle)
 {
