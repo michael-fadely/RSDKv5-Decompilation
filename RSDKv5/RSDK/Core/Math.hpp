@@ -78,8 +78,8 @@ inline int32 Cos1024(int32 angle) { return cos1024LookupTable[angle & 0x3FF]; }
 inline int32 Tan1024(int32 angle) { return tan1024LookupTable[angle & 0x3FF]; }
 #else
 __always_inline int32 Sin1024(int32 angle) { return static_cast<int32>(fast_isin((angle & 0x3FF) << 6) * 1024); }
-__always_inline int32 Cos1024(int32 angle) { return static_cast<int32_t>(fast_icos((angle & 0x3FF) << 6) * 1024); }
-__always_inline int32 Tan1024(int32 angle) { return static_cast<int32_t>(fast_itan((angle & 0x3FF) << 6) * 1024); }
+__always_inline int32 Cos1024(int32 angle) { return static_cast<int32>(fast_icos((angle & 0x3FF) << 6) * 1024); }
+__always_inline int32 Tan1024(int32 angle) { return static_cast<int32>(fast_itan((angle & 0x3FF) << 6) * 1024); }
 #endif
 inline int32 ASin1024(int32 angle)
 {
@@ -104,7 +104,7 @@ inline int32 Cos512(int32 angle) { return cos512LookupTable[angle & 0x1FF]; }
 inline int32 Tan512(int32 angle) { return tan512LookupTable[angle & 0x1FF]; }
 #else
 __always_inline int32 Sin512(int32 angle) { return static_cast<int32>(fast_isin((angle & 0x1FF) << 7) * 512); }
-__always_inline int32 Cos512(int32 angle) { return static_cast<int32_t>(fast_icos((angle & 0x1FF) << 7) * 512); }
+__always_inline int32 Cos512(int32 angle) { return static_cast<int32>(fast_icos((angle & 0x1FF) << 7) * 512); }
 __always_inline int32 Tan512(int32 angle) { return static_cast<int32>(fast_itan((angle & 0x1FF) << 7) * 512); }
 #endif
 inline int32 ASin512(int32 angle)
@@ -130,7 +130,7 @@ inline int32 Cos256(int32 angle) { return cos256LookupTable[angle & 0xFF]; }
 inline int32 Tan256(int32 angle) { return tan256LookupTable[angle & 0xFF]; }
 #else
 __always_inline int32 Sin256(int32 angle) { return static_cast<int32>(fast_isin((angle & 0xFF) << 8) * 256); }
-__always_inline int32 Cos256(int32 angle) { return static_cast<int32_t>(fast_icos((angle & 0xFF) << 8) * 256); }
+__always_inline int32 Cos256(int32 angle) { return static_cast<int32>(fast_icos((angle & 0xFF) << 8) * 256); }
 __always_inline int32 Tan256(int32 angle) { return static_cast<int32>(fast_itan((angle & 0xFF) << 8) * 256); }
 #endif
 inline int32 ASin256(int32 angle)
