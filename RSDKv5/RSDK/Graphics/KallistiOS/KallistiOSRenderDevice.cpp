@@ -2,6 +2,7 @@
 #include <dc/pvr.h>
 
 #include <RSDK/Core/Stub.hpp>
+#include <RSDK/Core/Math.hpp>
 
 struct KOSTexture
 {
@@ -820,13 +821,14 @@ void RenderDevice::DrawTexturedPoly(
         }
     };
 
+    rotation = (rotation & 0x1FF) << 7;
+
     if (rotation != 0) {
         const float cx = static_cast<float>(ox) * pixelScaleX;
         const float cy = static_cast<float>(oy) * pixelScaleY;
 
-        const float radians = static_cast<float>(rotation) * static_cast<float>(M_TWOPI) / 512.0f;
-        const float s = sinf(radians);
-        const float c = cosf(radians);
+        const float s = fast_isin(rotation);
+        const float c = fast_icos(rotation);
 
         auto rotate = [cx, cy, s, c](pvr_vertex_t& p) {
             p.x -= cx;
