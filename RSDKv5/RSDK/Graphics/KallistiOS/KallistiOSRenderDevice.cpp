@@ -790,7 +790,7 @@ void RenderDevice::DrawTexturedPoly(
             .z = z,
             .u = u0,
             .v = v0,
-            .argb = 0x00ffffff | (alpha << 24)
+            .argb = 0x00ffffffu | (alpha << 24)
         },
         {
             .flags = PVR_CMD_VERTEX,
@@ -799,7 +799,7 @@ void RenderDevice::DrawTexturedPoly(
             .z = z,
             .u = u1,
             .v = v0,
-            .argb = 0x00ffffff | (alpha << 24)
+            .argb = 0x00ffffffu | (alpha << 24)
         },
         {
             .flags = PVR_CMD_VERTEX,
@@ -808,7 +808,7 @@ void RenderDevice::DrawTexturedPoly(
             .z = z,
             .u = u0,
             .v = v1,
-            .argb = 0x00ffffff | (alpha << 24)
+            .argb = 0x00ffffffu | (alpha << 24)
         },
         {
             .flags = PVR_CMD_VERTEX_EOL,
@@ -817,7 +817,7 @@ void RenderDevice::DrawTexturedPoly(
             .z = z,
             .u = u1,
             .v = v1,
-            .argb = 0x00ffffff | (alpha << 24)
+            .argb = 0x00ffffffu | (alpha << 24)
         }
     };
 
