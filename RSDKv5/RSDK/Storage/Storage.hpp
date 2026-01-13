@@ -104,6 +104,14 @@ extern DataStorage dataStorage[DATASET_MAX];
 bool32 InitStorage();
 void ReleaseStorage();
 
+// DCFIXME: RETRO_PLATFORM might not be available here, so _arch_dreamcast is used instead
+#ifdef _arch_dreamcast
+void PinStorage_(void** pVar, const char* file, size_t line);
+void UnPinStorage_(void** pVar, const char* file, size_t line);
+#define PinStorage(pVar) PinStorage_(pVar, __FILE__, __LINE__)
+#define UnPinStorage(pVar) UnPinStorage_(pVar, __FILE__, __LINE__)
+#endif
+
 void AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line);
 void DefragmentAndGarbageCollectStorage(StorageDataSets set);
 void RemoveStorageEntry_(void **dataPtr, const char* file, size_t line);

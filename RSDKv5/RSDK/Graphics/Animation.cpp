@@ -53,6 +53,9 @@ uint16 RSDK::LoadSpriteAnimation(const char *filePath, uint8 scope)
 
         uint32 frameCount = ReadInt32(&info, false);
         AllocateStorage((void **)&spr->frames, frameCount * sizeof(SpriteFrame), DATASET_STG, false);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        PinStorage((void**)&spr->frames);
+#endif
 
         uint8 sheetCount = ReadInt8(&info);
         for (int32 s = 0; s < sheetCount; ++s) {
