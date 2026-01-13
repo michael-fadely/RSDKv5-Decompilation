@@ -50,28 +50,28 @@ struct StorageHeader
     uint32 capacity; // offset from end of this header to the next in 32-bit ints
     uint32 length; // length in 32-bit integers
 
-    [[nodiscard]] __always_inline bool isUsed() const {
+    [[nodiscard]] __always_inline bool IsUsed() const {
         return (flags & StorageFlags::used) != 0;
     }
 
-    [[nodiscard]] __always_inline bool isPinned() const {
+    [[nodiscard]] __always_inline bool IsPinned() const {
         return (flags & StorageFlags::pinned) != 0;
     }
 
-    // only valid if isUsed() is also true
-    [[nodiscard]] __always_inline bool hasExcess() const {
+    // only valid if IsUsed() is also true
+    [[nodiscard]] __always_inline bool HasExcess() const {
         return length < capacity;
     }
 
-    [[nodiscard]] __always_inline uint32 getDataSet() const {
+    [[nodiscard]] __always_inline uint32 GetDataSet() const {
         return (flags & StorageFlags::setIDMask) >> StorageFlags::setIDShift;
     }
 
-    [[nodiscard]] __always_inline StorageHeader* veryUnsafeNext() {
+    [[nodiscard]] __always_inline StorageHeader* VeryUnsafeNext() {
         return reinterpret_cast<StorageHeader*>(reinterpret_cast<uint32*>(this + 1) + capacity);
     }
 
-    [[nodiscard]] __always_inline uint32* getDataPtr() {
+    [[nodiscard]] __always_inline uint32* GetDataPtr() {
         return reinterpret_cast<uint32*>(this + 1);
     }
 };
@@ -128,7 +128,7 @@ bool32 RSDK::InitStorage()
         header->length = 0;
         header->capacity = (dataStorage[s].storageLimit / sizeof(uint32)) - sizeof_i<StorageHeader>();
         const void* poolEnd = reinterpret_cast <const uint8 *>(dataStorage[s].memoryTable) + dataStorage[s].storageLimit;
-        assert(header->veryUnsafeNext() == poolEnd);
+        assert(header->VeryUnsafeNext() == poolEnd);
 #endif
     }
 
@@ -240,8 +240,8 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
         *header = {};
         header->capacity = (storage->storageLimit / sizeof(uint32)) - sizeof_i<StorageHeader>();
         const void* poolEnd = reinterpret_cast<const uint8*>(storage->memoryTable) + storage->storageLimit;
-        assert(header->veryUnsafeNext() > header);
-        assert(header->veryUnsafeNext() == poolEnd);
+        assert(header->VeryUnsafeNext() > header);
+        assert(header->VeryUnsafeNext() == poolEnd);
     }
 
     const uint32 inputSize = size;
@@ -279,9 +279,9 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
         // DCTODO: account for pinning logic! push pinned objects as far to the end of memoryTable as possible
         while (currHeader < poolEnd) {
-            if (!currHeader->isUsed()) {
+            if (!currHeader->IsUsed()) {
                 // while we're here, defragment free space
-                if (lastHeader != nullptr && !lastHeader->isUsed()) {
+                if (lastHeader != nullptr && !lastHeader->IsUsed()) {
                     lastHeader->capacity += sizeof_i<StorageHeader>() + currHeader->capacity;
                     currHeader = lastHeader;
                 }
@@ -293,7 +293,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
             }
 
             lastHeader = currHeader;
-            currHeader = currHeader->veryUnsafeNext();
+            currHeader = currHeader->VeryUnsafeNext();
         }
     }
 
@@ -302,7 +302,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
         return; // :(
     }
 
-    auto* data = bestFitHeader->getDataPtr();
+    auto* data = bestFitHeader->GetDataPtr();
 
     bestFitHeader->flags = StorageFlags::used | (static_cast<uint32>(dataSet) << StorageFlags::setIDShift);
     bestFitHeader->poolOffset = static_cast<uint32>(reinterpret_cast<uintptr_t>(data) - reinterpret_cast<uintptr_t>(storage->memoryTable));
@@ -315,7 +315,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
     if (blockRemainder > /* WIP: was: >=; debugging */ sizeof_i<StorageHeader>()) {
         bestFitHeader->capacity = size_i;
 
-        auto* partition = bestFitHeader->veryUnsafeNext();
+        auto* partition = bestFitHeader->VeryUnsafeNext();
         *partition = {};
         partition->capacity = blockRemainder - sizeof_i<StorageHeader>();
     }
@@ -440,7 +440,7 @@ void RSDK::RemoveStorageEntry_(void **dataPtr, const char* file, size_t line)
     }
 
     StorageHeader* storageHeader = static_cast<StorageHeader*>(*dataPtr) - 1;
-    const auto setId = storageHeader->getDataSet();
+    const auto setId = storageHeader->GetDataSet();
     auto* storage = &dataStorage[setId];
 
     for (uint32 e = 0; e < storage->entryCount; ++e) {
@@ -553,7 +553,7 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
     // first, consolidate free space
     // DCTODO: combine with the other for loop. let's traverse as little as possible.
     for (StorageHeader *currHeader = poolBegin, *lastHeader = nullptr; currHeader < poolEnd;) {
-        const uint32* pData = currHeader->getDataPtr();
+        const uint32* pData = currHeader->GetDataPtr();
 
         currHeader->flags &= ~StorageFlags::used;
 
@@ -564,13 +564,13 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
             }
         }
 
-        if (!currHeader->isUsed() && lastHeader != nullptr && !lastHeader->isUsed()) {
+        if (!currHeader->IsUsed() && lastHeader != nullptr && !lastHeader->IsUsed()) {
             lastHeader->capacity += sizeof_i<StorageHeader>() + currHeader->capacity;
             currHeader = lastHeader;
         }
 
         lastHeader = currHeader;
-        currHeader = currHeader->veryUnsafeNext();
+        currHeader = currHeader->VeryUnsafeNext();
     }
 
     StorageHeader* lastValidHeader = nullptr;
@@ -578,23 +578,23 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
     // DO NOT TRUST defragDest CONTENT
     // ONLY lastValidHeader IS GUARANTEED VALID
     for (StorageHeader *currHeader = poolBegin, *defragDest = poolBegin; currHeader < poolEnd;) {
-        auto* next = currHeader->veryUnsafeNext();
+        auto* next = currHeader->VeryUnsafeNext();
 
-        if (!currHeader->isUsed()) {
+        if (!currHeader->IsUsed()) {
             currHeader = next;
             continue;
         }
 
-        if (currHeader->isPinned()) {
+        if (currHeader->IsPinned()) {
             // since allocs before pinned allocs can be moved backwards, we need
             // to make sure we fill the gap between the last non-pinned alloc and
             // the current pinned one.
             if (lastValidHeader != nullptr) {
-                assert(lastValidHeader->isUsed());
+                assert(lastValidHeader->IsUsed());
 
                 lastValidHeader->capacity = lastValidHeader->length; // reclaim space
 
-                auto* validNext = lastValidHeader->veryUnsafeNext();
+                auto* validNext = lastValidHeader->VeryUnsafeNext();
                 const size_t delta = reinterpret_cast<size_t>(currHeader) - reinterpret_cast<size_t>(validNext);
                 assert(!(delta % sizeof(uint32)));
 
@@ -613,9 +613,9 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
             continue;
         }
 
-        if (lastValidHeader != nullptr && lastValidHeader->hasExcess()) {
+        if (lastValidHeader != nullptr && lastValidHeader->HasExcess()) {
             lastValidHeader->capacity = lastValidHeader->length;
-            defragDest = lastValidHeader->veryUnsafeNext();
+            defragDest = lastValidHeader->VeryUnsafeNext();
         }
 
         if (defragDest < currHeader) {
@@ -626,7 +626,7 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
             memmove(defragDest, currHeader, numBytesToMove); // contents of currHeader is now potentially invalid
             assert(defragDest->capacity >= defragDest->length);
             defragDest->capacity = defragDest->length; // reclaim space
-            defragDest = defragDest->veryUnsafeNext();
+            defragDest = defragDest->VeryUnsafeNext();
         }
         else {
             lastValidHeader = currHeader;
@@ -636,12 +636,12 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
         currHeader = next;
     }
 
-    assert(lastValidHeader == nullptr || lastValidHeader->isUsed());
+    assert(lastValidHeader == nullptr || lastValidHeader->IsUsed());
 
     if (lastValidHeader != nullptr && lastValidHeader < poolEnd) {
         lastValidHeader->capacity = lastValidHeader->length; // reclaim space
 
-        auto* next = lastValidHeader->veryUnsafeNext();
+        auto* next = lastValidHeader->VeryUnsafeNext();
 
         if (next < poolEnd) {
             const size_t delta = reinterpret_cast<size_t>(poolEnd) - reinterpret_cast<size_t>(next);
@@ -669,8 +669,8 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
     // count active storage
     for (StorageHeader* currHeader = poolBegin;
          currHeader < poolEnd;
-         currHeader = currHeader->veryUnsafeNext()) {
-        if (currHeader->isUsed()) {
+         currHeader = currHeader->VeryUnsafeNext()) {
+        if (currHeader->IsUsed()) {
             activeStorage += currHeader->capacity + sizeof_i<StorageHeader>();
         }
     }
@@ -689,12 +689,12 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
 
     for (StorageHeader* currentHeader = poolBegin;
          currentHeader < poolEnd;
-         currentHeader = currentHeader->veryUnsafeNext()) {
-        if (!currentHeader->isUsed()) {
+         currentHeader = currentHeader->VeryUnsafeNext()) {
+        if (!currentHeader->IsUsed()) {
             continue;
         }
 
-        const uint32* pDataNew = currentHeader->getDataPtr();
+        const uint32* pDataNew = currentHeader->GetDataPtr();
         const uint32 newOffset = static_cast<uint32>(reinterpret_cast<uintptr_t>(pDataNew) - reinterpret_cast<uintptr_t>(storage->memoryTable));
         const uint32 oldOffset = currentHeader->poolOffset;
 
@@ -826,7 +826,7 @@ void RSDK::CopyStorage(uint32 **src, uint32 **dst)
         *src           = *dst;
 
         const auto* header = reinterpret_cast<StorageHeader*>(*dstPtr) - 1;
-        DataStorage* storage = &dataStorage[header->getDataSet()];
+        DataStorage* storage = &dataStorage[header->GetDataSet()];
 
         if (storage->entryCount < STORAGE_ENTRY_COUNT) {
             storage->dataEntries[storage->entryCount]    = src;
@@ -835,7 +835,7 @@ void RSDK::CopyStorage(uint32 **src, uint32 **dst)
             ++storage->entryCount;
 
             if (storage->entryCount >= STORAGE_ENTRY_COUNT)
-                GarbageCollectStorage(static_cast<StorageDataSets>(header->getDataSet()));
+                GarbageCollectStorage(static_cast<StorageDataSets>(header->GetDataSet()));
         }
     }
 #else
