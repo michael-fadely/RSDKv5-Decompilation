@@ -76,6 +76,7 @@ struct StorageHeader
     }
 };
 
+// DCTODO: remove this. literally only used for StorageHeader
 template <typename T>
 constexpr uint32 sizeof_i() {
     static_assert(sizeof(T) % sizeof(uint32) == 0, "nope");
@@ -570,6 +571,7 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
     // DCTODO: don't run defrag unless a deallocation or unpin has occurred
 
     bool relocatedStorage = false;
+    uint32 activeStorage = 0;
 
     auto* poolBegin = reinterpret_cast<StorageHeader*>(storage->memoryTable);
     const void* poolEnd = reinterpret_cast<const uint8*>(storage->memoryTable) + storage->storageLimit;
@@ -635,6 +637,8 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
                     // can be reclaimed later when the pinned block is freed.
                     lastValidHeader->capacity += delta / sizeof(uint32);
                 }
+
+                activeStorage += sizeof_i<StorageHeader>() + lastValidHeader->capacity;
             }
 
             lastValidHeader = currHeader;
@@ -648,9 +652,13 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
 
         // if somehow the last valid block has excess capacity, reclaim it and
         // move the relocation cursor to that reclaimed space.
-        if (lastValidHeader != nullptr && lastValidHeader->HasExcess()) {
-            lastValidHeader->capacity = lastValidHeader->length;
-            defragDest = lastValidHeader->VeryUnsafeNext();
+        if (lastValidHeader != nullptr) {
+            if (lastValidHeader->HasExcess()) {
+                lastValidHeader->capacity = lastValidHeader->length;
+                defragDest = lastValidHeader->VeryUnsafeNext();
+            }
+
+            activeStorage += sizeof_i<StorageHeader>() + lastValidHeader->capacity;
         }
 
         if (defragDest < currHeader) {
@@ -697,18 +705,28 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
                 lastValidHeader->capacity += delta / sizeof(uint32);
             }
         }
+
+        activeStorage += sizeof_i<StorageHeader>() + lastValidHeader->capacity;
     }
 
-    uint32 activeStorage = 0;
+#if RSDK_DEBUG
+    uint32 activeStorageEnumerated = 0;
 
-    // count active storage
+    // sum up used storage by enumerating through the pool to compare against
+    // the iterative calculation. this enumerated sum is expected to be correct.
     for (StorageHeader* currHeader = poolBegin;
          currHeader < poolEnd;
          currHeader = currHeader->VeryUnsafeNext()) {
         if (currHeader->IsUsed()) {
-            activeStorage += currHeader->capacity + sizeof_i<StorageHeader>();
+            activeStorageEnumerated += sizeof_i<StorageHeader>() + currHeader->capacity;
         }
     }
+
+    if (activeStorageEnumerated != activeStorage) {
+        printf("[GC] [%s] /!\\ ACTIVE STORAGE MISMATCH! EXPECTED: %u; GOT: %u",
+               DataSetToString(set), activeStorageEnumerated, activeStorage);
+    }
+#endif
 
     if (activeStorage > storage->usedStorage) {
         printf("[GC] [%s] [clearCount: %u] WARNING: GC OVERFLOW!!! %u > %u\n",
