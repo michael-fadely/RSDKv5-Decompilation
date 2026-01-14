@@ -74,14 +74,11 @@ struct StorageHeader
     [[nodiscard]] __always_inline uint32* GetDataPtr() {
         return reinterpret_cast<uint32*>(this + 1);
     }
-};
 
-// DCTODO: remove this. literally only used for StorageHeader
-template <typename T>
-constexpr uint32 sizeof_i() {
-    static_assert(sizeof(T) % sizeof(uint32) == 0, "nope");
-    return static_cast<uint32>(sizeof(T) / sizeof(uint32));
-}
+    [[nodiscard]] __always_inline static constexpr uint32 SizeInts() {
+        return static_cast<uint32>(sizeof(StorageHeader) / sizeof(uint32));
+    }
+};
 
 #endif
 
@@ -127,7 +124,7 @@ bool32 RSDK::InitStorage()
         auto* header = reinterpret_cast<StorageHeader*>(dataStorage[s].memoryTable);
         *header = {};
         header->length = 0;
-        header->capacity = (dataStorage[s].storageLimit / sizeof(uint32)) - sizeof_i<StorageHeader>();
+        header->capacity = (dataStorage[s].storageLimit - sizeof(StorageHeader)) / sizeof(uint32);
         const void* poolEnd = reinterpret_cast <const uint8 *>(dataStorage[s].memoryTable) + dataStorage[s].storageLimit;
         assert(header->VeryUnsafeNext() == poolEnd);
 #endif
@@ -243,7 +240,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
     if (storage->usedStorage == 0) {
         auto* header = reinterpret_cast<StorageHeader*>(storage->memoryTable);
         *header = {};
-        header->capacity = (storage->storageLimit / sizeof(uint32)) - sizeof_i<StorageHeader>();
+        header->capacity = (storage->storageLimit - sizeof(StorageHeader)) / sizeof(uint32);
         const void* poolEnd = reinterpret_cast<const uint8*>(storage->memoryTable) + storage->storageLimit;
         assert(header->VeryUnsafeNext() > header);
         assert(header->VeryUnsafeNext() == poolEnd);
@@ -263,12 +260,12 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
     bool ranGC = false;
 
     if (storage->entryCount >= STORAGE_ENTRY_COUNT ||
-        sizeof(uint32) * (storage->usedStorage + size_i + sizeof_i<StorageHeader>()) >= storage->storageLimit) {
+        sizeof(uint32) * (storage->usedStorage + size_i + StorageHeader::SizeInts()) >= storage->storageLimit) {
         DefragmentAndGarbageCollectStorage(dataSet);
         ranGC = true;
 
         if (storage->entryCount >= STORAGE_ENTRY_COUNT ||
-            sizeof(uint32) * (storage->usedStorage + size_i + sizeof_i<StorageHeader>()) >= storage->storageLimit) {
+            sizeof(uint32) * (storage->usedStorage + size_i + StorageHeader::SizeInts()) >= storage->storageLimit) {
             PrintAllocState(dataSet, storage, *dataPtr, inputSize, file, line);
             return; // :(
         }
@@ -287,7 +284,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
             if (!currHeader->IsUsed()) {
                 // while we're here, defragment free space
                 if (prevHeader != nullptr && !prevHeader->IsUsed()) {
-                    prevHeader->capacity += sizeof_i<StorageHeader>() + currHeader->capacity;
+                    prevHeader->capacity += StorageHeader::SizeInts() + currHeader->capacity;
                     currHeader = prevHeader;
                 }
 
@@ -333,12 +330,12 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
     // if there's enough space to partition this block, then do it.
     // otherwise, if there's any excess space, it'll be reclaimed later.
     const uint32 blockRemainder = bestFitHeader->capacity - size_i;
-    if (blockRemainder > /* WIP: was: >=; debugging */ sizeof_i<StorageHeader>()) {
+    if (blockRemainder > StorageHeader::SizeInts()) {
         bestFitHeader->capacity = size_i;
 
         auto* partition = bestFitHeader->VeryUnsafeNext();
         *partition = {};
-        partition->capacity = blockRemainder - sizeof_i<StorageHeader>();
+        partition->capacity = blockRemainder - StorageHeader::SizeInts();
     }
 
     if (clear) {
@@ -351,7 +348,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
     storage->dataEntries[storage->entryCount] = varPtr;
     storage->storageEntries[storage->entryCount] = data;
     ++storage->entryCount;
-    storage->usedStorage += sizeof_i<StorageHeader>() + size_i;
+    storage->usedStorage += StorageHeader::SizeInts() + size_i;
     //PrintAllocState(dataSet, storage, *dataPtr, inputSize, file, line);
 #else
     uint32 inputSize = size;
@@ -598,7 +595,7 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
             // if we have two adjacent unused blocks then combine them and continue along.
             // note that defragDest is left in place.
             if (prevHeader != nullptr && !prevHeader->IsUsed()) {
-                prevHeader->capacity += sizeof_i<StorageHeader>() + currHeader->capacity;
+                prevHeader->capacity += StorageHeader::SizeInts() + currHeader->capacity;
                 assert(prevHeader->VeryUnsafeNext() == next);
             }
             else {
@@ -638,7 +635,7 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
                     lastValidHeader->capacity += delta / sizeof(uint32);
                 }
 
-                activeStorage += sizeof_i<StorageHeader>() + lastValidHeader->capacity;
+                activeStorage += StorageHeader::SizeInts() + lastValidHeader->capacity;
             }
 
             lastValidHeader = currHeader;
@@ -658,7 +655,7 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
                 defragDest = lastValidHeader->VeryUnsafeNext();
             }
 
-            activeStorage += sizeof_i<StorageHeader>() + lastValidHeader->capacity;
+            activeStorage += StorageHeader::SizeInts() + lastValidHeader->capacity;
         }
 
         if (defragDest < currHeader) {
@@ -706,7 +703,7 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
             }
         }
 
-        activeStorage += sizeof_i<StorageHeader>() + lastValidHeader->capacity;
+        activeStorage += StorageHeader::SizeInts() + lastValidHeader->capacity;
     }
 
 #if RSDK_DEBUG
@@ -718,7 +715,7 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
          currHeader < poolEnd;
          currHeader = currHeader->VeryUnsafeNext()) {
         if (currHeader->IsUsed()) {
-            activeStorageEnumerated += sizeof_i<StorageHeader>() + currHeader->capacity;
+            activeStorageEnumerated += StorageHeader::SizeInts() + currHeader->capacity;
         }
     }
 
