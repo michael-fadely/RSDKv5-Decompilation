@@ -277,7 +277,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
     while (true)
     {
-        StorageHeader* lastHeader = nullptr;
+        StorageHeader* prevHeader = nullptr;
         StorageHeader* currHeader = reinterpret_cast<StorageHeader*>(storage->memoryTable);
         const void* poolEnd = reinterpret_cast<const uint8*>(storage->memoryTable) + storage->storageLimit;
 
@@ -285,9 +285,9 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
         while (currHeader < poolEnd) {
             if (!currHeader->IsUsed()) {
                 // while we're here, defragment free space
-                if (lastHeader != nullptr && !lastHeader->IsUsed()) {
-                    lastHeader->capacity += sizeof_i<StorageHeader>() + currHeader->capacity;
-                    currHeader = lastHeader;
+                if (prevHeader != nullptr && !prevHeader->IsUsed()) {
+                    prevHeader->capacity += sizeof_i<StorageHeader>() + currHeader->capacity;
+                    currHeader = prevHeader;
                 }
 
                 if (currHeader->capacity >= size_i &&
@@ -300,7 +300,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
                 }
             }
 
-            lastHeader = currHeader;
+            prevHeader = currHeader;
             currHeader = currHeader->VeryUnsafeNext();
         }
 
@@ -574,40 +574,42 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
     auto* poolBegin = reinterpret_cast<StorageHeader*>(storage->memoryTable);
     const void* poolEnd = reinterpret_cast<const uint8*>(storage->memoryTable) + storage->storageLimit;
 
-    // first, consolidate free space
-    // DCTODO: combine with the other for loop. let's traverse as little as possible.
-    for (StorageHeader *currHeader = poolBegin, *lastHeader = nullptr; currHeader < poolEnd;) {
-        const uint32* pData = currHeader->GetDataPtr();
+    StorageHeader* lastValidHeader = nullptr;
 
+    // DO NOT TRUST CONTENT OF defragDest TO BE VALID!
+    // ONLY lastValidHeader IS GUARANTEED VALID!
+    for (StorageHeader *currHeader = poolBegin, *defragDest = poolBegin, *prevHeader = nullptr; currHeader < poolEnd;) {
+        // first, consolidate free space
         currHeader->flags &= ~StorageFlags::used;
+        const uint32* currData = currHeader->GetDataPtr();
 
         for (uint32 e = 0; e < storage->entryCount; ++e) {
-            if (pData == storage->storageEntries[e]) {
+            if (currData == storage->storageEntries[e]) {
                 currHeader->flags |= StorageFlags::used;
                 break;
             }
         }
 
-        if (!currHeader->IsUsed() && lastHeader != nullptr && !lastHeader->IsUsed()) {
-            lastHeader->capacity += sizeof_i<StorageHeader>() + currHeader->capacity;
-            currHeader = lastHeader;
-        }
-
-        lastHeader = currHeader;
-        currHeader = currHeader->VeryUnsafeNext();
-    }
-
-    StorageHeader* lastValidHeader = nullptr;
-
-    // DO NOT TRUST defragDest CONTENT
-    // ONLY lastValidHeader IS GUARANTEED VALID
-    for (StorageHeader *currHeader = poolBegin, *defragDest = poolBegin; currHeader < poolEnd;) {
         auto* next = currHeader->VeryUnsafeNext();
 
         if (!currHeader->IsUsed()) {
+            // if we have two adjacent unused blocks then combine them and continue along.
+            // note that defragDest is left in place.
+            if (prevHeader != nullptr && !prevHeader->IsUsed()) {
+                prevHeader->capacity += sizeof_i<StorageHeader>() + currHeader->capacity;
+                assert(prevHeader->VeryUnsafeNext() == next);
+            }
+            else {
+                prevHeader = currHeader;
+            }
+
             currHeader = next;
             continue;
         }
+
+        // if the current header is used, then we don't care what the previous
+        // one is anymore; it's only helpful for consolidating adjacent blocks.
+        prevHeader = nullptr;
 
         if (currHeader->IsPinned()) {
             // since allocs before pinned allocs can be moved backwards, we need
@@ -623,20 +625,29 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
                 assert(!(delta % sizeof(uint32)));
 
                 if (delta > sizeof(StorageHeader)) {
+                    // if there's enough space for a block between the end of the last valid
+                    // header and this pinned block, place a free block in that space.
                     *validNext = {};
                     validNext->capacity = (delta - sizeof(StorageHeader)) / sizeof(uint32);
                 }
                 else {
+                    // otherwise, increase capacity to bridge the gap. this excess
+                    // can be reclaimed later when the pinned block is freed.
                     lastValidHeader->capacity += delta / sizeof(uint32);
                 }
             }
 
             lastValidHeader = currHeader;
             currHeader = next;
+
+            // would be complicated to relocate items from after this pinned block
+            // to the space before it, so just resume relocation after it instead.
             defragDest = next;
             continue;
         }
 
+        // if somehow the last valid block has excess capacity, reclaim it and
+        // move the relocation cursor to that reclaimed space.
         if (lastValidHeader != nullptr && lastValidHeader->HasExcess()) {
             lastValidHeader->capacity = lastValidHeader->length;
             defragDest = lastValidHeader->VeryUnsafeNext();
