@@ -306,7 +306,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
             break;
         }
 
-        printf("%s failed to find big enough block for alloc size %u - running GC and retrying",
+        printf("%s failed to find big enough block for alloc size %u - running GC and retrying\n",
                DataSetToString(dataSet),
                inputSize);
 
