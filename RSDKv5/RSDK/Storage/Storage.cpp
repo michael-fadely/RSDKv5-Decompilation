@@ -199,7 +199,6 @@ void RSDK::PinStorage_(void** pVar, const char* file, size_t line) {
         return;
     }
 
-    // DCTODO: track if pool has mutated (de/allocation), then defragment before pinning
     auto* header = static_cast<StorageHeader*>(*pVar) - 1;
     header->flags |= StorageFlags::pinned;
 }
@@ -209,7 +208,6 @@ void RSDK::UnPinStorage_(void** pVar, const char* file, size_t line) {
         return;
     }
 
-    // DCTODO: track if pool has mutated (de/allocation), then defragment before pinning
     auto* header = static_cast<StorageHeader*>(*pVar) - 1;
     header->flags &= ~StorageFlags::pinned;
 }
@@ -225,7 +223,13 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 #endif
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    if (dataPtr == nullptr || static_cast<uint32>(dataSet) >= DATASET_MAX) {
+    if (dataPtr == nullptr) {
+        return;
+    }
+
+    *dataPtr = nullptr;
+
+    if (static_cast<uint32>(dataSet) >= DATASET_MAX) {
         return;
     }
 
@@ -246,9 +250,6 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
     const uint32 inputSize = size;
 
-    uint32** varPtr = reinterpret_cast<uint32**>(dataPtr);
-    *varPtr = nullptr;
-
     {
         const uint32 size_aligned = size & -static_cast<int32>(sizeof(void *));
 
@@ -258,10 +259,12 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
     static_assert(sizeof(StorageHeader) % sizeof(uint32) == 0, "nope");
     const uint32 size_i = size / sizeof(uint32);
+    bool ranGC = false;
 
     if (storage->entryCount >= STORAGE_ENTRY_COUNT ||
         sizeof(uint32) * (storage->usedStorage + size_i + sizeof_i<StorageHeader>()) >= storage->storageLimit) {
         DefragmentAndGarbageCollectStorage(dataSet);
+        ranGC = true;
 
         if (storage->entryCount >= STORAGE_ENTRY_COUNT ||
             sizeof(uint32) * (storage->usedStorage + size_i + sizeof_i<StorageHeader>()) >= storage->storageLimit) {
@@ -272,6 +275,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
     StorageHeader* bestFitHeader = nullptr;
 
+    while (true)
     {
         StorageHeader* lastHeader = nullptr;
         StorageHeader* currHeader = reinterpret_cast<StorageHeader*>(storage->memoryTable);
@@ -286,15 +290,31 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
                     currHeader = lastHeader;
                 }
 
-                if (currHeader->capacity >= size_i && (bestFitHeader == nullptr || currHeader->capacity < bestFitHeader->capacity)) {
+                if (currHeader->capacity >= size_i &&
+                    (bestFitHeader == nullptr || currHeader->capacity < bestFitHeader->capacity)) {
                     bestFitHeader = currHeader;
-                    // we don't break out when we find an exact match so that free space defragmenting can continue.
+
+                    if (bestFitHeader->capacity == size_i) {
+                        break;
+                    }
                 }
             }
 
             lastHeader = currHeader;
             currHeader = currHeader->VeryUnsafeNext();
         }
+
+        if (bestFitHeader != nullptr || ranGC) {
+            break;
+        }
+
+        printf("%s failed to find big enough block for alloc size %u - running GC and retrying",
+               DataSetToString(dataSet),
+               inputSize);
+
+        // would be nice if this function just reported whether or not anything got done...
+        DefragmentAndGarbageCollectStorage(dataSet);
+        ranGC = true;
     }
 
     if (bestFitHeader == nullptr) {
@@ -324,7 +344,9 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
         memset(data, 0, static_cast<size_t>(sizeof(uint32)) * static_cast<size_t>(bestFitHeader->length));
     }
 
+    uint32** varPtr = reinterpret_cast<uint32**>(dataPtr);
     *varPtr = data;
+
     storage->dataEntries[storage->entryCount] = varPtr;
     storage->storageEntries[storage->entryCount] = data;
     ++storage->entryCount;
@@ -544,6 +566,8 @@ void RSDK::DefragmentAndGarbageCollectStorage(StorageDataSets set)
 
     // Perform garbage-collection. This deallocates all memory allocations that are no longer being used.
     GarbageCollectStorage(set);
+
+    // DCTODO: don't run defrag unless a deallocation or unpin has occurred
 
     bool relocatedStorage = false;
 
