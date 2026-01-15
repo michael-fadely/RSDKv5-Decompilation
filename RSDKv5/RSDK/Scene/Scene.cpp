@@ -1160,8 +1160,17 @@ void RSDK::ProcessParallax(TileLayer *layer)
             int32 *deformationData = &layer->deformationData[(scrollPos + (uint16)layer->deformationOffset) & 0x1FF];
             for (int32 i = 0; i < currentScreen->waterDrawPos; ++i) {
                 scanline->position.x = layer->scrollInfo[*lineScrollPtr].tilePos;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || !defined(KOS_HARDWARE_RENDERER)
                 if (layer->scrollInfo[*lineScrollPtr].deform)
                     scanline->position.x += TO_FIXED(*deformationData);
+#else
+                // on KOS, just hold onto the deform info so we can manually apply it on draw
+                if (layer->scrollInfo[*lineScrollPtr].deform) {
+                    scanline->deform.x = TO_FIXED(*deformationData);
+                } else {
+                    scanline->deform.x = 0;
+                }
+#endif
 
                 scanline->position.y = TO_FIXED(scrollPos++);
 
@@ -1180,8 +1189,17 @@ void RSDK::ProcessParallax(TileLayer *layer)
             deformationData = &layer->deformationDataW[(scrollPos + (uint16)layer->deformationOffsetW) & 0x1FF];
             for (int32 i = currentScreen->waterDrawPos; i < currentScreen->size.y; ++i) {
                 scanline->position.x = layer->scrollInfo[*lineScrollPtr].tilePos;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || !defined(KOS_HARDWARE_RENDERER)
                 if (layer->scrollInfo[*lineScrollPtr].deform)
                     scanline->position.x += TO_FIXED(*deformationData);
+#else
+                // on KOS, just hold onto the deform info so we can manually apply it on draw
+                if (layer->scrollInfo[*lineScrollPtr].deform) {
+                    scanline->deform.x = TO_FIXED(*deformationData);
+                } else {
+                    scanline->deform.x = 0;
+                }
+#endif
 
                 scanline->position.y = TO_FIXED(scrollPos++);
 
@@ -1400,13 +1418,15 @@ void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
 
     if (flip & FLIP_X) {
         sprX0 += TILE_SIZE;
-    } else {
+    }
+    else {
         sprX1 += TILE_SIZE;
     }
 
     if (flip & FLIP_Y) {
         sprY0 += TILE_SIZE;
-    } else {
+    }
+    else {
         sprY1 += TILE_SIZE;
     }
 
@@ -1418,6 +1438,84 @@ void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
         &gfxSurface[0]
     );
 }
+
+void DrawByLayoutEx(uint16 layout,
+                    const Vector2& upperLeft, const Vector2& upperRight,
+                    const Vector2& lowerLeft, const Vector2& lowerRight) {
+    layout &= 0xFFF;
+    const int32 flip = layout / TILE_COUNT;
+    layout %= TILE_COUNT;
+
+    const int32 tilesetX = TILE_SIZE * (static_cast<int32>(layout) % KOS_ATLAS_WIDTH_TILES);
+    const int32 tilesetY = TILE_SIZE * (static_cast<int32>(layout) / KOS_ATLAS_WIDTH_TILES);
+
+    int32 sprX0 = tilesetX;
+    int32 sprX1 = tilesetX;
+    int32 sprY0 = tilesetY;
+    int32 sprY1 = tilesetY;
+
+    if (flip & FLIP_X) {
+        sprX0 += TILE_SIZE;
+    }
+    else {
+        sprX1 += TILE_SIZE;
+    }
+
+    if (flip & FLIP_Y) {
+        sprY0 += TILE_SIZE;
+    }
+    else {
+        sprY1 += TILE_SIZE;
+    }
+
+    RenderDevice::DrawTexturedQuadEx(
+        upperLeft, upperRight,
+        lowerLeft, lowerRight,
+        sprX0, sprX1,
+        sprY0, sprY1,
+        &gfxSurface[0]
+    );
+}
+
+int32 GetLayerWrappedFromFixedX(const TileLayer* layer, int32 fixed_x) {
+    const int32 tileX = FROM_FIXED(fixed_x);
+
+    if (tileX >= TILE_SIZE * layer->xsize) {
+        fixed_x = TO_FIXED(tileX - TILE_SIZE * layer->xsize);
+    }
+    else if (tileX < 0) {
+        fixed_x = TO_FIXED(tileX + TILE_SIZE * layer->xsize);
+    }
+
+    return FROM_FIXED(fixed_x);
+}
+
+// DCTODO: put somewhere more accessible. could be useful elsewhere.
+template <typename T>
+T constexpr AlignUp(T value, size_t alignment)
+{
+    if (!value || alignment < 2)
+    {
+        return value;
+    }
+
+    value += alignment - 1;
+    value -= value % alignment;
+    return value;
+}
+
+// DCTODO: put somewhere more accessible. could be useful elsewhere.
+template <typename T>
+T constexpr AlignDown(T value, size_t alignment)
+{
+    if (!value || alignment < 2)
+    {
+        return value;
+    }
+
+    value -= value % alignment;
+    return value;
+}
 #endif
 
 void RSDK::DrawLayerHScroll(TileLayer *layer)
@@ -1426,52 +1524,88 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
         return;
 
 #if defined(KOS_HARDWARE_RENDERER)
-    ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
-    const int32 prepY = currentScreen->clipBound_Y1;
-    const auto* prepSurface = &gfxSurface[0];
+    const ScanlineInfo* upperScanline = &scanlines[currentScreen->clipBound_Y1];
 
-    const int32 sheetY = FROM_FIXED(scanline->position.y) & 0xF;
+    const int32 prepY = currentScreen->clipBound_Y1;
+    const GFXSurface* prepSurface = &gfxSurface[0];
+
+    const int32 sheetY = FROM_FIXED(upperScanline->position.y) & 0xF;
     int32 scanlineIncrement = TILE_SIZE - sheetY;
 
+    const int32 screenTileAligned = AlignUp(currentScreen->size.x, TILE_SIZE) / TILE_SIZE;
+
     for (int32 cy = currentScreen->clipBound_Y1 - sheetY; cy < currentScreen->clipBound_Y2; cy += TILE_SIZE) {
-        int32 x = scanline->position.x;
+        const int32 yRemainder = currentScreen->clipBound_Y2 - cy;
+        const int32 fromFixedUpperY = FROM_FIXED(upperScanline->position.y);
+        const ScanlineInfo* lowerScanline = upperScanline + std::min<int32>(scanlineIncrement - 1, yRemainder - 1);
 
-        {
-            const int32 tileX = FROM_FIXED(x);
-            if (tileX >= TILE_SIZE * layer->xsize) {
-                x = TO_FIXED(tileX - TILE_SIZE * layer->xsize);
-            } else if (tileX < 0) {
-                x = TO_FIXED(tileX + TILE_SIZE * layer->xsize);
-            }
-        }
+        int32 tilesToDraw = screenTileAligned;
+        int32 upperScanlineFixedX = upperScanline->position.x;
 
-        const int32 fromFixedX = FROM_FIXED(x);
-        const int32 fromFixedY = FROM_FIXED(scanline->position.y);
+        int32 fromFixedUpperX = GetLayerWrappedFromFixedX(layer, upperScanlineFixedX + upperScanline->deform.x) % currentScreen->pitch;
 
-        // DCFIXME: only the first scanline's y offset is used
-        const int32 screenY = cy;
+        const int32 offsetDelta = FROM_FIXED(upperScanline->deform.x - lowerScanline->deform.x);
+        int32 upperScreenOffsetX = -(fromFixedUpperX & 0xF);
+        int32 lowerScreenOffsetX = upperScreenOffsetX + offsetDelta;
 
-        const int32 xMax = (currentScreen->size.x + (fromFixedX & 0xF));
-        const int32 ty = fromFixedY >> 4;
+        int32 extraTilesToDraw = abs(AlignUp(std::max(upperScreenOffsetX, lowerScreenOffsetX), TILE_SIZE));
 
-        // DCFIXME: doesn't compensate for clipping, but somehow not an issue?
-        for (int32 cx = 0; cx < xMax; cx += TILE_SIZE) {
-            const int32 screenX = cx - (fromFixedX & 0xF);
+        upperScanlineFixedX -= TO_FIXED(extraTilesToDraw);
+        upperScreenOffsetX -= extraTilesToDraw;
+        lowerScreenOffsetX -= extraTilesToDraw;
 
-            if (screenX >= currentScreen->size.x) {
-                break;
-            }
+        extraTilesToDraw += abs(AlignDown(std::min(upperScreenOffsetX, lowerScreenOffsetX), TILE_SIZE));
 
-            const int tx = ((fromFixedX + cx) / TILE_SIZE) % layer->xsize;
+        tilesToDraw += extraTilesToDraw / TILE_SIZE;
+
+        fromFixedUpperX = GetLayerWrappedFromFixedX(layer, upperScanlineFixedX + upperScanline->deform.x);
+
+        const int32 screenUpperY = cy;
+        const int32 screenLowerY = cy + TILE_SIZE;
+
+        const int32 ty = fromFixedUpperY >> 4;
+        int32 tx = fromFixedUpperX >> 4;
+
+        for (int32 t = 0; t < tilesToDraw; ++t) {
+            const int32 cx = TILE_SIZE * t;
+            const int32 screenUpperX = cx + upperScreenOffsetX;
+            const int32 screenLowerX = cx + lowerScreenOffsetX;
+
             const uint16 layout = layer->layout[tx + (ty << layer->widthShift)];
+            tx = (tx + 1) % layer->xsize;
 
-            if (layout != 0xFFFF) {
-                RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
-                DrawByLayout(layout, screenX, screenY);
+            if (layout == 0xFFFF) {
+                continue;
             }
+
+            RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
+
+            const Vector2 screenUpperLeft {
+                screenUpperX,
+                screenUpperY,
+            };
+
+            const Vector2 screenUpperRight {
+                screenUpperX + TILE_SIZE,
+                screenUpperY,
+            };
+
+            const Vector2 screenLowerLeft {
+                screenLowerX,
+                screenLowerY,
+            };
+
+            const Vector2 screenLowerRight {
+                screenLowerX + TILE_SIZE,
+                screenLowerY,
+            };
+
+            DrawByLayoutEx(layout,
+                           screenUpperLeft, screenUpperRight,
+                           screenLowerLeft, screenLowerRight);
         }
 
-        scanline += scanlineIncrement;
+        upperScanline += scanlineIncrement;
         scanlineIncrement = TILE_SIZE;
     }
 #else

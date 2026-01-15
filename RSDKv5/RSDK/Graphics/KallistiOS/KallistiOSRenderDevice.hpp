@@ -71,6 +71,13 @@ public:
             int32 sprY0, int32 sprY1,
             const GFXSurface* surface
     );
+    static void DrawTexturedQuadEx(
+        const Vector2& upperLeft, const Vector2& upperRight,
+        const Vector2& lowerLeft, const Vector2& lowerRight,
+        int32 sprX0, int32 sprX1,
+        int32 sprY0, int32 sprY1,
+        const GFXSurface* surface
+    );
 
     static void PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, const GFXSurface* surface);
     static void DrawTexturedPoly(

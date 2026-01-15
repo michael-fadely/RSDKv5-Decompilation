@@ -710,6 +710,77 @@ void RenderDevice::DrawTexturedQuad(
 }
 
 // static
+void RenderDevice::DrawTexturedQuadEx(
+        const Vector2& upperLeft, const Vector2& upperRight,
+        const Vector2& lowerLeft, const Vector2& lowerRight,
+        int32 sprX0, int32 sprX1,
+        int32 sprY0, int32 sprY1,
+        const GFXSurface* surface
+) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedQuad) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedQuad BEFORE PREPPING!\n");
+        return;
+    }
+
+    lastPrimitiveWasConsumed = true;
+
+    struct vec2f { float x; float y; };
+
+    const vec2f upperLeftF {
+        static_cast<float>(upperLeft.x) * pixelScaleX,
+        static_cast<float>(upperLeft.y) * pixelScaleY
+    };
+
+    const vec2f upperRightF {
+        static_cast<float>(upperRight.x) * pixelScaleX,
+        static_cast<float>(upperRight.y) * pixelScaleY
+    };
+
+    const vec2f lowerLeftF {
+        static_cast<float>(lowerLeft.x) * pixelScaleX,
+        static_cast<float>(lowerLeft.y) * pixelScaleY
+    };
+
+    const vec2f lowerRightF {
+        static_cast<float>(lowerRight.x) * pixelScaleX,
+        static_cast<float>(lowerRight.y) * pixelScaleY
+    };
+
+    // Compute constants up-front.
+    const float u0 = shz_div_posf(sprX0, surface->width);
+    const float v0 = shz_div_posf(sprY0, surface->height);
+    const float u1 = shz_div_posf(sprX1, surface->width);
+    const float v1 = shz_div_posf(sprY1, surface->height);
+    const float z  = GetDepth();
+
+    // First 32 bytes of a `pvr_sprite_txr_t` structure mapped to a SQ.
+    auto *spr1 = reinterpret_cast<pvr_sprite_txr_t *>(pvr_dr_target(drState));
+    spr1->ax = upperLeftF.x;
+    spr1->ay = upperLeftF.y;
+    spr1->az = z;
+    spr1->bx = upperRightF.x;
+    spr1->by = upperRightF.y;
+    spr1->bz = z;
+    spr1->cx = lowerRightF.x;
+    spr1->flags = PVR_CMD_VERTEX_EOL;
+    pvr_dr_commit(spr1);
+
+    /* NOTE: Disgusting manual pointer offsetting is due to the fact that KOS's
+             PVR DR API only returns `pvr_vertex_t*,` even though it works fine with
+             all geometry types. */
+    // Second 32 bytes of a 'pvr_sprite_txr_t' structure mapped to the second SQ.
+    auto *spr2 = reinterpret_cast<pvr_sprite_txr_t *>(reinterpret_cast<uintptr_t>(pvr_dr_target(drState)) - 32);
+    spr2->cy = lowerRightF.y;
+    spr2->cz = z;
+    spr2->dx = lowerLeftF.x;
+    spr2->dy = lowerLeftF.y;
+    spr2->auv = PVR_PACK_16BIT_UV(u0, v0);
+    spr2->buv = PVR_PACK_16BIT_UV(u1, v0);
+    spr2->cuv = PVR_PACK_16BIT_UV(u1, v1);
+    pvr_dr_commit(reinterpret_cast<uint8_t *>(spr2) + 32);
+}
+
+// static
 void RenderDevice::PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, const GFXSurface *surface) {
     const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
     const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
