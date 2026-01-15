@@ -271,7 +271,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
         }
     }
 
-    StorageHeader* bestFitHeader = nullptr;
+    StorageHeader* fitHeader = nullptr;
 
     while (true)
     {
@@ -288,13 +288,9 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
                     currHeader = prevHeader;
                 }
 
-                if (currHeader->capacity >= size_i &&
-                    (bestFitHeader == nullptr || currHeader->capacity < bestFitHeader->capacity)) {
-                    bestFitHeader = currHeader;
-
-                    if (bestFitHeader->capacity == size_i) {
-                        break;
-                    }
+                if (currHeader->capacity >= size_i) {
+                    fitHeader = currHeader;
+                    break;
                 }
             }
 
@@ -302,7 +298,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
             currHeader = currHeader->VeryUnsafeNext();
         }
 
-        if (bestFitHeader != nullptr || ranGC) {
+        if (fitHeader != nullptr || ranGC) {
             break;
         }
 
@@ -315,31 +311,31 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
         ranGC = true;
     }
 
-    if (bestFitHeader == nullptr) {
+    if (fitHeader == nullptr) {
         PrintAllocState(dataSet, storage, *dataPtr, inputSize, file, line);
         return; // :(
     }
 
-    auto* data = bestFitHeader->GetDataPtr();
+    auto* data = fitHeader->GetDataPtr();
 
-    bestFitHeader->flags = StorageFlags::used | (static_cast<uint32>(dataSet) << StorageFlags::setIDShift);
-    bestFitHeader->poolOffset = static_cast<uint32>(reinterpret_cast<uintptr_t>(data) - reinterpret_cast<uintptr_t>(storage->memoryTable));
+    fitHeader->flags = StorageFlags::used | (static_cast<uint32>(dataSet) << StorageFlags::setIDShift);
+    fitHeader->poolOffset = static_cast<uint32>(reinterpret_cast<uintptr_t>(data) - reinterpret_cast<uintptr_t>(storage->memoryTable));
 
-    bestFitHeader->length = size_i;
+    fitHeader->length = size_i;
 
     // if there's enough space to partition this block, then do it.
     // otherwise, if there's any excess space, it'll be reclaimed later.
-    const uint32 blockRemainder = bestFitHeader->capacity - size_i;
+    const uint32 blockRemainder = fitHeader->capacity - size_i;
     if (blockRemainder > StorageHeader::SizeInts()) {
-        bestFitHeader->capacity = size_i;
+        fitHeader->capacity = size_i;
 
-        auto* partition = bestFitHeader->VeryUnsafeNext();
+        auto* partition = fitHeader->VeryUnsafeNext();
         *partition = {};
         partition->capacity = blockRemainder - StorageHeader::SizeInts();
     }
 
     if (clear) {
-        memset(data, 0, static_cast<size_t>(sizeof(uint32)) * static_cast<size_t>(bestFitHeader->length));
+        memset(data, 0, static_cast<size_t>(sizeof(uint32)) * static_cast<size_t>(fitHeader->length));
     }
 
     uint32** varPtr = reinterpret_cast<uint32**>(dataPtr);
