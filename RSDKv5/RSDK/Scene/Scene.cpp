@@ -1185,7 +1185,7 @@ void RSDK::ProcessParallax(TileLayer *layer)
             int32 *deformationData = &layer->deformationData[(scrollPos + (uint16)layer->deformationOffset) & 0x1FF];
             for (int32 i = 0; i < currentScreen->waterDrawPos; ++i) {
                 scanline->position.x = layer->scrollInfo[*lineScrollPtr].tilePos;
-#if RETRO_PLATFORM != RETRO_KALLISTIOS || !defined(KOS_HARDWARE_RENDERER)
+#if 1 || RETRO_PLATFORM != RETRO_KALLISTIOS || !defined(KOS_HARDWARE_RENDERER)
                 if (layer->scrollInfo[*lineScrollPtr].deform)
                     scanline->position.x += TO_FIXED(*deformationData);
 #else
@@ -1214,7 +1214,7 @@ void RSDK::ProcessParallax(TileLayer *layer)
             deformationData = &layer->deformationDataW[(scrollPos + (uint16)layer->deformationOffsetW) & 0x1FF];
             for (int32 i = currentScreen->waterDrawPos; i < currentScreen->size.y; ++i) {
                 scanline->position.x = layer->scrollInfo[*lineScrollPtr].tilePos;
-#if RETRO_PLATFORM != RETRO_KALLISTIOS || !defined(KOS_HARDWARE_RENDERER)
+#if 1 || RETRO_PLATFORM != RETRO_KALLISTIOS || !defined(KOS_HARDWARE_RENDERER)
                 if (layer->scrollInfo[*lineScrollPtr].deform)
                     scanline->position.x += TO_FIXED(*deformationData);
 #else
@@ -1604,84 +1604,208 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
         return;
 
 #if defined(KOS_HARDWARE_RENDERER)
-    const ScanlineInfo* upperScanline = &scanlines[currentScreen->clipBound_Y1];
+    constexpr size_t colorCount = 3;
 
-    const int32 sheetY = FROM_FIXED(upperScanline->position.y) & 0xF;
-    int32 scanlineIncrement = TILE_SIZE - sheetY;
+    constexpr uint32 colors[colorCount] = {
+        0xFFFF0000,
+        0xFF00FF00,
+        0xFF0000FF,
+    };
 
-    const int32 screenTileAligned = AlignUp(currentScreen->size.x, TILE_SIZE) / TILE_SIZE;
+    const int32 minTilesToDraw = AlignUp(currentScreen->size.x, TILE_SIZE) / TILE_SIZE;
 
-    for (int32 cy = currentScreen->clipBound_Y1 - sheetY; cy < currentScreen->clipBound_Y2; cy += TILE_SIZE) {
-        const int32 yRemainder = currentScreen->clipBound_Y2 - cy;
-        const int32 fromFixedUpperY = FROM_FIXED(upperScanline->position.y);
-        const ScanlineInfo* lowerScanline = upperScanline + std::min<int32>(scanlineIncrement - 1, yRemainder - 1);
+    int32 y = currentScreen->clipBound_Y1;
+    size_t colorIndex = (static_cast<size_t>(std::max<int32>(y, 0)) / TILE_SIZE) % colorCount;
 
-        int32 tilesToDraw = screenTileAligned;
-        int32 upperScanlineFixedX = upperScanline->position.x;
+    while (y < currentScreen->clipBound_Y2) {
+        const ScanlineInfo* upperScanline = &scanlines[y];
+        const int32 upperYOffset = FROM_FIXED(upperScanline->position.y) & 0xF;
+        const int32 yRemainder = currentScreen->clipBound_Y2 - y;
+        int32 rowCount;
 
-        int32 fromFixedUpperX = GetLayerWrappedFromFixedX(layer, upperScanlineFixedX + upperScanline->deform.x) % currentScreen->pitch;
+        const uint32 color = colors[colorIndex];
 
-        const int32 offsetDelta = FROM_FIXED(upperScanline->deform.x - lowerScanline->deform.x);
+        if (y < upperYOffset) {
+            rowCount = std::min<int32>(TILE_SIZE - upperYOffset, yRemainder);
+        }
+        else {
+            rowCount = std::min<int32>(TILE_SIZE, yRemainder);
+        }
+
+        const uint8* const upperActivePalette = &gfxLineBuffer[y];
+        const ScanlineInfo* const maxScanline = upperScanline + rowCount;
+
+        const int32 ty = FROM_FIXED(upperScanline->position.y) >> 4;
+
+        int32 sequentialRows = 1;
+
+        {
+            const ScanlineInfo* prevScanline = nullptr;
+            const ScanlineInfo* currScanline = upperScanline + 1;
+            const uint8* currActivePalette = upperActivePalette + 1;
+
+            int32 sy = FROM_FIXED(upperScanline->position.y) + 1;
+            int32 lastOffsetDelta = 0;
+            int32 offsetSum = 0;
+
+            while (currScanline < maxScanline)
+            {
+                const bool isFirst = prevScanline == nullptr;
+                prevScanline = currScanline - 1;
+                const uint8* prevActivePalette = currActivePalette - 1;
+
+                const int32 currTy = sy >> 4;
+
+                // WIP: maybe just check sign bit? bigger approximation, but maybe fewer draw calls
+                const int32 offsetDelta = FROM_FIXED(prevScanline->position.x - currScanline->position.x);
+                offsetSum += offsetDelta;
+
+                if (currTy != ty ||
+                    offsetSum >= TILE_SIZE ||
+                    *prevActivePalette != *currActivePalette ||
+                    (!isFirst && offsetDelta != lastOffsetDelta)) {
+                    break;
+                }
+
+                ++sy;
+                lastOffsetDelta = offsetDelta;
+                ++sequentialRows;
+                ++currScanline;
+                ++currActivePalette;
+            }
+        }
+
+        const ScanlineInfo* lowerScanline = upperScanline + (sequentialRows - 1);
+        const bool wholeQuad = sequentialRows == 16;
+
+        int32 tilesToDraw = minTilesToDraw;
+
+        int32 upperFixedX = upperScanline->position.x;
+        int32 fromFixedUpperX = GetLayerWrappedFromFixedX(layer, upperFixedX);
+
         int32 upperScreenOffsetX = -(fromFixedUpperX & 0xF);
-        int32 lowerScreenOffsetX = upperScreenOffsetX + offsetDelta;
+        int32 lowerScreenOffsetX = upperScreenOffsetX + FROM_FIXED(upperFixedX - lowerScanline->position.x);
 
-        int32 extraTilesToDraw = abs(AlignUp(std::max(upperScreenOffsetX, lowerScreenOffsetX), TILE_SIZE));
-
-        upperScanlineFixedX -= TO_FIXED(extraTilesToDraw);
+        // DCFIXME: this sucks
+        int32 extraTilesToDraw = abs(AlignUp(std::max<int32>(upperScreenOffsetX, lowerScreenOffsetX), TILE_SIZE));
         upperScreenOffsetX -= extraTilesToDraw;
         lowerScreenOffsetX -= extraTilesToDraw;
+        upperFixedX -= TO_FIXED(extraTilesToDraw);
 
-        extraTilesToDraw += abs(AlignDown(std::min(upperScreenOffsetX, lowerScreenOffsetX), TILE_SIZE));
+        // DCFIXME: this sucks
+        extraTilesToDraw += abs(AlignDown(std::min<int32>(upperScreenOffsetX, lowerScreenOffsetX), TILE_SIZE));
+
+        // update this because it'll be used to select the tile from the layout
+        fromFixedUpperX = GetLayerWrappedFromFixedX(layer, upperFixedX);
 
         tilesToDraw += extraTilesToDraw / TILE_SIZE;
 
-        fromFixedUpperX = GetLayerWrappedFromFixedX(layer, upperScanlineFixedX + upperScanline->deform.x);
-
-        const int32 screenUpperY = cy;
-        const int32 screenLowerY = cy + TILE_SIZE;
-
-        const int32 ty = fromFixedUpperY >> 4;
+        const int32 cy = y - upperYOffset;
         int32 tx = fromFixedUpperX >> 4;
 
         for (int32 t = 0; t < tilesToDraw; ++t) {
-            const int32 cx = TILE_SIZE * t;
-            const int32 screenUpperX = cx + upperScreenOffsetX;
-            const int32 screenLowerX = cx + lowerScreenOffsetX;
-
-            const uint16 layout = layer->layout[tx + (ty << layer->widthShift)];
+            uint16 layout = layer->layout[tx + (ty << layer->widthShift)];
             tx = (tx + 1) % layer->xsize;
 
             if (layout == 0xFFFF) {
                 continue;
             }
 
-            const Vector2 screenUpperLeft {
-                screenUpperX,
-                screenUpperY,
-            };
+            layout &= 0xFFF;
+            const int32 flip = layout / TILE_COUNT;
+            layout %= TILE_COUNT;
 
-            const Vector2 screenUpperRight {
-                screenUpperX + TILE_SIZE,
-                screenUpperY,
-            };
+            bool usePoly;
+            const GFXSurface* surface;
+            const AniTileState* aniTileState = AniTileTracker::GetAniTile(layout);
 
-            const Vector2 screenLowerLeft {
-                screenLowerX,
-                screenLowerY,
-            };
+            int32 sprX0;
+            int32 sprX1;
+            int32 sprY0;
+            int32 sprY1;
 
-            const Vector2 screenLowerRight {
-                screenLowerX + TILE_SIZE,
-                screenLowerY,
-            };
+            if (aniTileState != nullptr && aniTileState->sheetID != 0) {
+                usePoly = !aniTileState->IsTileAligned();
+                surface = &gfxSurface[aniTileState->sheetID];
 
-            DrawByLayoutEx(layout,
-                           screenUpperLeft, screenUpperRight,
-                           screenLowerLeft, screenLowerRight);
+                sprX0 = aniTileState->u;
+                sprX1 = aniTileState->u;
+                sprY0 = aniTileState->v;
+                sprY1 = aniTileState->v;
+            }
+            else {
+                usePoly = false;
+                surface = &gfxSurface[0];
+
+                const int32 tilesetX = TILE_SIZE * (static_cast<int32>(layout) % KOS_ATLAS_WIDTH_TILES);
+                const int32 tilesetY = TILE_SIZE * (static_cast<int32>(layout) / KOS_ATLAS_WIDTH_TILES);
+
+                sprX0 = tilesetX;
+                sprX1 = tilesetX;
+                sprY0 = tilesetY;
+                sprY1 = tilesetY;
+            }
+
+            if (flip & FLIP_X) {
+                sprX0 += TILE_SIZE;
+            }
+            else {
+                sprX1 += TILE_SIZE;
+            }
+
+            const int32 upperX = (TILE_SIZE * t) + upperScreenOffsetX;
+            const int32 lowerX = (TILE_SIZE * t) + lowerScreenOffsetX;
+
+            const Vector2 upperLeft  { upperX, y };
+            const Vector2 upperRight { upperX + TILE_SIZE, y };
+            const Vector2 lowerLeft  { lowerX, y + sequentialRows };
+            const Vector2 lowerRight { lowerX + TILE_SIZE, y + sequentialRows };
+
+            if (wholeQuad && !usePoly) {
+                if (flip & FLIP_Y) {
+                    sprY0 += TILE_SIZE;
+                }
+                else {
+                    sprY1 += TILE_SIZE;
+                }
+
+                // draw quad
+                RenderDevice::PrepareTexturedQuadPT(cy, surface);
+                RenderDevice::DrawTexturedQuadPTEx(upperLeft, upperRight, lowerLeft, lowerRight,
+                                                   sprX0, sprX1,
+                                                   sprY0, sprY1,
+                                                   surface);
+            }
+            else {
+                // draw poly
+#if 0
+                RenderDevice::PrepareColoredPolyPT(y, INK_NONE);
+                RenderDevice::DrawColoredPolyPTEx(upperLeft, upperRight, lowerLeft, lowerRight, color);
+#else
+                if (flip & FLIP_Y) {
+                    sprY0 += TILE_SIZE - upperYOffset;
+                    sprY1 = sprY0 - sequentialRows;
+                }
+                else {
+                    sprY0 += upperYOffset;
+                    sprY1 = sprY0 + sequentialRows;
+                }
+
+                RenderDevice::PrepareTexturedPolyPT(y, INK_NONE, surface);
+
+                RenderDevice::DrawTexturedPolyPTEx(upperLeft, upperRight, lowerLeft, lowerRight,
+                                                   sprX0, sprX1,
+                                                   sprY0, sprY1,
+                                                   surface);
+#endif
+            }
         }
 
-        upperScanline += scanlineIncrement;
-        scanlineIncrement = TILE_SIZE;
+        if (!wholeQuad) {
+            colorIndex = (colorIndex + 1) % colorCount;
+        }
+
+        y += sequentialRows;
     }
 #else
     int32 lineTileCount    = (currentScreen->pitch >> 4) - 1;

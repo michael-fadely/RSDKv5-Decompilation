@@ -1786,6 +1786,77 @@ void RenderDevice::DrawColoredPolyPT(
 }
 
 // static
+void RenderDevice::DrawColoredPolyPTEx(
+        const Vector2& upperLeft, const Vector2& upperRight,
+        const Vector2& lowerLeft, const Vector2& lowerRight,
+        uint32 color
+) {
+    if (lastPrimitiveType != PrimitiveTypes_ColoredPolyPT) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW ColoredPolyPT BEFORE PREPPING!\n");
+        return;
+    }
+
+    lastPrimitiveWasConsumed = true;
+
+    // Compute constants up-front.
+    const vec2f upperLeftF {
+        static_cast<float>(upperLeft.x) * pixelScaleX,
+        static_cast<float>(upperLeft.y) * pixelScaleY,
+    };
+
+    const vec2f upperRightF {
+        static_cast<float>(upperRight.x) * pixelScaleX,
+        static_cast<float>(upperRight.y) * pixelScaleY,
+    };
+
+    const vec2f lowerLeftF {
+        static_cast<float>(lowerLeft.x) * pixelScaleX,
+        static_cast<float>(lowerLeft.y) * pixelScaleY,
+    };
+
+    const vec2f lowerRightF {
+        static_cast<float>(lowerRight.x) * pixelScaleX,
+        static_cast<float>(lowerRight.y) * pixelScaleY,
+    };
+
+    const float z  = GetDepth();
+
+    // top left
+    auto* vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
+    vert->flags = PVR_CMD_VERTEX;
+    vert->argb = color;
+    vert->z = z;
+    vert->x = upperLeftF.x;
+    vert->y = upperLeftF.y;
+    pvr_dr_commit(vert);
+
+    // top right
+    vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
+    vert->flags = PVR_CMD_VERTEX;
+    vert->argb = color;
+    vert->z = z;
+    vert->x = upperRightF.x;
+    vert->y = upperRightF.y;
+    pvr_dr_commit(vert);
+
+    /* NOTE: After you have submitted two vertices to the PVR DR API,
+             you can safely skip setting anything held constant for
+             all verts, since both of the 2 SQs already have the value. */
+    // bottom left
+    vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
+    vert->x = lowerLeftF.x;
+    vert->y = lowerLeftF.y;
+    pvr_dr_commit(vert);
+
+    // bottom right
+    vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
+    vert->flags = PVR_CMD_VERTEX_EOL;
+    vert->x = lowerRightF.x;
+    vert->y = lowerRightF.y;
+    pvr_dr_commit(vert);
+}
+
+// static
 void RenderDevice::DrawColoredPolyTR(
         int32 x, int32 y,
         int32 width, int32 height,
