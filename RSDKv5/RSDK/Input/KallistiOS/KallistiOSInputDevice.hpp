@@ -2,17 +2,72 @@
 #define RSDKV5_KALLISTIOSINPUTDEVICE_H
 
 #include <dc/maple/controller.h>
+#include <dc/maple/vmu.h>
+#include <dc/vmu_fb.h>
 
 namespace SKU
 {
 
+class Vmu {
+private:
+    maple_device_t* dev() const;
+    vmu_state_t* state() const;
+public:
+    struct FrameBuffer: vmufb_t {
+        struct Rect {
+            Rect() {}
+
+            unsigned x = 0;
+            unsigned y = 0;
+            unsigned w = VMU_SCREEN_WIDTH;
+            unsigned h = VMU_SCREEN_HEIGHT;
+        };
+
+        mutable bool changed = false;
+
+        void print(std::string str, unsigned lineSpacing=2, Rect rect=Rect());
+        void blit(const uint8_t* data, Rect rect=Rect());
+        void fill(bool value=true, Rect rect=Rect());
+    } fb;
+
+    enum Button: uint8_t {
+        Up    = VMU_DPAD_UP,
+        Down  = VMU_DPAD_DOWN,
+        Left  = VMU_DPAD_LEFT,
+        Right = VMU_DPAD_RIGHT,
+        A     = VMU_A,
+        B     = VMU_B,
+        Mode  = VMU_MODE,
+        Sleep = VMU_SLEEP
+    };
+
+    const uint8_t port;
+    const uint8_t slot;
+
+    Vmu(uint8_t port_, uint8_t slot_):
+        port(port_), slot(slot_) {}
+
+    bool valid() const;
+    bool update() const;
+    bool beep(uint8_t tone=255, ::std::function<void(void)> task={}) const;
+    bool pressed(Button button) const;
+    bool tapped(Button button) const;
+};
+
 struct KallistiOSInputDevice : InputDevice
 {
+    std::array<Vmu, 2> vmu;
+
+    KallistiOSInputDevice(int port):
+        vmu({ Vmu{ port, 1 }, Vmu{ port, 2 }})
+    {
+        id = port + CONT_P1;
+    }
+
     void UpdateInput() override;
     void ProcessInput(int32 controllerID) override;
     void CloseDevice() override;
-    cont_state_t state {};
-    int32 mapleIndex = 0;
+    int port() const { return id - CONT_P1; }
 };
 
 void InitKallistiOSInputAPI();
