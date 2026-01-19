@@ -1,9 +1,11 @@
 #ifndef INPUT_H
 #define INPUT_H
 
+#ifdef _arch_dreamcast
 #include <functional>
 #include <array>
 #include <string>
+#endif
 
 namespace RSDK
 {
@@ -11,7 +13,7 @@ namespace RSDK
 #define PLAYER_COUNT      (4)
 #define INPUTDEVICE_COUNT (4)
 
-#define INPUT_DEADZONE (0.3f)
+#define INPUT_DEADZONE (0.3)
 
 enum InputIDs {
     INPUT_UNASSIGNED = -2,
@@ -44,7 +46,7 @@ enum InputDeviceIDs {
     DEVICE_SWITCH_JOY_GRIP,
     DEVICE_SWITCH_JOY_L,
     DEVICE_SWITCH_JOY_R,
-    DEVICE_SWITCH_PRO
+    DEVICE_SWITCH_PRO,
 };
 
 enum InputDeviceAPIs {

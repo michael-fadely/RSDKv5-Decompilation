@@ -5,18 +5,18 @@
 
 #include <RSDK/Core/Stub.hpp>
 
-void SKU::Vmu::FrameBuffer::print(std::string str, unsigned lineSpacing, Rect rect) {
+void SKU::Vmu::FrameBuffer::Print(std::string str, unsigned lineSpacing, Rect rect) {
     vmufb_print_string_into(this, nullptr, rect.x, rect.y,
                             rect.w, rect.h, lineSpacing, str.c_str());
     changed = true;
 }
 
-void SKU::Vmu::FrameBuffer::blit(const uint8_t* data, Rect rect) {
+void SKU::Vmu::FrameBuffer::Blit(const uint8_t* data, Rect rect) {
     vmufb_paint_area(this, rect.x, rect.y, rect.w, rect.h, data);
     changed = true;
 }
 
-void SKU::Vmu::FrameBuffer::fill(bool value, Rect rect) {
+void SKU::Vmu::FrameBuffer::Fill(bool value, Rect rect) {
     for(unsigned y = rect.y; y < rect.h; ++y) {
         for(unsigned x = rect.x; x < rect.w; ++x) {
             if(value) data[x] |= (1 << y);
@@ -26,24 +26,24 @@ void SKU::Vmu::FrameBuffer::fill(bool value, Rect rect) {
     changed = true;
 }
 
-maple_device_t* SKU::Vmu::dev() const {
+maple_device_t* SKU::Vmu::Dev() const {
     maple_device_t* device = maple_enum_dev(port, slot);
     return (device && (device->info.functions & MAPLE_FUNC_LCD))?
             device : nullptr;
 }
 
-vmu_state_t* SKU::Vmu::state() const {
-    if(auto* d = dev(); d)
+vmu_state_t* SKU::Vmu::State() const {
+    if(auto* d = Dev(); d)
         return reinterpret_cast<vmu_state_t*>(maple_dev_status(d));
     return nullptr;
 }
 
-bool SKU::Vmu::valid() const {
-    return dev() != nullptr;
+bool SKU::Vmu::Valid() const {
+    return Dev() != nullptr;
 }
 
-bool SKU::Vmu::beep(uint8_t tone, std::function<void(void)> task) const {
-    auto* d = dev();
+bool SKU::Vmu::Beep(uint8_t tone, std::function<void(void)> task) const {
+    auto* d = Dev();
 
     if(d)
         vmu_beep_waveform(d, tone, tone / 2, tone, tone / 2);
@@ -58,22 +58,22 @@ bool SKU::Vmu::beep(uint8_t tone, std::function<void(void)> task) const {
     return false;
 }
 
-bool SKU::Vmu::pressed(SKU::Vmu::Button button) const {
-    if(auto* s = state(); s)
+bool SKU::Vmu::Pressed(SKU::Vmu::Button button) const {
+    if(auto* s = State(); s)
         return (s->buttons.current.raw & static_cast<unsigned>(button));
 
     return false;
 }
 
-bool SKU::Vmu::tapped(SKU::Vmu::Button button) const {
-    if(auto* s = state(); s)
+bool SKU::Vmu::Tapped(SKU::Vmu::Button button) const {
+    if(auto* s = State(); s)
         return (s->buttons.previous.raw & static_cast<unsigned>(button));
 
     return false;
 }
 
-bool SKU::Vmu::update() const {
-    if(auto* d = dev(); fb.changed && d) {
+bool SKU::Vmu::Update() const {
+    if(auto* d = Dev(); fb.changed && d) {
         vmufb_present(&fb, d);
         fb.changed = false;
         return true;
@@ -83,7 +83,7 @@ bool SKU::Vmu::update() const {
 }
 
 void SKU::KallistiOSInputDevice::UpdateInput() {
-    maple_device_t *device = maple_enum_dev(port(), 0);
+    maple_device_t *device = maple_enum_dev(Port(), 0);
     if(device) {
         active = true;
 
@@ -94,9 +94,9 @@ void SKU::KallistiOSInputDevice::UpdateInput() {
         }
 
         for(unsigned v = 0; v < 2; ++v)
-            vmu[v].update();
+            vmu[v].Update();
 
-        ProcessInput(!port()? CONT_ANY : CONT_P1 + 1);
+        ProcessInput(!Port()? CONT_ANY : CONT_P1 + 1);
     } else {
         active = false;
         gamepadType = DEVICE_TYPE_NONE;
@@ -107,7 +107,7 @@ void SKU::KallistiOSInputDevice::ProcessInput(int32 controllerID) {
     auto& retro = controller[controllerID];
     auto& leftAnalog = stickL[controllerID];
 
-    auto* dev = maple_enum_dev(port(), 0);
+    auto* dev = maple_enum_dev(Port(), 0);
     assert(dev);
 
     switch((gamepadType >> 8)) {
@@ -130,19 +130,19 @@ void SKU::KallistiOSInputDevice::ProcessInput(int32 controllerID) {
             retro.keyA.press |= (state.buttons & CONT_A) != 0;
             retro.keyB.press |= (state.buttons & CONT_B) != 0;
             retro.keyC.press |= (state.buttons & CONT_C) != 0;
-            retro.keyC.press |= (vmu[0].pressed(Vmu::Button::A)
-                              || vmu[1].pressed(Vmu::Button::A));
+            retro.keyC.press |= (vmu[0].Pressed(Vmu::Button::A)
+                              || vmu[1].Pressed(Vmu::Button::A));
 
             retro.keyX.press |= (state.buttons & CONT_X) != 0;
             retro.keyY.press |= (state.buttons & CONT_Y) != 0;
             retro.keyZ.press |= (state.buttons & CONT_Z) != 0;
-            retro.keyZ.press |= (vmu[0].pressed(Vmu::Button::B)
-                              || vmu[1].pressed(Vmu::Button::B));
+            retro.keyZ.press |= (vmu[0].Pressed(Vmu::Button::B)
+                              || vmu[1].Pressed(Vmu::Button::B));
 
             retro.keyStart.press |= (state.buttons & CONT_START) != 0;
             retro.keySelect.press |= (state.buttons & CONT_D) != 0;
-            retro.keySelect.press |= (vmu[0].pressed(Vmu::Button::Mode)
-                                   || vmu[1].pressed(Vmu::Button::Mode));
+            retro.keySelect.press |= (vmu[0].Pressed(Vmu::Button::Mode)
+                                   || vmu[1].Pressed(Vmu::Button::Mode));
             break;
         }
         case DEVICE_TYPE_KEYBOARD: {
@@ -199,7 +199,7 @@ void SKU::InitKallistiOSInputAPI() {
         inputDeviceList[c] = &inputDevices[c];
         inputSlotDevices[c] = &inputDevices[c];
 
-        inputDevices[c].vmu[0].fb.print("***********\n"
+        inputDevices[c].vmu[0].fb.Print("***********\n"
                                         "SONIC MANIA\n"
                                         "***********\n"
                                         "Fuck da PS2!");

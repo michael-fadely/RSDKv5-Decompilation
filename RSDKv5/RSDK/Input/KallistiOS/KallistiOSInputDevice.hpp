@@ -10,8 +10,8 @@ namespace SKU
 
 class Vmu {
 private:
-    maple_device_t* dev() const;
-    vmu_state_t* state() const;
+    maple_device_t* Dev() const;
+    vmu_state_t* State() const;
 public:
     struct FrameBuffer: vmufb_t {
         struct Rect {
@@ -25,9 +25,9 @@ public:
 
         mutable bool changed = false;
 
-        void print(std::string str, unsigned lineSpacing=2, Rect rect=Rect());
-        void blit(const uint8_t* data, Rect rect=Rect());
-        void fill(bool value=true, Rect rect=Rect());
+        void Print(std::string str, unsigned lineSpacing=2, Rect rect=Rect());
+        void Blit(const uint8_t* data, Rect rect=Rect());
+        void Fill(bool value=true, Rect rect=Rect());
     } fb;
 
     enum Button: uint8_t {
@@ -47,11 +47,11 @@ public:
     Vmu(uint8_t port_, uint8_t slot_):
         port(port_), slot(slot_) {}
 
-    bool valid() const;
-    bool update() const;
-    bool beep(uint8_t tone=255, ::std::function<void(void)> task={}) const;
-    bool pressed(Button button) const;
-    bool tapped(Button button) const;
+    bool Valid() const;
+    bool Update() const;
+    bool Beep(uint8_t tone=255, ::std::function<void(void)> task={}) const;
+    bool Pressed(Button button) const;
+    bool Tapped(Button button) const;
 };
 
 struct KallistiOSInputDevice : InputDevice
@@ -67,7 +67,7 @@ struct KallistiOSInputDevice : InputDevice
     void UpdateInput() override;
     void ProcessInput(int32 controllerID) override;
     void CloseDevice() override;
-    int port() const { return id - CONT_P1; }
+    int Port() const { return id - CONT_P1; }
 };
 
 void InitKallistiOSInputAPI();
