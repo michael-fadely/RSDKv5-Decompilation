@@ -1,29 +1,40 @@
+#include <dc/sound/sound.h>
+
+extern "C" {
+    static bool32 device_inited = 0;
+    extern int wav_init(void);
+};
+
 // static
 bool32 AudioDevice::Init()
 {
-    // DCFIXME: AudioDevice::Init
-    return true;
+    bool32 ok = snd_init() >= 0;
+    return ok && !!wav_init();
 }
+
 // static
 void AudioDevice::Release()
 {
-    // DCFIXME: AudioDevice::Release
+    ;
 }
 
 // static
 void AudioDevice::ProcessAudioMixing(void *stream, int32 length)
 {
-    // DCFIXME: AudioDevice::ProcessAudioMixing
+    ;
 }
 
 // static
 void AudioDevice::FrameInit()
 {
-    // DCFIXME: AudioDevice::FrameInit
+    if (!device_inited) {
+        Init();
+        device_inited = 1;
+    }
 }
 
 // static
 void AudioDevice::HandleStreamLoad(ChannelInfo *channel, bool32 async)
 {
-    // DCFIXME: AudioDevice::HandleStreamLoad
+    ;
 }
