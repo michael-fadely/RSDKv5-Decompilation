@@ -3,6 +3,356 @@
 using namespace RSDK;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+
+extern RetroEngine RSDK::engine;
+
+extern "C" {
+#include <kos.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <malloc.h>
+
+#include <kos/thread.h>
+#include <dc/sound/stream.h>
+
+#include <sys/cdefs.h>
+__BEGIN_DECLS
+
+#include <kos/fs.h>
+
+#define WAVE_FORMAT_YAMAHA_ADPCM          0x0020 /* Yamaha ADPCM (ffmpeg) */
+typedef struct {
+    uint32_t format;
+    uint32_t channels;
+    uint32_t sample_rate;
+    uint32_t sample_size;
+    uint32_t data_offset;
+    uint32_t data_length;
+} WavFileInfo;
+
+typedef int wav_stream_hnd_t;
+
+int wav_init(void);
+void wav_shutdown(void);
+void wav_destroy(void);
+
+wav_stream_hnd_t wav_create(const char *filename, int loop);
+
+void wav_play(void);
+void wav_pause(void);
+void wav_stop(void);
+void wav_volume(int vol);
+int wav_is_playing(void);
+
+__END_DECLS
+/* Keep track of things from the Driver side */
+#define SNDDRV_STATUS_NULL 0x00
+#define SNDDRV_STATUS_READY 0x01
+#define SNDDRV_STATUS_DONE 0x02
+
+/* Keep track of things from the Decoder side */
+#define SNDDEC_STATUS_NULL 0x00
+#define SNDDEC_STATUS_READY 0x01
+#define SNDDEC_STATUS_STREAMING 0x02
+#define SNDDEC_STATUS_PAUSING 0x03
+#define SNDDEC_STATUS_STOPPING 0x04
+#define SNDDEC_STATUS_RESUMING 0x05
+
+typedef void *(*snddrv_cb)(snd_stream_hnd_t, int, int *);
+
+typedef struct
+{
+    /* The buffer on the AICA side */
+    snd_stream_hnd_t shnd;
+
+    /* We either read the wav data from a file or
+       we read from a buffer */
+    file_t wave_file;
+
+    /* Contains the buffer that we are going to send
+       to the AICA in the callback.  Should be 32-byte
+       aligned */
+    uint8_t __attribute__((aligned(32))) drv_buf[16384];
+
+    /* Status of the stream that can be started, stopped
+       paused, ready. etc */
+    volatile int status;
+
+    snddrv_cb callback;
+
+    uint32_t loop;
+    uint32_t vol; /* 0-255 */
+
+    uint32_t format;      /* Wave format */
+    uint32_t channels;      /* 1-Mono/2-Stereo */
+    uint32_t sample_rate; /* 44100Hz */
+    uint32_t sample_size; /* 4/8/16-Bit */
+
+    /* Offset into the file or buffer where the audio
+       data starts */
+    uint32_t data_offset;
+
+    /* The length of the audio data */
+    uint32_t data_length;
+
+    /* Used only in reading wav data from a buffer
+       and not a file */
+    uint32_t buf_offset;
+
+} snddrv_hnd;
+
+static snddrv_hnd stream;
+static volatile int sndwav_status = SNDDRV_STATUS_NULL;
+static kthread_t *audio_thread;
+static kthread_attr_t audio_attr;
+static mutex_t stream_mutex;
+
+static void *sndwav_thread(void *param);
+static void *wav_file_callback(snd_stream_hnd_t hnd, int req, int *done);
+
+extern mutex_t io_lock;
+
+int wav_init(void)
+{
+    if (snd_stream_init() < 0)
+        return 0;
+
+    mutex_init(&stream_mutex, MUTEX_TYPE_NORMAL);
+
+    stream.shnd = SND_STREAM_INVALID;
+    stream.vol = 0;
+    stream.status = SNDDEC_STATUS_NULL;
+    stream.callback = NULL;
+    audio_attr.create_detached = 0;
+    audio_attr.stack_size = 65536;
+    audio_attr.stack_ptr = NULL;
+    audio_attr.prio = PRIO_DEFAULT;
+    audio_attr.label = "MusicPlayer";
+
+    audio_thread = thd_create_ex(&audio_attr, sndwav_thread, NULL);
+    if (audio_thread != NULL)
+        sndwav_status = SNDDRV_STATUS_READY;
+
+    return sndwav_status;
+}
+
+void wav_shutdown(void)
+{
+    sndwav_status = SNDDRV_STATUS_DONE;
+
+    thd_join(audio_thread, NULL);
+
+    wav_destroy();
+}
+
+void wav_destroy(void)
+{
+    if (stream.shnd == SND_STREAM_INVALID)
+        return;
+
+    mutex_lock(&stream_mutex);
+
+    snd_stream_destroy(stream.shnd);
+    stream.shnd = SND_STREAM_INVALID;
+    stream.status = SNDDEC_STATUS_NULL;
+    stream.vol = 0;
+    stream.callback = NULL;
+
+    if (stream.wave_file != FILEHND_INVALID) {
+        mutex_lock(&io_lock);
+        fs_close(stream.wave_file);
+        mutex_unlock(&io_lock);
+    }
+
+    mutex_unlock(&stream_mutex);
+}
+
+#define WAVE_FORMAT_PCM                   0x0001 /* PCM */
+
+static int wav_get_info_adpcm(file_t file, WavFileInfo *result) {
+    result->format = WAVE_FORMAT_PCM;
+    result->channels = 2;
+    result->sample_rate = 22050;
+    result->sample_size = 2;
+    mutex_lock(&io_lock);
+    result->data_length = fs_total(file);
+    mutex_unlock(&io_lock);
+    result->data_offset = 0;
+
+    return 1;
+}
+
+wav_stream_hnd_t wav_create(const char *filename, int loop)
+{
+    file_t file;
+    WavFileInfo info;
+    wav_stream_hnd_t index;
+
+    if (filename == NULL)
+        return SND_STREAM_INVALID;
+
+    mutex_lock(&io_lock);
+    file = fs_open(filename, O_RDONLY);
+    mutex_unlock(&io_lock);
+
+    if (file == FILEHND_INVALID)
+        return SND_STREAM_INVALID;
+
+    index = snd_stream_alloc(wav_file_callback, 8192);
+    if (index == SND_STREAM_INVALID) {
+        mutex_lock(&io_lock);
+        fs_close(file);
+        mutex_unlock(&io_lock);
+        snd_stream_destroy(index);
+        return SND_STREAM_INVALID;
+    }
+
+    wav_get_info_adpcm(file, &info);
+
+    stream.shnd = index;
+    stream.wave_file = file;
+    stream.loop = loop;
+    stream.callback = wav_file_callback;
+    stream.vol = 192 * engine.streamVolume;
+    stream.format = info.format;
+    stream.channels = info.channels;
+    stream.sample_rate = info.sample_rate;
+    stream.sample_size = info.sample_size;
+    stream.data_length = info.data_length;
+    stream.data_offset = info.data_offset;
+    mutex_lock(&io_lock);
+    fs_seek(stream.wave_file, stream.data_offset, SEEK_SET);
+    mutex_unlock(&io_lock);
+    snd_stream_volume(stream.shnd, stream.vol);
+    stream.status = SNDDEC_STATUS_READY;
+
+    return index;
+}
+
+void wav_play(void)
+{
+    if (stream.status == SNDDEC_STATUS_STREAMING)
+        return;
+
+    stream.status = SNDDEC_STATUS_RESUMING;
+}
+
+void wav_pause(void)
+{
+    if (stream.status == SNDDEC_STATUS_READY || stream.status == SNDDEC_STATUS_PAUSING)
+        return;
+
+    stream.status = SNDDEC_STATUS_PAUSING;
+}
+
+void wav_stop(void)
+{
+    if (stream.status == SNDDEC_STATUS_READY || stream.status == SNDDEC_STATUS_STOPPING)
+        return;
+
+    stream.status = SNDDEC_STATUS_STOPPING;
+}
+
+void wav_volume(int vol)
+{
+    if (stream.shnd == SND_STREAM_INVALID)
+        return;
+
+    if (vol > 255)
+        vol = 255;
+
+    if (vol < 0)
+        vol = 0;
+
+    stream.vol = vol * engine.streamVolume;
+    snd_stream_volume(stream.shnd, stream.vol);
+}
+
+int wav_is_playing(void)
+{
+    return stream.status == SNDDEC_STATUS_STREAMING;
+}
+
+static void *sndwav_thread(void *param)
+{
+    (void)param;
+
+    while (sndwav_status != SNDDRV_STATUS_DONE) {
+        mutex_lock(&stream_mutex);
+
+        switch (stream.status) {
+        case SNDDEC_STATUS_RESUMING:
+            snd_stream_volume(stream.shnd, stream.vol);
+            snd_stream_start_pcm8(stream.shnd, stream.sample_rate, stream.channels - 1);
+            snd_stream_volume(stream.shnd, stream.vol);
+            stream.status = SNDDEC_STATUS_STREAMING;
+            break;
+        case SNDDEC_STATUS_PAUSING:
+            snd_stream_stop(stream.shnd);
+            stream.status = SNDDEC_STATUS_READY;
+            break;
+        case SNDDEC_STATUS_STOPPING:
+            snd_stream_stop(stream.shnd);
+            if (stream.wave_file != FILEHND_INVALID)
+                fs_seek(stream.wave_file, stream.data_offset, SEEK_SET);
+            else
+                stream.buf_offset = stream.data_offset;
+
+            stream.status = SNDDEC_STATUS_READY;
+            break;
+        case SNDDEC_STATUS_STREAMING:
+            snd_stream_poll(stream.shnd);
+            break;
+        case SNDDEC_STATUS_READY:
+        default:
+            break;
+        }
+
+        mutex_unlock(&stream_mutex);
+        thd_sleep(20);
+    }
+
+    return NULL;
+}
+
+static void *wav_file_callback(snd_stream_hnd_t hnd, int req, int *done)
+{
+    mutex_lock_scoped(&io_lock);
+    (void)hnd;
+    ssize_t read = fs_read(stream.wave_file, stream.drv_buf, req);
+
+    if (read == -1) {
+        snd_stream_stop(stream.shnd);
+        stream.status = SNDDEC_STATUS_READY;
+        return NULL;
+    }
+
+    if (read != req) {
+
+        if (stream.loop) {
+            fs_seek(stream.wave_file, stream.data_offset + stream.loop, SEEK_SET);
+            ssize_t read2 = fs_read(stream.wave_file, stream.drv_buf + read, req - read);
+
+            if (read2 == -1) {
+                snd_stream_stop(stream.shnd);
+                stream.status = SNDDEC_STATUS_READY;
+                return NULL;
+            }
+        } else {
+            snd_stream_stop(stream.shnd);
+            stream.status = SNDDEC_STATUS_READY;
+            return NULL;
+        }
+    }
+
+    *done = req;
+
+    return stream.drv_buf;
+}
+
+} // extern "C"
+
 #include <RSDK/Core/Stub.hpp>
 #endif
 
@@ -14,13 +364,12 @@ using namespace RSDK;
 #define STB_VORBIS_NO_STDIO
 #define STB_VORBIS_NO_INTEGER_CONVERSION
 
-// DCFIXME: Stub stb_vorbis for now
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
 #include "stb_vorbis/stb_vorbis.c"
 
 stb_vorbis *vorbisInfo = NULL;
 stb_vorbis_alloc vorbisAlloc;
-#endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
+#endif
 
 SFXInfo RSDK::sfxList[SFX_COUNT];
 ChannelInfo RSDK::channels[CHANNEL_COUNT];
@@ -31,10 +380,12 @@ int32 streamBufferSize = 0;
 uint32 streamStartPos  = 0;
 int32 streamLoopPoint  = 0;
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 #define LINEAR_INTERPOLATION_LOOKUP_DIVISOR 0x40 // Determines the 'resolution' of the lookup table.
 #define LINEAR_INTERPOLATION_LOOKUP_LENGTH  (TO_FIXED(1) / LINEAR_INTERPOLATION_LOOKUP_DIVISOR)
 
 float linearInterpolationLookup[LINEAR_INTERPOLATION_LOOKUP_LENGTH];
+#endif
 
 
 #if RETRO_AUDIODEVICE_XAUDIO
@@ -58,7 +409,7 @@ uint8 AudioDeviceBase::audioFocus               = 0;
 void AudioDeviceBase::Release()
 {
     // This is missing, meaning that the garbage collector will never reclaim stb_vorbis's buffer.
-#if !RETRO_USE_ORIGINAL_CODE && RETRO_PLATFORM != RETRO_KALLISTIOS // DCFIXME
+#if !RETRO_USE_ORIGINAL_CODE && RETRO_PLATFORM != RETRO_KALLISTIOS
     stb_vorbis_close(vorbisInfo);
     vorbisInfo = NULL;
 #endif
@@ -66,6 +417,7 @@ void AudioDeviceBase::Release()
 
 void AudioDeviceBase::ProcessAudioMixing(void *stream, int32 length)
 {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     SAMPLE_FORMAT *streamF    = (SAMPLE_FORMAT *)stream;
     SAMPLE_FORMAT *streamEndF = ((SAMPLE_FORMAT *)stream) + length;
 
@@ -170,6 +522,7 @@ void AudioDeviceBase::ProcessAudioMixing(void *stream, int32 length)
             case CHANNEL_LOADING_STREAM: break;
         }
     }
+#endif
 }
 
 void AudioDeviceBase::InitAudioChannels()
@@ -179,24 +532,25 @@ void AudioDeviceBase::InitAudioChannels()
         channels[i].state   = CHANNEL_IDLE;
     }
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     // Compute a lookup table of floating-point linear interpolation delta scales,
     // to speed-up the process of converting from fixed-point to floating-point.
     for (int32 i = 0; i < LINEAR_INTERPOLATION_LOOKUP_LENGTH; ++i) linearInterpolationLookup[i] = i / (float)LINEAR_INTERPOLATION_LOOKUP_LENGTH;
+#endif
 
     GEN_HASH_MD5("Stream Channel 0", sfxList[SFX_COUNT - 1].hash);
     sfxList[SFX_COUNT - 1].scope              = SCOPE_GLOBAL;
     sfxList[SFX_COUNT - 1].maxConcurrentPlays = 1;
     sfxList[SFX_COUNT - 1].length             = MIX_BUFFER_SIZE;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     AllocateStorage((void **)&sfxList[SFX_COUNT - 1].buffer, MIX_BUFFER_SIZE * sizeof(SAMPLE_FORMAT), DATASET_MUS, false);
-
+#endif
     initializedAudioChannels = true;
 }
 
 void RSDK::UpdateStreamBuffer(ChannelInfo *channel)
 {
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-    DC_STUB();
-#else
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     int32 bufferRemaining = MIX_BUFFER_SIZE;
     float *buffer         = channel->samplePtr;
 
@@ -226,9 +580,7 @@ void RSDK::UpdateStreamBuffer(ChannelInfo *channel)
 
 void RSDK::LoadStream(ChannelInfo *channel)
 {
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-    DC_STUB();
-#else
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (channel->state != CHANNEL_LOADING_STREAM)
         return;
 
@@ -267,8 +619,13 @@ void RSDK::LoadStream(ChannelInfo *channel)
 int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint32 loopPoint, bool32 loadASync)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    DC_STUB();
-    return -1;
+    sprintf_s(streamFilePath, sizeof(streamFilePath), "/pc/Data/Music/%s", filename);
+
+    wav_destroy();
+    wav_create(streamFilePath, loopPoint);
+    wav_play();
+
+    return 0;
 #else
     if (!engine.streamsEnabled)
         return -1;
@@ -328,17 +685,28 @@ int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint3
 
 void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 {
-#if 1
-    return;
+    char fullFilePath[0x80];
+
+    RETRO_HASH_MD5(hash);
+    GEN_HASH_MD5(filename, hash);
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    sprintf_s(fullFilePath, sizeof(fullFilePath), "/pc/Data/SoundFX/%s", filename);
+
+    sfxhnd_t hnd = snd_sfx_load(fullFilePath);
+
+    if (hnd != 0) {
+        HASH_COPY_MD5(sfxList[slot].hash, hash);
+        sfxList[slot].scope              = scope;
+        sfxList[slot].maxConcurrentPlays = plays;
+        sfxList[slot].length = 65534;
+        sfxList[slot].buffer = (float*)hnd;
+    }
 #else
     FileInfo info;
     InitFileInfo(&info);
 
-    char fullFilePath[0x80];
     sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/SoundFX/%s", filename);
-
-    RETRO_HASH_MD5(hash);
-    GEN_HASH_MD5(filename, hash);
 
     if (LoadFile(&info, fullFilePath, FMODE_RB)) {
         HASH_COPY_MD5(sfxList[slot].hash, hash);
@@ -453,7 +821,6 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 
 void RSDK::LoadSfx(char *filename, uint8 plays, uint8 scope)
 {
-#if RETRO_PLATFORM != RETRO_KALLISTIOS
     // Find an empty sound slot.
     uint16 id = -1;
     for (uint32 i = 0; i < SFX_COUNT; ++i) {
@@ -465,7 +832,6 @@ void RSDK::LoadSfx(char *filename, uint8 plays, uint8 scope)
 
     if (id != (uint16)-1)
         LoadSfxToSlot(filename, id, plays, scope);
-#endif
 }
 
 int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
@@ -473,6 +839,20 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
     if (sfx >= SFX_COUNT || !sfxList[sfx].scope)
         return -1;
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if ((sfxhnd_t)sfxList[sfx].buffer != (sfxhnd_t)0) {
+        sfx_play_data_t data = {0};
+        data.chn = -1;
+        data.idx = (sfxhnd_t)sfxList[sfx].buffer;
+        data.vol = 192 * engine.soundFXVolume;
+        data.pan = 127;
+        // looping was causing problems
+        data.loop = 0; // loopPoint != 0
+        data.loopstart = 0; // loopPoint
+        data.freq = 22050;
+        return snd_sfx_play_ex(&data);
+    }
+#else
     uint8 count = 0;
     for (int32 c = 0; c < CHANNEL_COUNT; ++c) {
         if (channels[c].soundID == sfx)
@@ -534,10 +914,12 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
     UnlockAudioDevice();
 
     return slot;
+#endif
 }
 
 void RSDK::SetChannelAttributes(uint8 channel, float volume, float panning, float speed)
 {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (channel < CHANNEL_COUNT) {
         volume                   = fminf(4.0f, volume);
         volume                   = fmaxf(0.0f, volume);
@@ -552,13 +934,12 @@ void RSDK::SetChannelAttributes(uint8 channel, float volume, float panning, floa
         else if (speed == 1.0f)
             channels[channel].speed = TO_FIXED(1);
     }
+#endif
 }
 
 uint32 RSDK::GetChannelPos(uint32 channel)
 {
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-    DC_STUB();
-#else
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (channel >= CHANNEL_COUNT)
         return 0;
 
@@ -578,9 +959,7 @@ uint32 RSDK::GetChannelPos(uint32 channel)
 
 double RSDK::GetVideoStreamPos()
 {
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-    DC_STUB();
-#else
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (channels[0].state == CHANNEL_STREAM && AudioDevice::audioState && AudioDevice::initializedAudioChannels && vorbisInfo->current_loc_valid) {
         return vorbisInfo->current_loc / (double)AUDIO_FREQUENCY;
     }
@@ -591,6 +970,13 @@ double RSDK::GetVideoStreamPos()
 
 void RSDK::ClearStageSfx()
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    wav_destroy();
+
+    for (int i = 0; i < 64; i++) {
+        snd_sfx_chn_free(i);
+    }
+#endif
     LockAudioDevice();
 
     for (int32 c = 0; c < CHANNEL_COUNT; ++c) {
@@ -603,6 +989,9 @@ void RSDK::ClearStageSfx()
     // Unload stage SFX
     for (int32 s = 0; s < SFX_COUNT; ++s) {
         if (sfxList[s].scope >= SCOPE_STAGE) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            snd_sfx_unload((sfxhnd_t)sfxList[s].buffer);
+#endif
             MEM_ZERO(sfxList[s]);
             sfxList[s].scope = SCOPE_NONE;
         }
@@ -614,6 +1003,13 @@ void RSDK::ClearStageSfx()
 #if RETRO_USE_MOD_LOADER
 void RSDK::ClearGlobalSfx()
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    wav_destroy();
+
+    for (int i = 0; i < 64; i++) {
+        snd_sfx_chn_free(i);
+    }
+#endif
     LockAudioDevice();
 
     for (int32 c = 0; c < CHANNEL_COUNT; ++c) {
@@ -627,6 +1023,9 @@ void RSDK::ClearGlobalSfx()
     for (int32 s = 0; s < SFX_COUNT; ++s) {
         // clear global sfx (do NOT clear the stream channel 0 slot)
         if (sfxList[s].scope == SCOPE_GLOBAL && s != SFX_COUNT - 1) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            snd_sfx_unload((sfxhnd_t)sfxList[s].buffer);
+#endif
             MEM_ZERO(sfxList[s]);
             sfxList[s].scope = SCOPE_NONE;
         }

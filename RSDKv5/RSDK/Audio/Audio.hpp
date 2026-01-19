@@ -93,9 +93,20 @@ inline uint16 GetSfx(const char *sfxName)
     GEN_HASH_MD5(sfxName, hash);
 
     for (int32 s = 0; s < SFX_COUNT; ++s) {
-        if (HASH_MATCH_MD5(sfxList[s].hash, hash))
+        if (HASH_MATCH_MD5(sfxList[s].hash, hash)) {
             return s;
+        }
     }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    LoadSfx((char*)sfxName, 1, 1);
+
+    for (int32 s = 0; s < SFX_COUNT; ++s) {
+        if (HASH_MATCH_MD5(sfxList[s].hash, hash)) {
+            return s;
+        }
+    }
+#endif
 
     return -1;
 }
@@ -125,7 +136,9 @@ inline void StopAllSfx()
 #if !RETRO_USE_ORIGINAL_CODE
     LockAudioDevice();
 #endif
-
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    wav_destroy();
+#endif
     for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
         if (channels[i].state == CHANNEL_SFX) {
             MEM_ZERO(channels[i]);
