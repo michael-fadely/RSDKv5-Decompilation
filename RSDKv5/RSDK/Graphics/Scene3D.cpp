@@ -854,6 +854,14 @@ void RSDK::AddMeshFrameToScene(uint16 modelFrames, uint16 sceneIndex, Animator *
     }
 }
 
+static inline float tri_signed_area(Scene3DVertex *a, Scene3DVertex *b, Scene3DVertex *c) {
+    return (b->x - a->x) * (c->y - a->y) - (b->y - a->y) * (c->x - a->x);
+}
+
+static inline int should_cull_face(Scene3DVertex *a, Scene3DVertex *b, Scene3DVertex *c) {
+    return tri_signed_area(a,b,c) >= -16384.0f;
+}
+
 void RSDK::Draw3DScene(uint16 sceneID)
 {
     if (sceneID < SCENE3D_COUNT) {
@@ -1023,6 +1031,17 @@ void RSDK::Draw3DScene(uint16 sceneID)
                 for (int32 f = 0; f < scn->faceCount; ++f) {
                     Scene3DVertex *drawVert = &scn->vertices[scn->faceBuffer[f].index];
                     int32 vertCount         = *vertCnt;
+                    if (vertCount == 4) {
+                        if (should_cull_face(&drawVert[0],&drawVert[1],&drawVert[3])) {
+                            continue;
+                        }
+                    } else if (vertCount == 3) {
+                        if (should_cull_face(&drawVert[0],&drawVert[2],&drawVert[1])) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
 
                     int32 ny = 0;
                     for (int32 v = 0; v < vertCount; ++v) {
@@ -1063,6 +1082,17 @@ void RSDK::Draw3DScene(uint16 sceneID)
                 for (int32 f = 0; f < scn->faceCount; ++f) {
                     Scene3DVertex *drawVert = &scn->vertices[scn->faceBuffer[f].index];
                     int32 vertCount         = *vertCnt;
+                    if (vertCount == 4) {
+                        if (should_cull_face(&drawVert[0],&drawVert[1],&drawVert[3])) {
+                            continue;
+                        }
+                    } else if (vertCount == 3) {
+                        if (should_cull_face(&drawVert[0],&drawVert[2],&drawVert[1])) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
 
                     for (int32 v = 0; v < vertCount; ++v) {
                         vertPos[v].x = (drawVert[v].x << 8) - (currentScreen->position.x << 16);
@@ -1103,8 +1133,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                     int32 v = 0;
                     for (; v < *vertCnt && v < 0xFF; ++v) {
                         int32 vertZ = drawVert[v].z;
-                        if (vertZ < 0x100) {
+                        if (vertZ < 0x100  || vertZ > ((0x100 << 12) - 0x100)) {
                             v = 0xFF;
+                            break;
                         }
                         else {
                             vertPos[v].x = currentScreen->center.x + (drawVert[v].x << scn->projectionX) / vertZ;
@@ -1129,12 +1160,24 @@ void RSDK::Draw3DScene(uint16 sceneID)
                 for (int32 f = 0; f < scn->faceCount; ++f) {
                     Scene3DVertex *drawVert = &scn->vertices[scn->faceBuffer[f].index];
                     int32 vertCount         = *vertCnt;
+                    if (vertCount == 4) {
+                        if (should_cull_face(&drawVert[0],&drawVert[1],&drawVert[3])) {
+                            continue;
+                        }
+                    } else if (vertCount == 3) {
+                        if (should_cull_face(&drawVert[0],&drawVert[2],&drawVert[1])) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
 
                     int32 v = 0;
                     for (; v < vertCount && v < 0xFF; ++v) {
                         int32 vertZ = drawVert[v].z;
-                        if (vertZ < 0x100) {
+                        if (vertZ < 0x100  || vertZ > ((0x100 << 12) - 0x100)) {
                             v = 0xFF;
+                            break;
                         }
                         else {
                             vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) / vertZ << 16);
@@ -1159,8 +1202,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                     int32 ny1 = 0;
                     for (; v < *vertCnt && v < 0xFF; ++v) {
                         int32 vertZ = drawVert[v].z;
-                        if (vertZ < 0x100) {
+                        if (vertZ < 0x100 || vertZ > ((0x100 << 12) - 0x100)) {
                             v = 0xFF;
+                            break;
                         }
                         else {
                             vertPos[v].x = currentScreen->center.x + (drawVert[v].x << scn->projectionX) / vertZ;
@@ -1207,13 +1251,25 @@ void RSDK::Draw3DScene(uint16 sceneID)
                 for (int32 f = 0; f < scn->faceCount; ++f) {
                     Scene3DVertex *drawVert = &scn->vertices[scn->faceBuffer[f].index];
                     int32 vertCount         = *vertCnt;
+                    if (vertCount == 4) {
+                        if (should_cull_face(&drawVert[0],&drawVert[1],&drawVert[3])) {
+                            continue;
+                        }
+                    } else if (vertCount == 3) {
+                        if (should_cull_face(&drawVert[0],&drawVert[2],&drawVert[1])) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
 
                     int32 v  = 0;
                     int32 ny = 0;
                     for (; v < vertCount && v < 0xFF; ++v) {
                         int32 vertZ = drawVert[v].z;
-                        if (vertZ < 0x100) {
+                        if (vertZ < 0x100 || vertZ > ((0x100 << 12) - 0x100)) {
                             v = 0xFF;
+                            break;
                         }
                         else {
                             vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) / vertZ << 16);
@@ -1256,12 +1312,24 @@ void RSDK::Draw3DScene(uint16 sceneID)
                 for (int32 f = 0; f < scn->faceCount; ++f) {
                     Scene3DVertex *drawVert = &scn->vertices[scn->faceBuffer[f].index];
                     int32 vertCount         = *vertCnt;
+                    if (vertCount == 4) {
+                        if (should_cull_face(&drawVert[0],&drawVert[1],&drawVert[3])) {
+                            continue;
+                        }
+                    } else if (vertCount == 3) {
+                        if (should_cull_face(&drawVert[0],&drawVert[2],&drawVert[1])) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
 
                     int32 v = 0;
                     for (; v < vertCount && v < 0xFF; ++v) {
                         int32 vertZ = drawVert[v].z;
-                        if (vertZ < 0x100) {
+                        if (vertZ < 0x100 || vertZ > ((0x100 << 12) - 0x100)) {
                             v = 0xFF;
+                            break;
                         }
                         else {
                             vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) / vertZ << 16);

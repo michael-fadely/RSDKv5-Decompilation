@@ -497,7 +497,7 @@ void RenderDevice::BeginScene() {
     pixelScaleY = viewSize.y / pixelSize.y;
 
     pvr_scene_begin();
-    pvr_set_bg_color((float)bg_r / 255.0f, (float)bg_g / 255.0f, (float)bg_b / 255.0f);
+    pvr_set_bg_color(0.0f,0.0f,0.0f);//(float)bg_r / 255.0f, (float)bg_g / 255.0f, (float)bg_b / 255.0f);
     // direct render anything that doesn't blend with punch-through
     if (pvr_list_begin(PVR_LIST_PT_POLY) == -1) {
         printf("[pvr] [NG] pvr_list_begin(PVR_LIST_PT_POLY) returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
@@ -721,9 +721,9 @@ void RenderDevice::PrepareTexturedQuadDR(int32 y, const GFXSurface* surface) {
                          PVR_BLEND_SRCALPHA,
                          PVR_BLEND_INVSRCALPHA,
                          surface->texture)) {
-        /* if (!lastPrimitiveWasConsumed) {
+        if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
-        } */
+        }
         lastPrimitiveWasConsumed = false;
 
         pvr_sprite_cxt_t context;
@@ -758,9 +758,9 @@ void RenderDevice::PrepareTexturedQuadDMA(int32 y, const GFXSurface* surface) {
                          PVR_BLEND_SRCALPHA,
                          PVR_BLEND_INVSRCALPHA,
                          surface->texture)) {
-        /* if (!lastPrimitiveWasConsumed) {
+        if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
-        } */
+        }
         lastPrimitiveWasConsumed = false;
         pvr_sprite_cxt_t context;
         pvr_sprite_cxt_txr(
@@ -789,10 +789,10 @@ void RenderDevice::DrawTexturedQuadDR(
         int32 sprY0, int32 sprY1,
         const GFXSurface* surface
 ) {
-    /* if (lastPrimitiveType != PrimitiveTypes_TexturedQuadDR) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedQuadDR) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedQuadDR BEFORE PREPPING!\n");
         return;
-    } */ 
+    }
 
     lastPrimitiveWasConsumed = true;
 
@@ -842,10 +842,10 @@ void RenderDevice::DrawTexturedQuadDMA(
         int32 sprY0, int32 sprY1,
         const GFXSurface* surface
 ) {
-    /* if (lastPrimitiveType != PrimitiveTypes_TexturedQuadDMA) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedQuadDMA) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedQuadDMA BEFORE PREPPING!\n");
         return;
-    } */  
+    }
 
     lastPrimitiveWasConsumed = true;
 
@@ -888,10 +888,10 @@ void RenderDevice::DrawTexturedQuadEx(
         int32 sprY0, int32 sprY1,
         const GFXSurface* surface
 ) {
-    /* if (lastPrimitiveType != PrimitiveTypes_TexturedQuadDR) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedQuadDR) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedQuadDR BEFORE PREPPING!\n");
         return;
-    } */
+    }
 
     lastPrimitiveWasConsumed = true;
 
@@ -963,9 +963,9 @@ void RenderDevice::PrepareTexturedPolyDR(int32 y, int srcBlend, int dstBlend, co
                          srcBlend,
                          dstBlend,
                          surface->texture)) {
-        /* if (!lastPrimitiveWasConsumed) {
+        if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
-        } */
+        }
         lastPrimitiveWasConsumed = false;
 
         pvr_poly_cxt_t context;
@@ -1018,9 +1018,9 @@ void RenderDevice::PrepareTexturedPolyDMA(int32 y, int srcBlend, int dstBlend, c
                          srcBlend,
                          dstBlend,
                          surface->texture) || reset_texpoly) {
-        /* if (!lastPrimitiveWasConsumed) {
+        if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
-        } */
+        }
 
         reset_texpoly = 0;
 
@@ -1074,10 +1074,10 @@ void RenderDevice::DrawTexturedPolyDR(
         int32 alpha,
         const GFXSurface *surface
 ) {
-    /* if (lastPrimitiveType != PrimitiveTypes_TexturedPolyDR) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedPolyDR) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedPolyDR BEFORE PREPPING!\n");
         return;
-    } */
+    }
 
     lastPrimitiveWasConsumed = true;
 
@@ -1175,10 +1175,10 @@ void RenderDevice::DrawTexturedPolyDMA(
         int32 alpha,
         const GFXSurface *surface
 ) {
-    /* if (lastPrimitiveType != PrimitiveTypes_TexturedPolyDMA) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedPolyDMA) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedPolyDMA BEFORE PREPPING!\n");
         return;
-    } */
+    }
 
     lastPrimitiveWasConsumed = true;
 
@@ -1427,9 +1427,9 @@ void RenderDevice::PrepareColoredPolyDR(int32 y, int srcBlend, int dstBlend) {
                          srcBlend,
                          dstBlend,
                          nullptr)) {
-        /* if (!lastPrimitiveWasConsumed) {
+        if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
-        } */
+        }
 
         lastPrimitiveWasConsumed = false;
 
@@ -1460,16 +1460,12 @@ void RenderDevice::PrepareColoredPolyDMA(int32 y, int srcBlend, int dstBlend) {
                          srcBlend,
                          dstBlend,
                          nullptr) || reset_colpoly) {
-        /* if (!lastPrimitiveWasConsumed) {
+        if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
-        } */
+        }
 
         reset_colpoly = 0;
         lastPrimitiveWasConsumed = false;
-
-        /* if (doing_tint) {
-            return;
-        } */
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
@@ -1492,10 +1488,10 @@ void RenderDevice::DrawColoredPolyDR(
         int32 width, int32 height,
         uint32 color
 ) {
-    /* if (lastPrimitiveType != PrimitiveTypes_ColoredPolyDR) {
+    if (lastPrimitiveType != PrimitiveTypes_ColoredPolyDR) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW ColoredPolyDR BEFORE PREPPING!\n");
         return;
-    } */
+    }
 
     lastPrimitiveWasConsumed = true;
 
@@ -1552,10 +1548,10 @@ void RenderDevice::DrawColoredPolyDMA(
         int32 width, int32 height,
         uint32 color
 ) {
-    /* if (lastPrimitiveType != PrimitiveTypes_ColoredPolyDMA) {
+    if (lastPrimitiveType != PrimitiveTypes_ColoredPolyDMA) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW ColoredPolyDMA BEFORE PREPPING!\n");
         return;
-    } */
+    }
 
     lastPrimitiveWasConsumed = true;
 
@@ -1565,11 +1561,11 @@ void RenderDevice::DrawColoredPolyDMA(
     const float x1 = x0 + static_cast<float>(width) * pixelScaleX;
     const float y1 = y0 + static_cast<float>(height) * pixelScaleY;
     const float z  = GetDepth();
-// broken for current time
-//    if (doing_tint) {//} && ((color & 0x00ffffff) == 0x00345678)) {
-  //      color = 0x7f000000;
-    //    doing_tint = 0;
-    //}
+
+    if (doing_tint == 2) {
+        color = 0x7f000000;
+        doing_tint = 0;
+    }
 
     if (!doing_tint) {
         // top left
@@ -1664,9 +1660,9 @@ void RenderDevice::DrawColoredPolyDMA(
 void RenderDevice::PrepareLinePolyDR(int srcBlend, int dstBlend) {
     if ((lastPrimitiveType != PrimitiveTypes_LineDR) || 
         ((lastLineSrcBlend != srcBlend) || (lastLineDstBlend != dstBlend))) {
-        /* if (!lastPrimitiveWasConsumed) {
+        if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
-        } */
+        }
 
         lastPrimitiveWasConsumed = false;
 
@@ -1692,9 +1688,9 @@ void RenderDevice::PrepareLinePolyDMA(int srcBlend, int dstBlend) {
     if ((lastPrimitiveType != PrimitiveTypes_LineDMA) || 
         ((lastLineSrcBlend != srcBlend) || (lastLineDstBlend != dstBlend)) || 
         reset_linepoly) {
-        /* if (!lastPrimitiveWasConsumed) {
+        if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
-        } */
+        }
 
         reset_linepoly = 0;
         lastPrimitiveWasConsumed = false;
@@ -1752,10 +1748,10 @@ void RenderDevice::DrawLinePolyDR(int lx1, int ly1, int lx2, int ly2, int color)
     float dx,dy;
     float nx,ny;
 
-    /* if (lastPrimitiveType != PrimitiveTypes_LineDR) {
+    if (lastPrimitiveType != PrimitiveTypes_LineDR) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW LineDR BEFORE PREPPING!\n");
         return;
-    } */
+    }
 
     lastPrimitiveWasConsumed = true;
 
@@ -1787,10 +1783,10 @@ void RenderDevice::DrawLinePolyDMA(int lx1, int ly1, int lx2, int ly2, int color
     float dx,dy;
     float nx,ny;
 
-    /* if (lastPrimitiveType != PrimitiveTypes_LineDMA) {
+    if (lastPrimitiveType != PrimitiveTypes_LineDMA) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW LineDMA BEFORE PREPPING!\n");
         return;
-    } */
+    }
 
     lastPrimitiveWasConsumed = true;
 
@@ -1862,9 +1858,9 @@ void RenderDevice::DrawRotoPoly(int x, int y, int w, int h, float u, float v) {
 void RenderDevice::PrepareFacePolyDR(int srcBlend, int dstBlend) {
     if ((lastPrimitiveType != PrimitiveTypes_FaceDR) || 
         ((lastFaceSrcBlend != srcBlend) || (lastFaceDstBlend != dstBlend))) {
-        /* if (!lastPrimitiveWasConsumed) {
+        if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
-        } */
+        }
         lastPrimitiveWasConsumed = false;
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
@@ -1891,9 +1887,9 @@ void RenderDevice::PrepareFacePolyDMA(int srcBlend, int dstBlend) {
     if ((lastPrimitiveType != PrimitiveTypes_FaceDMA) || 
         ((lastFaceSrcBlend != srcBlend) || (lastFaceDstBlend != dstBlend)) || 
         reset_facepoly) {
-        /* if (!lastPrimitiveWasConsumed) {
+        if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
-        } */
+        }
         lastPrimitiveWasConsumed = false;
         reset_facepoly = 0;
         pvr_poly_cxt_t context;
@@ -1943,10 +1939,10 @@ void RenderDevice::PrepareFacePolyDMA(int srcBlend, int dstBlend) {
 void RenderDevice::DrawFacePolyDR(
         Vector2 *vertices, int32 vertCount, int32 faceColor, int32 alpha, uint32 *colors
 ) {
-    /* if (lastPrimitiveType != PrimitiveTypes_FaceDR) {
+    if (lastPrimitiveType != PrimitiveTypes_FaceDR) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW FaceDR BEFORE PREPPING!\n");
         return;
-    } */
+    }
 
     lastPrimitiveWasConsumed = true;
 
@@ -1958,6 +1954,7 @@ void RenderDevice::DrawFacePolyDR(
     uint32 ualpha = (uint32)alpha;
     if (ualpha < 64) ualpha = 64;
     ualpha <<= 24;
+
 
     if (vertCount == 3) {
         SET_FACEPOLY_VERT_DR(0, z, 0);
@@ -1975,10 +1972,10 @@ void RenderDevice::DrawFacePolyDR(
 void RenderDevice::DrawFacePolyDMA(
         Vector2 *vertices, int32 vertCount, int32 faceColor, int32 alpha, uint32 *colors
 ) {
-    /* if (lastPrimitiveType != PrimitiveTypes_FaceDMA) {
+    if (lastPrimitiveType != PrimitiveTypes_FaceDMA) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW FaceDMA BEFORE PREPPING!\n");
         return;
-    } */
+    }
 
     lastPrimitiveWasConsumed = true;
     

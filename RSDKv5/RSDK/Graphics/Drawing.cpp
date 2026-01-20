@@ -615,6 +615,11 @@ void RSDK::SwapDrawListEntries(uint8 drawGroup, uint16 slot1, uint16 slot2, uint
 
 void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
 {
+#if 0
+    uint16_t oar = abs(alphaR);
+    uint16_t oag = abs(alphaG);
+    uint16_t oab = abs(alphaB);
+#endif
     alphaR = CLAMP(alphaR, 0x00, 0xFF);
     alphaG = CLAMP(alphaG, 0x00, 0xFF);
     alphaB = CLAMP(alphaB, 0x00, 0xFF);
@@ -629,7 +634,22 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
 
         const auto width = currentScreen->size.x;
         const auto height = currentScreen->size.y;
+#if 0
+        uint8_t color_r = (color >> 16) & 0xff;
+        uint8_t color_g = (color >> 8) & 0xff;
+        uint8_t color_b = color & 0xff;
 
+// blendLookupTable[x + (y * 0x20)]    = y * x >> 8 alphaR * colorR >> 8
+        color_r = color_r >> 3;
+        color_g = color_g >> 3;
+        color_b = color_b >> 3;
+
+        color_r = ((color_r * oar) >> 8) & 0x001f;
+        color_g = ((color_g * oag) >> 8) & 0x001f;
+        color_b = ((color_b * oab) >> 8) & 0x001f;
+
+        color = (color_r << 19) | (color_g << 11) | (color_b<<3);
+#endif
         if ((badAlpha == 255)) {
             RenderDevice::PrepareColoredPolyDR(0, PVR_BLEND_SRCALPHA, PVR_BLEND_INVSRCALPHA);
             RenderDevice::DrawColoredPolyDR(0, 0, width, height, color | (badAlpha << 24));
@@ -648,6 +668,7 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
         uint16 clrBlendG = blendLookupTable[0x20 * alphaG + (((color >> 0x08) & 0xFF) >> 3)];
         uint16 clrBlendB = blendLookupTable[0x20 * alphaB + ((color & 0xFF) >> 3)];
         #endif
+
 
         uint16 *fbBlendR = &blendLookupTable[0x20 * (0xFF - alphaR)];
         uint16 *fbBlendG = &blendLookupTable[0x20 * (0xFF - alphaG)];
@@ -1272,6 +1293,11 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
 #endif
             if (!tintLookupTable)
                 return;
+#if defined(KOS_HARDWARE_RENDERER)
+            // distinguish between INVERT tint and alpha tint
+            if (tintLookupTable[0] != 0xffff)
+                doing_tint = 2;
+#endif
             break;
     }
 
@@ -1314,7 +1340,13 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         alpha = 0x70;
     }
     if (inkEffect == INK_BLEND) {
-        alpha /= 2;
+        if (alpha != 0x7f && color != 0xffffffff) {
+            alpha /= 2;
+        } else {
+            if (alpha != 0xff) {
+                alpha += 0x18;
+            }
+        }
     }
 #endif
 

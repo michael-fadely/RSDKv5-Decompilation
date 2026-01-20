@@ -79,7 +79,6 @@ bool32 RSDK::SKU::achievementForceReset     = false;
 
 void RSDK::SKU::LoadAchievementAssets()
 {
-    return;
     if (achievements && achievementsEnabled && achievements->CheckAchievementsEnabled()) {
         if (achievements->CheckAchievementPopupEnabled()) {
             if (achievementForceReset) {
@@ -111,7 +110,6 @@ void RSDK::SKU::LoadAchievementAssets()
 }
 void RSDK::SKU::ProcessAchievements()
 {
-    return;
     if (achievementsEnabled && achievements && achievements->CheckAchievementsEnabled()) {
         if (achievementsLoaded) {
             if (!achievementID) {

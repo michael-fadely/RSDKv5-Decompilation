@@ -267,7 +267,6 @@ void RSDK::SetString(String *string, const char *text)
 
 void RSDK::AppendText(String *string, const char *appendString)
 {
-    return;
     if (!*appendString)
         return;
 

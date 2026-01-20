@@ -30,7 +30,7 @@ inline void PrintConsole(const char *message) { printf("%s", message); }
 void RSDK::PrintLog(int32 mode, const char *message, ...)
 {
 #ifndef RETRO_DISABLE_LOG
-    if (1) { //engineDebugMode) {
+    if (engineDebugMode) {
         // make the full string
         va_list args;
         va_start(args, message);
@@ -41,8 +41,7 @@ void RSDK::PrintLog(int32 mode, const char *message, ...)
         else
             sprintf(outputString, "%.*s", (int32)sizeof(outputString) - 1, outputString);
         va_end(args);
-dbgio_printf(outputString);
-return;
+
 #if RETRO_REV02
         switch (mode) {
             default:
@@ -392,6 +391,13 @@ void RSDK::DevMenu_MainMenu()
     DrawRectangle(currentScreen->center.x - 40, y, 0x80, 0x08, 0x80, 0xFF, INK_NONE, true);
     DrawRectangle(currentScreen->center.x - 39, y + 1, sfxUsed, 6, 0xF0F0F0, 0xFF, INK_NONE, true);
     DrawDevString("SFX", currentScreen->center.x - 64, y, 0, 0xF0F080);
+#else
+    // VRAM
+    int32 pvrUsed = (int32)((((float)(1048576*8) - (float)pvr_mem_available()) / (float)(1048576*8)) * 126.0);
+    y += 10;
+    DrawRectangle(currentScreen->center.x - 40, y, 0x80, 0x08, 0x80, 0xFF, INK_NONE, true);
+    DrawRectangle(currentScreen->center.x - 39, y + 1, pvrUsed  , 6, 0xF0F0F0, 0xFF, INK_NONE, true);
+    DrawDevString("PVR", currentScreen->center.x - 64, y, 0, 0xF0F080);
 #endif
 
     // String Storage

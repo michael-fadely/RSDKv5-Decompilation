@@ -943,11 +943,11 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
         size_t textureSize;
         file_t fontfile;
         sprintf_s(fullFilePath, sizeof(fullFilePath), "/pc/Data/Sprites/%s", filename);
-//        mutex_lock(&io_lock);
+        mutex_lock(&io_lock);
         fontfile = fs_open(fullFilePath, O_RDONLY);
         if (fontfile == -1) {
             printf("couldnt open %s\n", filename);
-//            mutex_unlock(&io_lock);
+            mutex_unlock(&io_lock);
             goto normal_Texcode;
         }
         surface->is_vq = 1;
@@ -966,38 +966,38 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 
         off_t srv = fs_seek(fontfile, 4, SEEK_SET);
         if (srv != 4) {
-//            mutex_unlock(&io_lock);
+            mutex_unlock(&io_lock);
             fs_close(fontfile);
             goto normal_Texcode;
         }
         uint16_t dtw,dth;
         ssize_t rrv = fs_read(fontfile, &dtw, 2);
         if (rrv < 0) {
-//            mutex_unlock(&io_lock);
+            mutex_unlock(&io_lock);
             fs_close(fontfile);
             goto normal_Texcode;
         }
         rrv = fs_read(fontfile, &dth, 2);
         if (rrv < 0) {
-  //          mutex_unlock(&io_lock);
+            mutex_unlock(&io_lock);
             fs_close(fontfile);
             goto normal_Texcode;
         }
         srv = fs_seek(fontfile, 12, SEEK_SET);
         if (srv != 12) {
-    //        mutex_unlock(&io_lock);
+            mutex_unlock(&io_lock);
             fs_close(fontfile);
             goto normal_Texcode;
         }
         rrv = fs_read(fontfile, &textureSize, 4);
         if (rrv < 0) {
-      //      mutex_unlock(&io_lock);
+            mutex_unlock(&io_lock);
             fs_close(fontfile);
             goto normal_Texcode;
         }
         srv = fs_seek(fontfile, 16, SEEK_SET);
         if (srv != 16) {
-        //    mutex_unlock(&io_lock);
+            mutex_unlock(&io_lock);
             fs_close(fontfile);
             goto normal_Texcode;
         }
@@ -1006,7 +1006,7 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
         surface->height = dth;
 
         if (textureSize < 0) {
-          //  mutex_unlock(&io_lock);
+            mutex_unlock(&io_lock);
             fs_close(fontfile);
             printf("[pvr] [NG] [Data/Sprites/%s] texture size is negative!!! %ld * %ld = %ld\n",
                    filename, surface->width, surface->height, textureSize);
@@ -1049,7 +1049,7 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
         } else {
             rrv = fs_read(fontfile, surface->pixels, textureSize);
             if (rrv < 0) {
-              //  mutex_unlock(&io_lock);
+                mutex_unlock(&io_lock);
                 fs_close(fontfile);
                 goto normal_Texcode;
             }
@@ -1077,7 +1077,7 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
                 surface->scope = scope;
             }
         }
-   //     mutex_unlock(&io_lock);
+        mutex_unlock(&io_lock);
 
         RemoveStorageEntry((void **)&surface->pixels);
         surface->pixels = NULL;
