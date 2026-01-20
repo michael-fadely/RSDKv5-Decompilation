@@ -207,10 +207,35 @@ void PrintAllocState(uint32 dataSet, const DataStorage* storage, const void* var
         printf("%s\n", dataSetName);
     }
 }
+
+uint32 DataSetFromPointer(const void* ptr) {
+    // assuming non-null
+
+    for (uint32 i = 0; i < DATASET_MAX; ++i) {
+        const auto& storage = dataStorage[i];
+
+        if (storage.memoryTable == nullptr || !storage.storageLimit) {
+            continue;
+        }
+
+        const uint8* poolBegin = reinterpret_cast<const uint8*>(storage.memoryTable);
+        const uint8* poolEnd = poolBegin + storage.storageLimit;
+
+        if (ptr >= poolBegin && ptr < poolEnd) {
+            return i;
+        }
+    }
+
+    return DATASET_MAX;
+}
 }
 
 void RSDK::PinStorage_(void** pVar, const char* file, size_t line) {
     if (pVar == nullptr || *pVar == nullptr) {
+        return;
+    }
+
+    if (DataSetFromPointer(*pVar) == DATASET_MAX) {
         return;
     }
 
@@ -223,6 +248,10 @@ void RSDK::UnPinStorage_(void** pVar, const char* file, size_t line) {
         return;
     }
 
+    if (DataSetFromPointer(*pVar) == DATASET_MAX) {
+        return;
+    }
+
     auto* header = static_cast<StorageHeader*>(*pVar) - 1;
     header->flags &= ~StorageFlags::pinned;
 }
@@ -230,13 +259,6 @@ void RSDK::UnPinStorage_(void** pVar, const char* file, size_t line) {
 
 void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line)
 {
-    // DCWIP
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-    if (dataPtr && *dataPtr) {
-        printf("\t[UH] WARNING: NON-NULL ALLOC FROM: %s:%u\n", file, line);
-    }
-#endif
-
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     if (dataPtr == nullptr) {
         return;
@@ -469,6 +491,10 @@ void RSDK::RemoveStorageEntry_(void **dataPtr, const char* file, size_t line)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     if (dataPtr == nullptr || *dataPtr == nullptr) {
+        return;
+    }
+
+    if (DataSetFromPointer(*dataPtr) == DATASET_MAX) {
         return;
     }
 
