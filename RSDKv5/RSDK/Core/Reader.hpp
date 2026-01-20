@@ -125,7 +125,7 @@ bool32 LoadFile(FileInfo *info, const char *filename, uint8 fileMode);
 inline void CloseFile(FileInfo *info)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    mutex_lock_scoped(&io_lock);
+    //mutex_lock_scoped(&io_lock);
 #endif
     if (!info->usingFileBuffer && info->file)
         fClose(info->file);
@@ -140,7 +140,7 @@ void SkipBytes(FileInfo *info, int32 size);
 inline void Seek_Set(FileInfo *info, int32 count)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    mutex_lock_scoped(&io_lock);
+    //mutex_lock_scoped(&io_lock);
 #endif
     if (info->readPos != count) {
         if (info->encrypted) {
@@ -165,7 +165,7 @@ inline void Seek_Set(FileInfo *info, int32 count)
 inline void Seek_Cur(FileInfo *info, int32 count)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    mutex_lock_scoped(&io_lock);
+    //mutex_lock_scoped(&io_lock);
 #endif
     info->readPos += count;
 
@@ -183,7 +183,7 @@ inline void Seek_Cur(FileInfo *info, int32 count)
 inline size_t ReadBytes(FileInfo *info, void *data, int32 count)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    mutex_lock_scoped(&io_lock);
+    //mutex_lock_scoped(&io_lock);
 #endif
     size_t bytesRead = 0;
 
@@ -206,7 +206,7 @@ inline size_t ReadBytes(FileInfo *info, void *data, int32 count)
 inline uint8 ReadInt8(FileInfo *info)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    mutex_lock_scoped(&io_lock);
+    //mutex_lock_scoped(&io_lock);
 #endif
     int8 result      = 0;
     size_t bytesRead = 0;
@@ -232,7 +232,7 @@ inline uint8 ReadInt8(FileInfo *info)
 inline int16 ReadInt16(FileInfo *info)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    mutex_lock_scoped(&io_lock);
+    //mutex_lock_scoped(&io_lock);
 #endif
     union {
         uint16 result;
@@ -279,7 +279,7 @@ inline int16 ReadInt16(FileInfo *info)
 inline int32 ReadInt32(FileInfo *info, bool32 swapEndian)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    mutex_lock_scoped(&io_lock);
+    //mutex_lock_scoped(&io_lock);
 #endif
     union {
         uint32 result;
@@ -338,7 +338,7 @@ inline int32 ReadInt32(FileInfo *info, bool32 swapEndian)
 inline int64 ReadInt64(FileInfo *info)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    mutex_lock_scoped(&io_lock);
+    //mutex_lock_scoped(&io_lock);
 #endif
     union {
         uint64 result;
@@ -385,7 +385,7 @@ inline int64 ReadInt64(FileInfo *info)
 inline float ReadSingle(FileInfo *info)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    mutex_lock_scoped(&io_lock);
+    //mutex_lock_scoped(&io_lock);
 #endif
     union {
         float result;

@@ -8,7 +8,7 @@
 
 #if defined(KOS_HARDWARE_RENDERER)
 extern "C" {
-#define TR_VERTBUF_SIZE (256*1024)
+#define TR_VERTBUF_SIZE (384*1024)
     uint8_t __attribute__((aligned(32))) tr_buf[TR_VERTBUF_SIZE];
     extern uint8_t bg_r, bg_g, bg_b;
 };
@@ -490,7 +490,7 @@ void RenderDevice::BeginScene() {
 #if defined(KOS_HARDWARE_RENDERER)
     SetDepth(0);
     lastPrimitiveType = PrimitiveTypes_None;
-    pvr_wait_ready();
+//    pvr_wait_ready();
 
     // Update our cached values for pixel global pixel scaling.
     pixelScaleX = viewSize.x / pixelSize.x;
@@ -597,13 +597,6 @@ void RenderDevice::PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPal
 // static
 bool RenderDevice::InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
 {
-    if (srcBlend) {
-        *srcBlend = PVR_BLEND_SRCALPHA;
-    }
-    if (dstBlend) {
-        *dstBlend = PVR_BLEND_INVSRCALPHA;
-    }
-            
     switch (inkEffect) {
         case INK_NONE:
             if (srcBlend) {

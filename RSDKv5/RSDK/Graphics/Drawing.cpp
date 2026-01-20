@@ -704,7 +704,7 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
     int32 drawY2 = y2;
     int32 drawX2 = x2;
 
-    if (!screenRelative) {
+    if (screenRelative == 0) {
         drawX1 = FROM_FIXED(x1) - currentScreen->position.x;
         drawY1 = FROM_FIXED(y1) - currentScreen->position.y;
         drawX2 = FROM_FIXED(x2) - currentScreen->position.x;

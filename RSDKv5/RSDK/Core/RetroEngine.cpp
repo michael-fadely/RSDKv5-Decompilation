@@ -271,13 +271,13 @@ int32 RSDK::RunRetroEngine(int32 argc, char *argv[])
                     }
 #else
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-                    if ((sceneInfo.state != ENGINESTATE_LOAD) && (sceneInfo.state != (ENGINESTATE_LOAD | ENGINESTATE_STEPOVER))) {
+                    //if ((sceneInfo.state != ENGINESTATE_LOAD) && (sceneInfo.state != (ENGINESTATE_LOAD | ENGINESTATE_STEPOVER))) {
                         RenderDevice::BeginScene();
                         ProcessEngine();
                         RenderDevice::EndScene();
-                    } else {
-                        ProcessEngine();
-                    }
+                    //} else {
+                    //    ProcessEngine();
+                    //}
 #else
                     ProcessEngine();
 #endif
@@ -565,7 +565,7 @@ void RSDK::ProcessEngine()
             }
             break;
 
-#if RETRO_REV02
+//#if RETRO_REV02
         case ENGINESTATE_ERRORMSG: {
             ProcessInput();
 
@@ -590,7 +590,7 @@ void RSDK::ProcessEngine()
             DrawDevString(outputString, 8, currentScreen->center.y - (yOff >> 1) + 8, 0, 0xF0F0F0);
             break;
         }
-#endif
+//#endif
     }
 }
 
