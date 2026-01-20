@@ -213,9 +213,10 @@ int32 RSDK::RunRetroEngine(int32 argc, char *argv[])
 
                         dataStorage[DATASET_STG].entryCount  = 0;
                         dataStorage[DATASET_STG].usedStorage = 0;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                         dataStorage[DATASET_SFX].entryCount  = 0;
                         dataStorage[DATASET_SFX].usedStorage = 0;
-
+#endif
                         for (int32 o = 0; o < objectClassCount; ++o) {
                             if (objectClassList[o].staticVars && *objectClassList[o].staticVars)
                                 (*objectClassList[o].staticVars) = NULL;
@@ -270,9 +271,13 @@ int32 RSDK::RunRetroEngine(int32 argc, char *argv[])
                     }
 #else
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-                    RenderDevice::BeginScene();
-                    ProcessEngine();
-                    RenderDevice::EndScene();
+                    if ((sceneInfo.state != ENGINESTATE_LOAD) && (sceneInfo.state != (ENGINESTATE_LOAD | ENGINESTATE_STEPOVER))) {
+                        RenderDevice::BeginScene();
+                        ProcessEngine();
+                        RenderDevice::EndScene();
+                    } else {
+                        ProcessEngine();
+                    }
 #else
                     ProcessEngine();
 #endif

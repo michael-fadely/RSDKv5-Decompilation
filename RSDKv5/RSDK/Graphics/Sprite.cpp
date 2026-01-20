@@ -19,6 +19,11 @@ int32 ReadGifCode(ImageGIF *image);
 uint8 ReadGifByte(ImageGIF *image);
 uint8 TraceGifPrefix(uint32 *prefix, int32 code, int32 clearCode);
 
+extern "C" {
+extern mutex_t io_lock;
+};
+
+
 void InitGifDecoder(ImageGIF *image)
 {
     uint8 initCodeSize             = ReadInt8(&image->info);
@@ -902,7 +907,7 @@ bool32 RSDK::ImageTGA::Load(const char *fileName, bool32 loadHeader)
     return false;
 }
 #endif
-
+#define RETRO_PLATFORM RETRO_KALLISTIOS
 uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 {
     char fullFilePath[0x100];
@@ -931,7 +936,158 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 
 
     GFXSurface *surface = &gfxSurface[id];
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    surface->is_vq = 0;
+
+    if ((strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || /* (strncmp("Global/", filename, 7) == 0) || */ (strncmp("UI/", filename, 3) == 0)) {
+        size_t textureSize;
+        file_t fontfile;
+        sprintf_s(fullFilePath, sizeof(fullFilePath), "/pc/Data/Sprites/%s", filename);
+        mutex_lock(&io_lock);
+        fontfile = fs_open(fullFilePath, O_RDONLY);
+        if (fontfile == -1) {
+            printf("couldnt open %s\n", filename);
+            mutex_unlock(&io_lock);
+            goto normal_Texcode;
+        }
+        surface->is_vq = 1;
+
+        memcpy(surface->hash, hash, 4 * sizeof(int32));
+
+        int32 w = surface->width;
+        if (w > 1) {
+            int32 ls = 0;
+            do {
+                w >>= 1;
+                ++ls;
+            } while (w > 1);
+            surface->lineSize = ls;
+        }
+
+        off_t srv = fs_seek(fontfile, 4, SEEK_SET);
+        if (srv != 4) {
+            mutex_unlock(&io_lock);
+            fs_close(fontfile);
+            goto normal_Texcode;
+        }
+        uint16_t dtw,dth;
+        ssize_t rrv = fs_read(fontfile, &dtw, 2);
+        if (rrv < 0) {
+            mutex_unlock(&io_lock);
+            fs_close(fontfile);
+            goto normal_Texcode;
+        }
+        rrv = fs_read(fontfile, &dth, 2);
+        if (rrv < 0) {
+            mutex_unlock(&io_lock);
+            fs_close(fontfile);
+            goto normal_Texcode;
+        }
+        srv = fs_seek(fontfile, 12, SEEK_SET);
+        if (srv != 12) {
+            mutex_unlock(&io_lock);
+            fs_close(fontfile);
+            goto normal_Texcode;
+        }
+        rrv = fs_read(fontfile, &textureSize, 4);
+        if (rrv < 0) {
+            mutex_unlock(&io_lock);
+            fs_close(fontfile);
+            goto normal_Texcode;
+        }
+        srv = fs_seek(fontfile, 16, SEEK_SET);
+        if (srv != 16) {
+            mutex_unlock(&io_lock);
+            fs_close(fontfile);
+            goto normal_Texcode;
+        }
+
+        surface->width = dtw;
+        surface->height = dth;
+
+        if (textureSize < 0) {
+            mutex_unlock(&io_lock);
+            fs_close(fontfile);
+            printf("[pvr] [NG] [Data/Sprites/%s] texture size is negative!!! %ld * %ld = %ld\n",
+                   filename, surface->width, surface->height, textureSize);
+
+            return -1;
+        }
+        uint32 pvrMemBefore;
+        uint32 pvrMemAfter;
+
+        const auto printPvrMem = [](uint32 before, uint32 after) {
+            auto change = static_cast<int32>(after - before);
+            printf("[pvr] memory: %lu -> %lu; change: %ld\n",
+                   before, after, change);
+        };
+
+        if (surface->texture != nullptr) {
+            pvrMemBefore = pvr_mem_available();
+
+            pvr_mem_free(surface->texture);
+            surface->texture = nullptr;
+
+            pvrMemAfter = pvr_mem_available();
+
+            printf("[pvr] [OK] [Data/Sprites/%s] freed existing surface texture for use.\n",
+                   filename);
+
+            printPvrMem(pvrMemBefore, pvrMemAfter);
+        }
+
+        if (surface->pixels != NULL) {
+            RemoveStorageEntry((void**)&surface->pixels);
+        }
+
+        AllocateStorage((void **)&surface->pixels, textureSize, DATASET_STG, false);
+
+        if (surface->pixels == NULL) {
+            printf("[pvr] [NG] [Data/Sprites/%s] AllocateStorage failed!!!\n", filename);
+            exit(-1);
+            id = -1;
+        } else {
+            rrv = fs_read(fontfile, surface->pixels, textureSize);
+            if (rrv < 0) {
+                mutex_unlock(&io_lock);
+                fs_close(fontfile);
+                goto normal_Texcode;
+            }
+            fs_close(fontfile);
+            pvrMemBefore = pvr_mem_available();
+
+            surface->texture = pvr_mem_malloc(static_cast<size_t>(textureSize));
+            pvrMemAfter = pvr_mem_available();
+
+            if (surface->texture == nullptr) {
+                printf("[pvr] [NG] [Data/Sprites/%s] pvr_mem_malloc(%ld) failed!!!\n",
+                        filename, textureSize);
+                printPvrMem(pvrMemBefore, pvrMemAfter);
+
+                id = -1;
+            } else {
+                printf("[pvr] [OK] [Data/Sprites/%s] pvr_mem_malloc(%ld) succeeded.\n",
+                       filename, textureSize);
+                printPvrMem(pvrMemBefore, pvrMemAfter);
+                    pvr_txr_load(
+                    surface->pixels,
+                    surface->texture,
+                    textureSize
+                );
+                surface->scope = scope;
+            }
+        }
+        mutex_unlock(&io_lock);
+
+        RemoveStorageEntry((void **)&surface->pixels);
+        surface->pixels = NULL;
+        return id;
+    }
+normal_Texcode:
+#endif
     ImageGIF image;
+//UI/SmallFont1.gif
+//UI/SmallFont2.gif
 
     if (image.Load(fullFilePath, true)) {
         surface->width    = image.width;
@@ -959,7 +1115,6 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 
             return -1;
         }
-
         uint32 pvrMemBefore;
         uint32 pvrMemAfter;
 
@@ -995,16 +1150,20 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 
         if (surface->pixels == NULL) {
             printf("[pvr] [NG] [Data/Sprites/%s] AllocateStorage failed!!!\n", filename);
+            exit(-1);
             id = -1;
         } else {
             image.pixels = surface->pixels;
 
             if (!image.Load(NULL, false)) {
                 printf("[pvr] [NG] [Data/Sprites/%s] image.Load(NULL, false) failed!!!\n", filename);
+                exit(-1);
                 id = -1;
             } else {
                 pvrMemBefore = pvr_mem_available();
+
                 surface->texture = pvr_mem_malloc(static_cast<size_t>(textureSize));
+
                 pvrMemAfter = pvr_mem_available();
 
                 if (surface->texture == nullptr) {
@@ -1012,12 +1171,12 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
                            filename, textureSize);
 
                     printPvrMem(pvrMemBefore, pvrMemAfter);
+                    exit(-1);
 
                     id = -1;
                 } else {
                     printf("[pvr] [OK] [Data/Sprites/%s] pvr_mem_malloc(%ld) succeeded.\n",
                            filename, textureSize);
-
                     printPvrMem(pvrMemBefore, pvrMemAfter);
 
                     // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
@@ -1030,7 +1189,6 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
                         surface->height,
                         PVR_TXRLOAD_8BPP
                     );
-
                     surface->scope = scope;
                 }
             }
@@ -1063,6 +1221,7 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 
         return id;
     }
+
     else {
 #if RETRO_USE_ORIGINAL_CODE
         image.palette = NULL;

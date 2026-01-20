@@ -1183,7 +1183,7 @@ bool32 RSDK::SKU::DeleteUserFile(const char *filename)
     sprintf_s(fullFilePath, sizeof(fullFilePath), "%s%s", userFileDir, filename);
 #endif
     PrintLog(PRINT_NORMAL, "Attempting to delete user file: %s", fullFilePath);
-    int32 status = remove(fullFilePath);
+    int32 status = 0; //remove(fullFilePath);
 
     if (postLoadSaveFileCB)
         postLoadSaveFileCB();

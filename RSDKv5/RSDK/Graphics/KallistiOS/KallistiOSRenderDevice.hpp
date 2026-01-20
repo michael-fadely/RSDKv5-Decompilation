@@ -63,24 +63,26 @@ private:
                                  pvr_ptr_t texture);
 
 public:
-    static void PrepareTexturedQuad(int32 y, const GFXSurface* surface);
-    static void DrawTexturedQuad(
+    static void PrepareTexturedQuadDR(int32 y, const GFXSurface* surface);
+    static void DrawTexturedQuadDR(
             int32 x, int32 y,
             int32 width, int32 height,
             int32 sprX0, int32 sprX1,
             int32 sprY0, int32 sprY1,
             const GFXSurface* surface
     );
-    static void DrawTexturedQuadEx(
-        const Vector2& upperLeft, const Vector2& upperRight,
-        const Vector2& lowerLeft, const Vector2& lowerRight,
-        int32 sprX0, int32 sprX1,
-        int32 sprY0, int32 sprY1,
-        const GFXSurface* surface
+
+    static void PrepareTexturedQuadDMA(int32 y, const GFXSurface* surface);
+    static void DrawTexturedQuadDMA(
+            int32 x, int32 y,
+            int32 width, int32 height,
+            int32 sprX0, int32 sprX1,
+            int32 sprY0, int32 sprY1,
+            const GFXSurface* surface
     );
 
-    static void PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, const GFXSurface* surface);
-    static void DrawTexturedPoly(
+    static void PrepareTexturedPolyDR(int32 y, int srcBlend, int dstBlend, const GFXSurface* surface);
+    static void DrawTexturedPolyDR(
             int32 x, int32 y,
             int32 ox, int32 oy,
             int32 width, int32 height,
@@ -91,11 +93,62 @@ public:
             const GFXSurface *surface
     );
 
-    static void PrepareColoredPoly(int32 y, int srcBlend, int dstBlend);
-    static void DrawColoredPoly(
+    static void PrepareTexturedPolyDMA(int32 y, int srcBlend, int dstBlend, const GFXSurface* surface);
+    static void DrawTexturedPolyDMA(
+            int32 x, int32 y,
+            int32 ox, int32 oy,
+            int32 width, int32 height,
+            int32 sprX0, int32 sprX1,
+            int32 sprY0, int32 sprY1,
+            int32 rotation,
+            int32 alpha,
+            const GFXSurface *surface
+    );
+
+    static void PrepareColoredPolyDR(int32 y, int srcBlend, int dstBlend);
+    static void DrawColoredPolyDR(
             int32 x, int32 y,
             int32 width, int32 height,
             uint32 color
+    );
+
+    static void PrepareColoredPolyDMA(int32 y, int srcBlend, int dstBlend);
+    static void DrawColoredPolyDMA(
+            int32 x, int32 y,
+            int32 width, int32 height,
+            uint32 color
+    );
+
+    static void PrepareLinePolyDR(int srcBlend, int dstBlend);
+    static void DrawLinePolyDR(int x1, int y1, int x2, int y2, int color);
+
+    static void PrepareLinePolyDMA(int srcBlend, int dstBlend);
+    static void DrawLinePolyDMA(int x1, int y1, int x2, int y2, int color);
+
+
+    static void PrepareRotoPoly(int srcBlend, int dstBlend, pvr_ptr_t texture);
+    static void DrawRotoPoly(int x, int y, int w, int h, float u, float v);
+
+    static void PrepareFacePolyDR(int srcBlend, int dstBlend);
+    static void DrawFacePolyDR(
+            Vector2 *vertices, int32 vertCount, 
+            int32 faceColor, int32 alpha, 
+            uint32 *colors
+    );
+
+    static void PrepareFacePolyDMA(int srcBlend, int dstBlend);
+    static void DrawFacePolyDMA(
+            Vector2 *vertices, int32 vertCount, 
+            int32 faceColor, int32 alpha, 
+            uint32 *colors
+    );
+
+    static void DrawTexturedQuadEx(
+        const Vector2& upperLeft, const Vector2& upperRight,
+        const Vector2& lowerLeft, const Vector2& lowerRight,
+        int32 sprX0, int32 sprX1,
+        int32 sprY0, int32 sprY1,
+        const GFXSurface* surface
     );
 #endif
 

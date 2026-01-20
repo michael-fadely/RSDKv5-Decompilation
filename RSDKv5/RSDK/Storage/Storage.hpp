@@ -6,12 +6,19 @@ namespace RSDK
 #define STORAGE_ENTRY_COUNT (0x1000)
 
 enum StorageDataSets {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    DATASET_STG = 0,
+    DATASET_STR = 1,
+    DATASET_TMP = 2,
+    DATASET_MAX, // used to signify limits
+#else
     DATASET_STG = 0,
     DATASET_MUS = 1,
     DATASET_SFX = 2,
     DATASET_STR = 3,
     DATASET_TMP = 4,
     DATASET_MAX, // used to signify limits
+#endif
 };
 
 struct DataStorage {

@@ -44,7 +44,7 @@ void DummyAchievements::SetAchievementNames(String **names, int32 count)
 
 String *DummyAchievements::GetAchievementString(String *string)
 {
-    InitString(string, "Achievement!", 0);
+    InitString(string, /* "Achievement!" */"A", 0);
     return string;
 }
 String *DummyAchievements::GetAchievementName(String *name, uint32 id)

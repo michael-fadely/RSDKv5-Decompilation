@@ -83,6 +83,7 @@ struct GFXSurface {
     uint8 *pixels;
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     pvr_ptr_t texture;
+    uint8_t is_vq;
 #endif
     int32 height;
     int32 width;

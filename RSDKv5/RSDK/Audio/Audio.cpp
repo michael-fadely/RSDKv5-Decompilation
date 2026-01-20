@@ -187,8 +187,9 @@ void AudioDeviceBase::InitAudioChannels()
     sfxList[SFX_COUNT - 1].scope              = SCOPE_GLOBAL;
     sfxList[SFX_COUNT - 1].maxConcurrentPlays = 1;
     sfxList[SFX_COUNT - 1].length             = MIX_BUFFER_SIZE;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     AllocateStorage((void **)&sfxList[SFX_COUNT - 1].buffer, MIX_BUFFER_SIZE * sizeof(SAMPLE_FORMAT), DATASET_MUS, false);
-
+#endif
     initializedAudioChannels = true;
 }
 

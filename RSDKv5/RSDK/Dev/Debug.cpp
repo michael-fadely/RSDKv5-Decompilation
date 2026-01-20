@@ -30,7 +30,7 @@ inline void PrintConsole(const char *message) { printf("%s", message); }
 void RSDK::PrintLog(int32 mode, const char *message, ...)
 {
 #ifndef RETRO_DISABLE_LOG
-    if (engineDebugMode) {
+    if (1) { //engineDebugMode) {
         // make the full string
         va_list args;
         va_start(args, message);
@@ -41,7 +41,8 @@ void RSDK::PrintLog(int32 mode, const char *message, ...)
         else
             sprintf(outputString, "%.*s", (int32)sizeof(outputString) - 1, outputString);
         va_end(args);
-
+dbgio_printf(outputString);
+return;
 #if RETRO_REV02
         switch (mode) {
             default:
@@ -377,6 +378,7 @@ void RSDK::DevMenu_MainMenu()
     DrawRectangle(currentScreen->center.x - 39, y + 1, stgUsed, 6, 0xF0F0F0, 0xFF, INK_NONE, true);
     DrawDevString("STG", currentScreen->center.x - 64, y, 0, 0xF0F080);
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     // Music Storage
     int32 musUsed = (int32)((sizeof(int32) * dataStorage[DATASET_MUS].usedStorage) / (float)dataStorage[DATASET_MUS].storageLimit * 126.0);
     y += 10;
@@ -390,6 +392,7 @@ void RSDK::DevMenu_MainMenu()
     DrawRectangle(currentScreen->center.x - 40, y, 0x80, 0x08, 0x80, 0xFF, INK_NONE, true);
     DrawRectangle(currentScreen->center.x - 39, y + 1, sfxUsed, 6, 0xF0F0F0, 0xFF, INK_NONE, true);
     DrawDevString("SFX", currentScreen->center.x - 64, y, 0, 0xF0F080);
+#endif
 
     // String Storage
     int32 strUsed = (int32)((sizeof(int32) * dataStorage[DATASET_STR].usedStorage) / (float)dataStorage[DATASET_STR].storageLimit * 126.0);
