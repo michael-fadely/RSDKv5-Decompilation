@@ -3,7 +3,11 @@
 
 namespace RSDK
 {
+#ifndef _arch_dreamcast
 #define STORAGE_ENTRY_COUNT (0x1000)
+#else
+#define STORAGE_ENTRY_COUNT (0x800)
+#endif
 
 enum StorageDataSets {
     DATASET_STG = 0,
