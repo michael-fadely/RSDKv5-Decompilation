@@ -1017,7 +1017,7 @@ void RenderDevice::PrepareTexturedPolyDR(int32 y, int inkEffect, const GFXSurfac
         // Compile polygon header directly into SQ to avoid having to copy it.
         auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
         pvr_poly_compile(header, &context);
-        pvr_dr_commit(header);    
+        pvr_dr_commit(header);
     }
 }
 
