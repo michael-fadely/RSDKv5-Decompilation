@@ -1,15 +1,17 @@
 #include <dc/sound/sound.h>
 
+#include "KallistiOSStream.cpp"
+
 extern "C" {
     static bool32 device_inited = 0;
-    extern int wav_init(void);
+    extern int stream_init(void);
 };
 
 // static
 bool32 AudioDevice::Init()
 {
     bool32 ok = snd_init() >= 0;
-    return ok && !!wav_init();
+    return ok && !!stream_init();
 }
 
 // static
