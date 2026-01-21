@@ -1474,7 +1474,7 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
 
 static void DrawFilledCircleFromTris(int cx, int cy, int radius, uint32 color, int32 alpha, int32 inkEffect)
 {
-    const int segs = 32;
+    const int segs = 64;
     const float step = 2.0f * (float)M_PI / (float)segs;
 
     struct Vector2 triv[3];
@@ -1514,7 +1514,7 @@ static void DrawFilledCircleFromTris(int cx, int cy, int radius, uint32 color, i
 
 static void DrawCircleOutlineWithLines(int cx, int cy, int radius, int width, uint32 color, int32 alpha, int32 inkEffect)
 {
-    const int segs = 32;
+    const int segs = 64;
     const float step = 2.0f * (float)M_PI / (float)segs;
 
     RenderDevice::SetLinePolyThickness(width);

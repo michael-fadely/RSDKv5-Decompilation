@@ -75,7 +75,7 @@ float drawDepth = 1.0f;
 pvr_ptr_t lastTexture = nullptr;
 pvr_dr_state_t drState = 0;
 
-int currentLineThickness = 1;
+float currentLineThickness = 2.0f;
 int lastPvrPaletteBankIndex = -1;
 int lastInkEffect = -1;
 int lastLineInkEffect = -1;
@@ -520,6 +520,7 @@ void RenderDevice::BeginScene() {
 #if defined(KOS_HARDWARE_RENDERER)
     SetDepth(0);
     DisableCulling();
+    SetLinePolyThickness(2);
     lastPrimitiveType = PrimitiveTypes_None;
     vbPos = 0;
     trExhausted = false;
@@ -1711,7 +1712,7 @@ void RenderDevice::DrawColoredPolyTR(
 
 // static
 void RenderDevice::SetLinePolyThickness(int thickness) {
-    currentLineThickness = thickness / pixelScaleX;
+    currentLineThickness = (float)thickness / (float)((640 / displayWidth[0]) * 2.0f);
 }
 
 // static
@@ -1810,7 +1811,7 @@ void RenderDevice::DrawLinePolyPT(int lx1, int ly1, int lx2, int ly2, int color)
     dy = y1 - y2;
     if (dx != 0.0f || dy != 0.0f) {
         hlw_invmag = (1.0f / sqrtf((dx * dx) + (dy * dy)));
-        hlw_invmag *= ((float)currentLineThickness);
+        hlw_invmag *= currentLineThickness;
     }
     nx = dy * hlw_invmag;
     ny = dx * hlw_invmag;
@@ -1851,7 +1852,7 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
     dy = y1 - y2;
     if (dx != 0.0f || dy != 0.0f) {
         hlw_invmag = (1.0f / sqrtf((dx * dx) + (dy * dy)));
-        hlw_invmag *= ((float)currentLineThickness);
+        hlw_invmag *= currentLineThickness;
     }
     nx = dy * hlw_invmag;
     ny = dx * hlw_invmag;
