@@ -939,7 +939,11 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     surface->is_vq = 0;
 
-    if ((strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || /* (strncmp("Global/", filename, 7) == 0) || */ (strncmp("UI/", filename, 3) == 0)) {
+#if DO_240
+    if ((strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("UI/", filename, 3) == 0)) {
+#else
+    if ((strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("Global/", filename, 7) == 0) || (strncmp("UI/", filename, 3) == 0)) {
+#endif
         size_t textureSize;
         file_t fontfile;
         sprintf_s(fullFilePath, sizeof(fullFilePath), "/pc/Data/Sprites/%s", filename);

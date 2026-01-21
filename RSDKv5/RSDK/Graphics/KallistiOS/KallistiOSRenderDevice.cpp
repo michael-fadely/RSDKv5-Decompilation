@@ -8,11 +8,11 @@
 
 #if defined(KOS_HARDWARE_RENDERER)
 extern "C" {
-#define TR_VERTBUF_SIZE ((4 * 128)*1024)
+#define TR_VERTBUF_SIZE ((384)*1024)
     uint8_t __attribute__((aligned(32))) tr_buf[TR_VERTBUF_SIZE];
     extern uint8_t bg_r, bg_g, bg_b;
 };
-#define DO_240 1
+#define DO_240 0
 #define DO_24BPP 0
 #endif
 
@@ -447,12 +447,14 @@ void RenderDevice::InitFPSCap()
 }
 // static
 bool RenderDevice::CheckFPSCap() {
+#if 0
     // Render idle time as a green bar
-    //vid_border_color(0, 255, 0);
+    vid_border_color(0, 255, 0);
     // this is handled internally by KOS now
-    //pvr_wait_ready();
+    pvr_wait_ready();
     // Render scene submission time as a red bar
-    //vid_border_color(255, 0, 0);
+    vid_border_color(255, 0, 0);
+#endif
     return true;
 }
 // static
@@ -493,15 +495,15 @@ void RenderDevice::BeginScene() {
 #if defined(KOS_HARDWARE_RENDERER)
     SetDepth(0);
     lastPrimitiveType = PrimitiveTypes_None;
-    pvr_wait_ready();
 
     // Update our cached values for pixel global pixel scaling.
     pixelScaleX = viewSize.x / pixelSize.x;
     pixelScaleY = viewSize.y / pixelSize.y;
 
     pvr_scene_begin();
-    pvr_set_bg_color(0.0f,0.0f,0.0f);//(float)bg_r / 255.0f, (float)bg_g / 255.0f, (float)bg_b / 255.0f);
-    // direct render anything that doesn't blend with punch-through
+    pvr_set_bg_color(0.0f,0.0f,0.0f); //(float)bg_r / 255.0f, (float)bg_g / 255.0f, (float)bg_b / 255.0f);
+
+    // direct render to punch-through list anything that doesn't need to blend
     if (pvr_list_begin(PVR_LIST_PT_POLY) == -1) {
         printf("[pvr] [NG] pvr_list_begin(PVR_LIST_PT_POLY) returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
     }
@@ -523,9 +525,10 @@ void RenderDevice::EndScene() {
     if (pvr_scene_finish() == -1) {
         printf("[pvr] [NG] pvr_scene_finish() returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
     }
-
+#if 0
     // Render CPU time as a blue bar.
-    //vid_border_color(0, 0, 255);
+    vid_border_color(0, 0, 255);
+#endif
 #endif
 }
 
@@ -1710,7 +1713,7 @@ extern "C" {
 void RenderDevice::DrawLinePolyDR(int lx1, int ly1, int lx2, int ly2, int color)
 {
     pvr_vertex_t *vert;
-    float hlw_invmag;
+    float hlw_invmag = 0.0f;
     float dx,dy;
     float nx,ny;
 
@@ -1729,8 +1732,10 @@ void RenderDevice::DrawLinePolyDR(int lx1, int ly1, int lx2, int ly2, int color)
 
     dx = x2 - x1;
     dy = y1 - y2;
-    hlw_invmag = (1.0f / sqrtf((dx * dx) + (dy * dy)));
-    hlw_invmag *= ((float)line_w * 0.5f);
+    if (dx != 0.0f || dy != 0.0f) {
+        hlw_invmag = (1.0f / sqrtf((dx * dx) + (dy * dy)));
+        hlw_invmag *= ((float)line_w * 0.5f);
+    }
     nx = dy * hlw_invmag;
     ny = dx * hlw_invmag;
 
@@ -1745,7 +1750,7 @@ void RenderDevice::DrawLinePolyDR(int lx1, int ly1, int lx2, int ly2, int color)
 void RenderDevice::DrawLinePolyDMA(int lx1, int ly1, int lx2, int ly2, int color)
 {
     pvr_vertex_t *vert = next_dma_vert;
-    float hlw_invmag;
+    float hlw_invmag = 0.0f;
     float dx,dy;
     float nx,ny;
 
@@ -1764,8 +1769,10 @@ void RenderDevice::DrawLinePolyDMA(int lx1, int ly1, int lx2, int ly2, int color
 
     dx = x2 - x1;
     dy = y1 - y2;
-    hlw_invmag = (1.0f / sqrtf((dx * dx) + (dy * dy)));
-    hlw_invmag *= ((float)line_w * 0.5f);
+    if (dx != 0.0f || dy != 0.0f) {
+        hlw_invmag = (1.0f / sqrtf((dx * dx) + (dy * dy)));
+        hlw_invmag *= ((float)line_w * 0.5f);
+    }
     nx = dy * hlw_invmag;
     ny = dx * hlw_invmag;
 

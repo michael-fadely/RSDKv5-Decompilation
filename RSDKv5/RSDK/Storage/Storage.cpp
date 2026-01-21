@@ -88,7 +88,7 @@ bool32 RSDK::InitStorage()
 #if RETRO_PLATFORM == RETRO_KALLISTIOS  /* SAYGA DREAMCAST: Where Sonic Belongs! */
                                                                        // RAM: 32  / 16  MB
                                                                        // -----------------
-    dataStorage[DATASET_STG].storageLimit = 400000 + (DBL_MEM? 4 : 4) * 1024 * 1024; // 4   / 4   MB
+    dataStorage[DATASET_STG].storageLimit = 500000 + (DBL_MEM? 4 : 4) * 1024 * 1024; // 4   / 4   MB
     dataStorage[DATASET_STR].storageLimit = (DBL_MEM? 2 : 2) *  32 * 1024; // 64  / 32  KB
     dataStorage[DATASET_TMP].storageLimit = 100000 + (DBL_MEM? 6 : 3) * 1024 * 1024; // 6   / 3   MB
                                                                      //   -----------------
@@ -127,6 +127,8 @@ bool32 RSDK::InitStorage()
         assert(header->VeryUnsafeNext() == poolEnd);
 #endif
     }
+
+// if you would like to see how much RAM is left after allocating the storage buckets
 #if 0
 for(int mi=0;mi<6*1048576;mi+=65536) {
         void *test_m = malloc(mi);
