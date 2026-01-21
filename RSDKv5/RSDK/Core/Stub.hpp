@@ -51,9 +51,7 @@ void printTheoreticalFreeMemory_(const char* file, size_t line, const char* func
 
 #define printTheoreticalFreeMemory() printTheoreticalFreeMemory_(__FILE__, __LINE__, __PRETTY_FUNCTION__)
 #define printHere() printf("here! %s:%u -> %s\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__)
-#define DC_STUB() 
-
-//printf("STUB: %s:%u -> %s\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__)
+#define DC_STUB() printf("STUB: %s:%u -> %s\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__)
 
 #else  // defined(_arch_dreamcast)
 
