@@ -907,7 +907,12 @@ bool32 RSDK::ImageTGA::Load(const char *fileName, bool32 loadHeader)
     return false;
 }
 #endif
-#define RETRO_PLATFORM RETRO_KALLISTIOS
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define DO_240 0
+#define DO_24BPP 0
+#endif
+
 uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 {
     char fullFilePath[0x100];

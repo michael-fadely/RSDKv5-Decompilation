@@ -9,7 +9,7 @@ using namespace RSDK;
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 #define DO_240 0
 #define DO_24BPP 0
- #endif
+#endif
 
 // all render devices need to access the initial vertex buffer :skull:
 
