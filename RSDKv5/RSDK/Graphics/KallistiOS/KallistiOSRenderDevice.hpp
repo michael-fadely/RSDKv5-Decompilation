@@ -58,8 +58,9 @@ private:
     static bool PreparePrimitive(int primitiveType,
                                  uint32 gamePaletteBankIndex,
                                  uint32 pvrPaletteBankIndex,
-                                 int srcBlend,
-                                 int dstBlend,
+                                 /* int srcBlend,
+                                 int dstBlend, */
+                                 int inkEffect,
                                  pvr_ptr_t texture);
 
 public:
@@ -81,7 +82,7 @@ public:
             const GFXSurface* surface
     );
 
-    static void PrepareTexturedPolyDR(int32 y, int srcBlend, int dstBlend, const GFXSurface* surface);
+    static void PrepareTexturedPolyDR(int32 y, int inkEffect, const GFXSurface* surface);
     static void DrawTexturedPolyDR(
             int32 x, int32 y,
             int32 ox, int32 oy,
@@ -93,7 +94,7 @@ public:
             const GFXSurface *surface
     );
 
-    static void PrepareTexturedPolyDMA(int32 y, int srcBlend, int dstBlend, const GFXSurface* surface);
+    static void PrepareTexturedPolyDMA(int32 y, int inkEffect, const GFXSurface* surface);
     static void DrawTexturedPolyDMA(
             int32 x, int32 y,
             int32 ox, int32 oy,
@@ -105,38 +106,38 @@ public:
             const GFXSurface *surface
     );
 
-    static void PrepareColoredPolyDR(int32 y, int srcBlend, int dstBlend);
+    static void PrepareColoredPolyDR(int32 y, int inkEffect);
     static void DrawColoredPolyDR(
             int32 x, int32 y,
             int32 width, int32 height,
             uint32 color
     );
 
-    static void PrepareColoredPolyDMA(int32 y, int srcBlend, int dstBlend);
+    static void PrepareColoredPolyDMA(int32 y, int inkEffect);
     static void DrawColoredPolyDMA(
             int32 x, int32 y,
             int32 width, int32 height,
             uint32 color
     );
 
-    static void PrepareLinePolyDR(int srcBlend, int dstBlend);
+    static void PrepareLinePolyDR(int inkEffect);
     static void DrawLinePolyDR(int x1, int y1, int x2, int y2, int color);
 
-    static void PrepareLinePolyDMA(int srcBlend, int dstBlend);
+    static void PrepareLinePolyDMA(int inkEffect);
     static void DrawLinePolyDMA(int x1, int y1, int x2, int y2, int color);
 
 
-    static void PrepareRotoPoly(int srcBlend, int dstBlend, pvr_ptr_t texture);
+    static void PrepareRotoPoly(int inkEffect, pvr_ptr_t texture);
     static void DrawRotoPoly(int x, int y, int w, int h, float u, float v);
 
-    static void PrepareFacePolyDR(int srcBlend, int dstBlend);
+    static void PrepareFacePolyDR(int inkEffect);
     static void DrawFacePolyDR(
             Vector2 *vertices, int32 vertCount, 
             int32 faceColor, int32 alpha, 
             uint32 *colors
     );
 
-    static void PrepareFacePolyDMA(int srcBlend, int dstBlend);
+    static void PrepareFacePolyDMA(int inkEffect);
     static void DrawFacePolyDMA(
             Vector2 *vertices, int32 vertCount, 
             int32 faceColor, int32 alpha, 

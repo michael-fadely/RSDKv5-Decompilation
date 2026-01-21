@@ -8,7 +8,7 @@
 
 #if defined(KOS_HARDWARE_RENDERER)
 extern "C" {
-#define TR_VERTBUF_SIZE (384*1024)
+#define TR_VERTBUF_SIZE ((4 * 128)*1024)
     uint8_t __attribute__((aligned(32))) tr_buf[TR_VERTBUF_SIZE];
     extern uint8_t bg_r, bg_g, bg_b;
 };
@@ -56,8 +56,6 @@ static float pixelScaleY = 1.0f;
 
 #if defined(KOS_HARDWARE_RENDERER)
 namespace {
-extern int doing_tint;
-
 enum PrimitiveTypes {
     PrimitiveTypes_None,
     PrimitiveTypes_TexturedQuadDR,
@@ -78,14 +76,19 @@ enum PrimitiveTypes {
 float drawDepth = 1.0f;
 pvr_ptr_t lastTexture = nullptr;
 pvr_dr_state_t drState = 0;
+
+int lastInkEffect = -1;
+int lastLineInkEffect = -1;
+int lastFaceInkEffect = -1;
+PrimitiveTypes lastPrimitiveType = PrimitiveTypes_None;
+bool lastPrimitiveWasConsumed = true;
+
 int lastSrcBlend = -1;
 int lastDstBlend = -1;
 int lastLineSrcBlend = -1;
 int lastLineDstBlend = -1;
 int lastFaceSrcBlend = -1;
 int lastFaceDstBlend = -1;
-PrimitiveTypes lastPrimitiveType = PrimitiveTypes_None;
-bool lastPrimitiveWasConsumed = true;
 
 #if 0
 void ResetLastState() {
@@ -490,7 +493,7 @@ void RenderDevice::BeginScene() {
 #if defined(KOS_HARDWARE_RENDERER)
     SetDepth(0);
     lastPrimitiveType = PrimitiveTypes_None;
-//    pvr_wait_ready();
+    pvr_wait_ready();
 
     // Update our cached values for pixel global pixel scaling.
     pixelScaleX = viewSize.x / pixelSize.x;
@@ -597,45 +600,25 @@ void RenderDevice::PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPal
 // static
 bool RenderDevice::InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
 {
+    if (srcBlend) {
+        *srcBlend = PVR_BLEND_SRCALPHA;
+    }
+
+    if (dstBlend) {
+        *dstBlend = PVR_BLEND_INVSRCALPHA;
+    }
+
     switch (inkEffect) {
         case INK_NONE:
-            if (srcBlend) {
-                *srcBlend = PVR_BLEND_SRCALPHA;
-            }
-
-            if (dstBlend) {
-                *dstBlend = PVR_BLEND_INVSRCALPHA;
-            }
-
             return true;
 
         case INK_BLEND:
-            if (srcBlend) {
-                *srcBlend = PVR_BLEND_SRCALPHA;
-            }
-
-            if (dstBlend) {
-                *dstBlend = PVR_BLEND_INVSRCALPHA;
-            }
-
             return true;
 
         case INK_ALPHA:
-            if (srcBlend) {
-                *srcBlend = PVR_BLEND_SRCALPHA;
-            }
-
-            if (dstBlend) {
-                *dstBlend = PVR_BLEND_INVSRCALPHA;
-            }
-
             return true;
 
         case INK_ADD:
-            if (srcBlend) {
-                *srcBlend = PVR_BLEND_SRCALPHA;
-            }
-
             if (dstBlend) {
                 *dstBlend = PVR_BLEND_ONE;
             }
@@ -643,18 +626,9 @@ bool RenderDevice::InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
             return true;
 
         case INK_SUB:
-            // Handling this weirdly. It it supported, but yeah.
-            //printf("[pvr] WARNING: unsupported ink effect INK_SUB; skipping sprite\n");
-            return false;
+            return true;
 
         case INK_TINT:
-            if (srcBlend) {
-                *srcBlend = PVR_BLEND_SRCALPHA;
-            }
-
-            if (dstBlend) {
-                *dstBlend = PVR_BLEND_INVSRCALPHA;
-            }
             return true;
 
         case INK_MASKED:
@@ -666,6 +640,7 @@ bool RenderDevice::InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
             return false;
 
         default:
+            printf("[pvr] WARNING: unsupported ink effect %d; skipping sprite\n", inkEffect);
             return false;
     }
 }
@@ -674,8 +649,7 @@ bool RenderDevice::InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
 bool RenderDevice::PreparePrimitive(int primitiveType,
                                     uint32 gamePaletteBankIndex,
                                     uint32 pvrPaletteBankIndex,
-                                    int srcBlend,
-                                    int dstBlend,
+                                    int inkEffect,
                                     pvr_ptr_t texture) {
     if (PaletteFlags::GetDirty(gamePaletteBankIndex)
         || pvrPaletteBankIndex != gamePaletteBankIndex) {
@@ -685,13 +659,13 @@ bool RenderDevice::PreparePrimitive(int primitiveType,
 
     if (lastPrimitiveType != primitiveType
         || !PaletteFlags::BankIsSame(gamePaletteBankIndex)
-        || srcBlend != lastSrcBlend
-        || dstBlend != lastDstBlend
+        || inkEffect != lastInkEffect
         || texture != lastTexture) {
         lastPrimitiveType = static_cast<PrimitiveTypes>(primitiveType);
         PaletteFlags::SetBank(gamePaletteBankIndex);
-        lastSrcBlend = srcBlend;
-        lastDstBlend = dstBlend;
+        // top bit set for special handling - pause menu tint
+        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastSrcBlend, &lastDstBlend);
+        lastInkEffect = inkEffect;
         lastTexture = texture;
 
         return true;
@@ -701,11 +675,6 @@ bool RenderDevice::PreparePrimitive(int primitiveType,
 }
 
 extern "C" {
-    extern int doing_sub_mode;
-    int reset_texpoly = 0;
-    int reset_colpoly = 0;
-    int reset_linepoly = 0;
-    int reset_facepoly = 0;
     uint32_t lastpalbank;
 };
 
@@ -718,12 +687,12 @@ void RenderDevice::PrepareTexturedQuadDR(int32 y, const GFXSurface* surface) {
     if (PreparePrimitive(PrimitiveTypes_TexturedQuadDR,
                          gamePaletteBankIndex,
                          pvrPaletteBankIndex,
-                         PVR_BLEND_SRCALPHA,
-                         PVR_BLEND_INVSRCALPHA,
+                         INK_NONE,
                          surface->texture)) {
         if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
         }
+
         lastPrimitiveWasConsumed = false;
 
         pvr_sprite_cxt_t context;
@@ -755,13 +724,14 @@ void RenderDevice::PrepareTexturedQuadDMA(int32 y, const GFXSurface* surface) {
     if (PreparePrimitive(PrimitiveTypes_TexturedQuadDMA,
                          gamePaletteBankIndex,
                          pvrPaletteBankIndex,
-                         PVR_BLEND_SRCALPHA,
-                         PVR_BLEND_INVSRCALPHA,
+                         INK_NONE,
                          surface->texture)) {
         if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
         }
+
         lastPrimitiveWasConsumed = false;
+
         pvr_sprite_cxt_t context;
         pvr_sprite_cxt_txr(
                 &context,
@@ -775,6 +745,7 @@ void RenderDevice::PrepareTexturedQuadDMA(int32 y, const GFXSurface* surface) {
 
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
+
         pvr_sprite_hdr_t *hdr_ptr = (pvr_sprite_hdr_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         pvr_sprite_compile(hdr_ptr, &context);
         pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_sprite_hdr_t));
@@ -952,7 +923,7 @@ void RenderDevice::DrawTexturedQuadEx(
 }
 
 // static
-void RenderDevice::PrepareTexturedPolyDR(int32 y, int srcBlend, int dstBlend, const GFXSurface *surface) {
+void RenderDevice::PrepareTexturedPolyDR(int32 y, int inkEffect, const GFXSurface *surface) {
     const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
     const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
     lastpalbank = pvrPaletteBankIndex;
@@ -960,12 +931,12 @@ void RenderDevice::PrepareTexturedPolyDR(int32 y, int srcBlend, int dstBlend, co
     if (PreparePrimitive(PrimitiveTypes_TexturedPolyDR,
                          gamePaletteBankIndex,
                          pvrPaletteBankIndex,
-                         srcBlend,
-                         dstBlend,
+                         inkEffect,
                          surface->texture)) {
         if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
         }
+
         lastPrimitiveWasConsumed = false;
 
         pvr_poly_cxt_t context;
@@ -993,8 +964,8 @@ void RenderDevice::PrepareTexturedPolyDR(int32 y, int srcBlend, int dstBlend, co
         context.gen.alpha = 1;
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
-        context.blend.src = srcBlend;
-        context.blend.dst = dstBlend;
+        context.blend.src = lastSrcBlend;
+        context.blend.dst = lastDstBlend;
 
         // Compile polygon header directly into SQ to avoid having to copy it.
         auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
@@ -1007,25 +978,25 @@ void RenderDevice::PrepareTexturedPolyDR(int32 y, int srcBlend, int dstBlend, co
 #define next_dma_vert (pvr_vertex_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY)
 
 // static
-void RenderDevice::PrepareTexturedPolyDMA(int32 y, int srcBlend, int dstBlend, const GFXSurface *surface) {
+void RenderDevice::PrepareTexturedPolyDMA(int32 y, int inkEffect, const GFXSurface *surface) {
     const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
     const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
     lastpalbank = pvrPaletteBankIndex;
-    
+
     if (PreparePrimitive(PrimitiveTypes_TexturedPolyDMA,
                          gamePaletteBankIndex,
                          pvrPaletteBankIndex,
-                         srcBlend,
-                         dstBlend,
-                         surface->texture) || reset_texpoly) {
+                         inkEffect,
+                         surface->texture)) {
         if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
         }
 
-        reset_texpoly = 0;
-
         lastPrimitiveWasConsumed = false;
-        if (doing_sub_mode) return;
+
+        if (lastInkEffect == INK_SUB) {
+            return;
+        }
 
         pvr_poly_cxt_t context;
  
@@ -1054,8 +1025,8 @@ void RenderDevice::PrepareTexturedPolyDMA(int32 y, int srcBlend, int dstBlend, c
         context.gen.alpha = 1;
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
-        context.blend.src = srcBlend;
-        context.blend.dst = dstBlend;
+        context.blend.src = lastSrcBlend;
+        context.blend.dst = lastDstBlend;
 
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         pvr_poly_compile(hdr_ptr, &context);   
@@ -1262,13 +1233,11 @@ void RenderDevice::DrawTexturedPolyDMA(
         rotate(srcverts[3]);
     }
 
-    if(!doing_sub_mode) {
+    if (lastInkEffect != INK_SUB) {
         pvr_vertex_t *newverts = next_dma_vert;
         memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
         pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
     } else {
-        reset_texpoly = 1;
-
         pvr_poly_cxt_t context;
         pvr_poly_cxt_t contextcol;
         if (surface->is_vq) {
@@ -1413,19 +1382,20 @@ void RenderDevice::DrawTexturedPolyDMA(
             }
             pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
         }
+
+        lastInkEffect = 0xffffffff;
     }
 }
 
 // static
-void RenderDevice::PrepareColoredPolyDR(int32 y, int srcBlend, int dstBlend) {
+void RenderDevice::PrepareColoredPolyDR(int32 y, int inkEffect) {
     const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
     const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
 
     if (PreparePrimitive(PrimitiveTypes_ColoredPolyDR,
                          gamePaletteBankIndex,
                          pvrPaletteBankIndex,
-                         srcBlend,
-                         dstBlend,
+                         inkEffect,
                          nullptr)) {
         if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
@@ -1435,12 +1405,11 @@ void RenderDevice::PrepareColoredPolyDR(int32 y, int srcBlend, int dstBlend) {
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
-
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
         context.gen.alpha = 1;
-        context.blend.src = srcBlend;
-        context.blend.dst = dstBlend;
+        context.blend.src = lastSrcBlend;
+        context.blend.dst = lastDstBlend;
 
         // Compile polygon header directly into SQ to avoid having to copy it.
         auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
@@ -1450,31 +1419,28 @@ void RenderDevice::PrepareColoredPolyDR(int32 y, int srcBlend, int dstBlend) {
 }
 
 // static
-void RenderDevice::PrepareColoredPolyDMA(int32 y, int srcBlend, int dstBlend) {
+void RenderDevice::PrepareColoredPolyDMA(int32 y, int inkEffect) {
     const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
     const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
-    
+
     if (PreparePrimitive(PrimitiveTypes_ColoredPolyDMA,
                          gamePaletteBankIndex,
                          pvrPaletteBankIndex,
-                         srcBlend,
-                         dstBlend,
-                         nullptr) || reset_colpoly) {
+                         inkEffect,
+                         nullptr)) {
         if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
         }
 
-        reset_colpoly = 0;
         lastPrimitiveWasConsumed = false;
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
-
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
         context.gen.alpha = 1;
-        context.blend.src = srcBlend;
-        context.blend.dst = dstBlend;
+        context.blend.src = lastSrcBlend;
+        context.blend.dst = lastDstBlend;
         
         pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
         pvr_poly_compile(hdr_ptr, &context);
@@ -1562,12 +1528,14 @@ void RenderDevice::DrawColoredPolyDMA(
     const float y1 = y0 + static_cast<float>(height) * pixelScaleY;
     const float z  = GetDepth();
 
-    if (doing_tint == 2) {
+    if (lastInkEffect & 0x80000000) {
+//        if ((lastInkEffect & 0x7fffffff) == INK_TINT) {
         color = 0x7f000000;
-        doing_tint = 0;
+        lastInkEffect = 0xffffffff;
+//        }
     }
 
-    if (!doing_tint) {
+    if (lastInkEffect != INK_TINT) {
         // top left
         pvr_vertex_t *vert = next_dma_vert;
         vert->flags = PVR_CMD_VERTEX;
@@ -1615,9 +1583,7 @@ void RenderDevice::DrawColoredPolyDMA(
         pvr_poly_compile(hdr_ptr, &context);
         pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
-        reset_colpoly = 1;
         color = 0xffffffff;
-        doing_tint = 0;
 
         pvr_vertex_t *vert = next_dma_vert;
         // top left
@@ -1652,62 +1618,62 @@ void RenderDevice::DrawColoredPolyDMA(
         vert->argb = color;
 
         pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+
+        lastInkEffect = 0xffffffff;
     }
 }
 
 
 // static
-void RenderDevice::PrepareLinePolyDR(int srcBlend, int dstBlend) {
-    if ((lastPrimitiveType != PrimitiveTypes_LineDR) || 
-        ((lastLineSrcBlend != srcBlend) || (lastLineDstBlend != dstBlend))) {
+void RenderDevice::PrepareLinePolyDR(int inkEffect) {
+    if ((lastPrimitiveType != PrimitiveTypes_LineDR) || (lastLineInkEffect != inkEffect)) {
         if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
         }
 
         lastPrimitiveWasConsumed = false;
 
+        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastLineSrcBlend, &lastLineDstBlend);
+
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
-
+        context.gen.alpha = 1;
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
-        context.gen.alpha = 1;
-        context.blend.src = srcBlend;
-        context.blend.dst = dstBlend;
+        context.blend.src = lastLineSrcBlend;
+        context.blend.dst = lastLineDstBlend;
+
         auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
         pvr_poly_compile(header, &context);
         pvr_dr_commit(header);
-        lastLineSrcBlend = srcBlend;
-        lastLineDstBlend = dstBlend;
+        lastLineInkEffect = inkEffect;
         lastPrimitiveType = PrimitiveTypes_LineDR;
     }
 }
 
 // static
-void RenderDevice::PrepareLinePolyDMA(int srcBlend, int dstBlend) {
-    if ((lastPrimitiveType != PrimitiveTypes_LineDMA) || 
-        ((lastLineSrcBlend != srcBlend) || (lastLineDstBlend != dstBlend)) || 
-        reset_linepoly) {
+void RenderDevice::PrepareLinePolyDMA(int inkEffect) {
+    if ((lastPrimitiveType != PrimitiveTypes_LineDMA) || (lastLineInkEffect != inkEffect)) {
         if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
         }
 
-        reset_linepoly = 0;
         lastPrimitiveWasConsumed = false;
+
+        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastLineSrcBlend, &lastLineDstBlend);
+
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
         context.gen.alpha = 1;
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
-
-        context.blend.src = srcBlend;
-        context.blend.dst = dstBlend;
+        context.blend.src = lastLineSrcBlend;
+        context.blend.dst = lastLineDstBlend;
         
         pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
         pvr_poly_compile(hdr_ptr, &context);
         pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
-        lastLineSrcBlend = srcBlend;
-        lastLineDstBlend = dstBlend;
+        lastLineInkEffect = inkEffect;
         lastPrimitiveType = PrimitiveTypes_LineDMA;
     }
 }
@@ -1803,7 +1769,7 @@ void RenderDevice::DrawLinePolyDMA(int lx1, int ly1, int lx2, int ly2, int color
     nx = dy * hlw_invmag;
     ny = dx * hlw_invmag;
 
-    if (!doing_tint) {
+    if (lastLineInkEffect != INK_TINT) {
         SET_LINEPOLY_VERT_DMA(x1 + nx, y1 + ny, z, 0);
         SET_LINEPOLY_VERT_DMA(x1 - nx, y1 - ny, z, 0);
         SET_LINEPOLY_VERT_DMA(x2 + nx, y2 + ny, z, 0);
@@ -1834,13 +1800,12 @@ void RenderDevice::DrawLinePolyDMA(int lx1, int ly1, int lx2, int ly2, int color
 
         pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
 
-        doing_tint = 0;
-        reset_linepoly = 1;
+        lastLineInkEffect = 0xffffffff;
     }
 }
 
 // static
-void RenderDevice::PrepareRotoPoly(int srcBlend, int dstBlend, pvr_ptr_t texture) {
+void RenderDevice::PrepareRotoPoly(int inkEffect, pvr_ptr_t texture) {
 #if 0
     lastPrimitiveWasConsumed = false;
     lastPrimitiveType = PrimitiveTypes_Roto;
@@ -1855,58 +1820,58 @@ void RenderDevice::DrawRotoPoly(int x, int y, int w, int h, float u, float v) {
 }
 
 // static
-void RenderDevice::PrepareFacePolyDR(int srcBlend, int dstBlend) {
-    if ((lastPrimitiveType != PrimitiveTypes_FaceDR) || 
-        ((lastFaceSrcBlend != srcBlend) || (lastFaceDstBlend != dstBlend))) {
+void RenderDevice::PrepareFacePolyDR(int inkEffect) {
+    if ((lastPrimitiveType != PrimitiveTypes_FaceDR) || (lastFaceInkEffect != inkEffect)) {
         if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
         }
+
         lastPrimitiveWasConsumed = false;
+
+        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastFaceSrcBlend, &lastFaceDstBlend);
+
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
         context.gen.alpha = 1;
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
-
-        context.blend.src = srcBlend;
-        context.blend.dst = dstBlend;
+        context.blend.src = lastFaceSrcBlend;
+        context.blend.dst = lastFaceDstBlend;
                 
         auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
         pvr_poly_compile(header, &context);
         pvr_dr_commit(header);
 
-        lastFaceSrcBlend = srcBlend;
-        lastFaceDstBlend = dstBlend;
+        lastFaceInkEffect = inkEffect;
         lastPrimitiveType = PrimitiveTypes_FaceDR;
     }
 }
 
 
 // static
-void RenderDevice::PrepareFacePolyDMA(int srcBlend, int dstBlend) {
-    if ((lastPrimitiveType != PrimitiveTypes_FaceDMA) || 
-        ((lastFaceSrcBlend != srcBlend) || (lastFaceDstBlend != dstBlend)) || 
-        reset_facepoly) {
+void RenderDevice::PrepareFacePolyDMA(int inkEffect) {
+    if ((lastPrimitiveType != PrimitiveTypes_FaceDMA) || (lastFaceInkEffect != inkEffect)) {
         if (!lastPrimitiveWasConsumed) {
             printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
         }
+
         lastPrimitiveWasConsumed = false;
-        reset_facepoly = 0;
+
+        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastFaceSrcBlend, &lastFaceDstBlend);
+
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
         context.gen.alpha = 1;
         context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         context.depth.write = 0;
-
-        context.blend.src = srcBlend;
-        context.blend.dst = dstBlend;
+        context.blend.src = lastFaceSrcBlend;
+        context.blend.dst = lastFaceDstBlend;
 
         pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
         pvr_poly_compile(hdr_ptr, &context);
         pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
-        lastFaceSrcBlend = srcBlend;
-        lastFaceDstBlend = dstBlend;
+        lastFaceInkEffect = inkEffect;
         lastPrimitiveType = PrimitiveTypes_FaceDMA;
     }
 }
@@ -1955,7 +1920,6 @@ void RenderDevice::DrawFacePolyDR(
     if (ualpha < 64) ualpha = 64;
     ualpha <<= 24;
 
-
     if (vertCount == 3) {
         SET_FACEPOLY_VERT_DR(0, z, 0);
         SET_FACEPOLY_VERT_DR(2, z, 0);
@@ -1986,7 +1950,8 @@ void RenderDevice::DrawFacePolyDMA(
     uint32 ualpha = (uint32)alpha;
     if (ualpha < 64) ualpha = 64;
     ualpha <<= 24;
-    if (!doing_tint) {
+
+    if (lastFaceInkEffect != INK_TINT) {
         pvr_vertex_t *vert = next_dma_vert;
         if (vertCount == 3) {
             SET_FACEPOLY_VERT_DMA(0, z, 0);
@@ -2030,7 +1995,7 @@ void RenderDevice::DrawFacePolyDMA(
         }
 
         pvr_vertbuf_written(PVR_LIST_TR_POLY, vertCount * sizeof(pvr_vertex_t));
-        doing_tint = 0;
-        reset_facepoly = 1;
+
+        lastFaceInkEffect = 0xffffffff;
     }
 }
