@@ -10,7 +10,6 @@
 extern "C" {
 #define TR_VERTBUF_SIZE ((384)*1024)
     uint8_t __attribute__((aligned(32))) tr_buf[TR_VERTBUF_SIZE];
-    extern uint8_t bg_r, bg_g, bg_b;
 };
 #define DO_240 0
 #define DO_24BPP 0
@@ -501,7 +500,7 @@ void RenderDevice::BeginScene() {
     pixelScaleY = viewSize.y / pixelSize.y;
 
     pvr_scene_begin();
-    pvr_set_bg_color(0.0f,0.0f,0.0f); //(float)bg_r / 255.0f, (float)bg_g / 255.0f, (float)bg_b / 255.0f);
+    pvr_set_bg_color(0.0f, 0.0f, 0.0f);
 
     // direct render to punch-through list anything that doesn't need to blend
     if (pvr_list_begin(PVR_LIST_PT_POLY) == -1) {

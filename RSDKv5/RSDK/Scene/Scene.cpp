@@ -10,12 +10,6 @@ using namespace RSDK;
 uint8 RSDK::tilesetPixels[TILESET_SIZE * 4];
 #endif
 
-#if defined(KOS_HARDWARE_RENDERER)
-extern "C" {
-    uint8_t bg_r, bg_g, bg_b;
-};
-#endif
-
 ScanlineInfo *RSDK::scanlines = NULL;
 TileLayer RSDK::tileLayers[LAYER_COUNT];
 CollisionMask RSDK::collisionMasks[CPATH_COUNT][TILE_COUNT * 4];
@@ -378,20 +372,21 @@ void RSDK::LoadSceneAssets()
         */
 
         // Skip over Metadata, since we won't be using it at all in-game
-        uint8 unknown1 = ReadInt8(&info); // usually 3, sometimes 4, LRZ1 (old) is 2
+        //uint8 unknown1 = ReadInt8(&info); // usually 3, sometimes 4, LRZ1 (old) is 2
         // bg color
-        bg_b                = ReadInt8(&info);
-        bg_g                = ReadInt8(&info);
-        bg_r                = ReadInt8(&info);
+        //uint8 r                = ReadInt8(&info);
+        //uint8 g                = ReadInt8(&info);
+        //uint8 b                = ReadInt8(&info);
         //uint8 a                = ReadInt8(&info);
         //color backgroundColor1 = (a << 24) | (r << 16) | (g << 8) | (b << 0);
 
-//        b                      = ReadInt8(&info);
-  //      g                      = ReadInt8(&info);
-    //    r                      = ReadInt8(&info);
-      //  a                      = ReadInt8(&info);
+        //b                      = ReadInt8(&info);
+        //g                      = ReadInt8(&info);
+        //r                      = ReadInt8(&info);
+        //a                      = ReadInt8(&info);
         //color backgroundColor2 = (a << 24) | (r << 16) | (g << 8) | (b << 0);
-        Seek_Cur(&info, 0x10 - 4);
+        //Seek_Cur(&info, 0x10 - 4);
+        Seek_Cur(&info, 0x10);
         uint8 strLen = ReadInt8(&info);
         Seek_Cur(&info, strLen + 1);
 
