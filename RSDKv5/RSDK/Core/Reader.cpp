@@ -353,9 +353,11 @@ bool32 RSDK::LoadFile(FileInfo *info, const char *filename, uint8 fileMode)
     if (fileMode != FMODE_WB) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
         mutex_lock(&io_lock);
+#endif
         fSeek(info->file, 0, SEEK_END);
         info->fileSize = (int32)fTell(info->file);
         fSeek(info->file, 0, SEEK_SET);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
         mutex_unlock(&io_lock);
 #endif
     }
