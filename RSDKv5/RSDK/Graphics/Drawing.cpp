@@ -872,6 +872,10 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
         return;
     }
 
+    if (inkEffect == INK_NONE) {
+        alpha = 0xff;
+    }
+
     if (inkEffect == INK_BLEND) {
         alpha /= 2;
     }
@@ -4095,6 +4099,8 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
         alpha /= 2;
     }
 
+    RenderDevice::DisableCulling();
+
     if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 255)) {
         RenderDevice::PrepareTexturedPolyDR(newY + marginTop, inkEffect, surface);
         RenderDevice::DrawTexturedPolyDR(
@@ -4118,6 +4124,8 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
                 alpha,
                 surface);
     }
+
+    RenderDevice::EnableCulling();
 #else
     int32 sine        = sin512LookupTable[angle];
     int32 cosine      = cos512LookupTable[angle];

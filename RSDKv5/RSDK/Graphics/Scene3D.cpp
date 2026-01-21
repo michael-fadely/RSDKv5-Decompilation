@@ -8,6 +8,24 @@ using namespace RSDK;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 #include <algorithm>
+
+// ========== FAST SH4 UTILITY ROUTINES ==========
+
+//! Calculates 1.0f/sqrtf( \p x ), using a fast approximation.
+__always_inline float shz_inverse_sqrtf(float x) {
+    asm("fsrra %0" : "+f" (x));
+    return x;
+}
+
+//! Takes the inverse of \p p using a very fast approximation, returning a positive result.
+__always_inline float shz_inverse_posf(float x) {
+    return shz_inverse_sqrtf(x * x);
+}
+
+//! Divides \p num by \p denom using a very fast approximation, returning a positive result.
+__always_inline float shz_div_posf(float num, float denom) {
+    return num * shz_inverse_posf(denom);
+}
 #endif
 
 Model RSDK::modelList[MODEL_COUNT];
@@ -859,7 +877,7 @@ static inline float tri_signed_area(Scene3DVertex *a, Scene3DVertex *b, Scene3DV
 }
 
 static inline int should_cull_face(Scene3DVertex *a, Scene3DVertex *b, Scene3DVertex *c) {
-    return tri_signed_area(a,b,c) >= -32768.0f;
+    return tri_signed_area(a,b,c) >= 0.0f;
 }
 
 void RSDK::Draw3DScene(uint16 sceneID)
@@ -1138,8 +1156,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             break;
                         }
                         else {
-                            vertPos[v].x = currentScreen->center.x + (drawVert[v].x << scn->projectionX) / vertZ;
-                            vertPos[v].y = currentScreen->center.y - (drawVert[v].y << scn->projectionY) / vertZ;
+                            float recipZ = shz_inverse_posf((float)vertZ);
+                            vertPos[v].x = currentScreen->center.x + (drawVert[v].x << scn->projectionX) * recipZ; // / vertZ;
+                            vertPos[v].y = currentScreen->center.y - (drawVert[v].y << scn->projectionY) * recipZ; // / vertZ;
                         }
                     }
 
@@ -1156,11 +1175,12 @@ void RSDK::Draw3DScene(uint16 sceneID)
                 }
                 break;
 
+            // shadows on 3d stages, vertex order issue
             case S3D_SOLIDCOLOR_SCREEN:
                 for (int32 f = 0; f < scn->faceCount; ++f) {
                     Scene3DVertex *drawVert = &scn->vertices[scn->faceBuffer[f].index];
                     int32 vertCount         = *vertCnt;
-                    if (vertCount == 4) {
+                    /* if (vertCount == 4) {
                         if (should_cull_face(&drawVert[0],&drawVert[1],&drawVert[3])) {
                             continue;
                         }
@@ -1170,7 +1190,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
                         }
                     } else {
                         continue;
-                    }
+                    } */
 
                     int32 v = 0;
                     for (; v < vertCount && v < 0xFF; ++v) {
@@ -1180,8 +1200,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             break;
                         }
                         else {
-                            vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) / vertZ << 16);
-                            vertPos[v].y = (currentScreen->center.y << 16) - ((drawVert[v].y << scn->projectionY) / vertZ << 16);
+                            float recipZ = shz_div_posf(65536.0f, (float)vertZ);
+                            vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) * recipZ); // / vertZ << 16);
+                            vertPos[v].y = (currentScreen->center.y << 16) - ((drawVert[v].y << scn->projectionY) * recipZ); // / vertZ << 16);
                         }
                     }
 
@@ -1207,8 +1228,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             break;
                         }
                         else {
-                            vertPos[v].x = currentScreen->center.x + (drawVert[v].x << scn->projectionX) / vertZ;
-                            vertPos[v].y = currentScreen->center.y - (drawVert[v].y << scn->projectionY) / vertZ;
+                            float recipZ = shz_inverse_posf((float)vertZ);
+                            vertPos[v].x = currentScreen->center.x + (drawVert[v].x << scn->projectionX) * recipZ; // / vertZ;
+                            vertPos[v].y = currentScreen->center.y - (drawVert[v].y << scn->projectionY) * recipZ; // / vertZ;
                             ny1 += drawVert[v].ny;
                         }
                     }
@@ -1272,8 +1294,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             break;
                         }
                         else {
-                            vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) / vertZ << 16);
-                            vertPos[v].y = (currentScreen->center.y << 16) - ((drawVert[v].y << scn->projectionY) / vertZ << 16);
+                            float recipZ = shz_div_posf(65536.0f, (float)vertZ);
+                            vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) * recipZ); // / vertZ << 16);
+                            vertPos[v].y = (currentScreen->center.y << 16) - ((drawVert[v].y << scn->projectionY) * recipZ); // / vertZ << 16);
                             ny += drawVert[v].ny;
                         }
                     }
@@ -1332,8 +1355,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             break;
                         }
                         else {
-                            vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) / vertZ << 16);
-                            vertPos[v].y = (currentScreen->center.y << 16) - ((drawVert[v].y << scn->projectionY) / vertZ << 16);
+                            float recipZ = shz_div_posf(65536.0f, (float)vertZ);
+                            vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) * recipZ); // / vertZ << 16);
+                            vertPos[v].y = (currentScreen->center.y << 16) - ((drawVert[v].y << scn->projectionY) * recipZ); // / vertZ << 16);
 
                             int32 normal    = drawVert[v].ny;
                             int32 normalVal = (normal >> 2) * (abs(normal) >> 2);

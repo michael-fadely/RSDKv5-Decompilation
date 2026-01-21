@@ -8,7 +8,7 @@
 
 #if defined(KOS_HARDWARE_RENDERER)
 extern "C" {
-#define TR_VERTBUF_SIZE ((384)*1024)
+#define TR_VERTBUF_SIZE (256 * 1024)
     uint8_t __attribute__((aligned(32))) tr_buf[TR_VERTBUF_SIZE];
 };
 #define DO_240 0
@@ -72,10 +72,11 @@ enum PrimitiveTypes {
     PrimitiveTypes_Roto
 };
 
+size_t vbPos = 0;
 float drawDepth = 1.0f;
 pvr_ptr_t lastTexture = nullptr;
 pvr_dr_state_t drState = 0;
-uint8_t useCulling = 0;
+
 int lastInkEffect = -1;
 int lastLineInkEffect = -1;
 int lastFaceInkEffect = -1;
@@ -89,20 +90,45 @@ int lastLineDstBlend = -1;
 int lastFaceSrcBlend = -1;
 int lastFaceDstBlend = -1;
 
-#if 0
-void ResetLastState() {
-    lastTexture = nullptr;
-    lastSrcBlend = -1;
-    lastDstBlend = -1;
-    lastLineSrcBlend = -1;
-    lastLineDstBlend = -1;
-    lastFaceSrcBlend = -1;
-    lastFaceDstBlend = -1;
-    lastPrimitiveType = PrimitiveTypes_None;
-    // DCWIP: does resetting lastPrimitiveWasConsumed make sense???
-    lastPrimitiveWasConsumed = true;
+bool useCulling = true;
+bool trExhausted = false;
+
+bool IsTrExhausted(void) {
+    return trExhausted;
 }
+
+// this is submitting `INK_SUB` textured poly
+#define TR_WORSTCASE_SUBMISSION (25*32)
+
+void *safe_pvr_vertbuf_tail(int list) {
+    if ((vbPos + TR_WORSTCASE_SUBMISSION) > (TR_VERTBUF_SIZE / 2)) {
+#if RSDK_DEBUG
+        printf("tr vertbuf has been exhausted\n");
 #endif
+        trExhausted = true;
+        return nullptr;
+    }
+
+    return pvr_vertbuf_tail(list);
+}
+
+void safe_pvr_vertbuf_written(int list, size_t amount) {
+    if (IsTrExhausted()) {
+        return;
+    }
+
+    if ((vbPos + amount) > (TR_VERTBUF_SIZE / 2)) {
+#if RSDK_DEBUG
+        printf("tr vertbuf has been exhausted\n");
+#endif
+        trExhausted = true;
+        return;
+    }
+
+    vbPos += amount;
+    pvr_vertbuf_written(list, amount);
+}
+
 }
 #endif
 
@@ -495,7 +521,8 @@ void RenderDevice::BeginScene() {
     SetDepth(0);
     DisableCulling();
     lastPrimitiveType = PrimitiveTypes_None;
-
+    vbPos = 0;
+    trExhausted = false;
     // Update our cached values for pixel global pixel scaling.
     pixelScaleX = viewSize.x / pixelSize.x;
     pixelScaleY = viewSize.y / pixelSize.y;
@@ -534,12 +561,12 @@ void RenderDevice::EndScene() {
 
 // static
 void RenderDevice::EnableCulling() {
-    useCulling = 1;
+    useCulling = true;
 }
 
 // static
 void RenderDevice::DisableCulling() {
-    useCulling = 0;
+    useCulling = false;
 }
 
 
@@ -760,9 +787,12 @@ void RenderDevice::PrepareTexturedQuadDMA(int32 y, const GFXSurface* surface) {
         if (!useCulling)
             context.gen.culling = PVR_CULLING_NONE;
 
-        pvr_sprite_hdr_t *hdr_ptr = (pvr_sprite_hdr_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        pvr_sprite_hdr_t *hdr_ptr = (pvr_sprite_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        if (hdr_ptr == nullptr) {
+            return;
+        }
         pvr_sprite_compile(hdr_ptr, &context);
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_sprite_hdr_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_sprite_hdr_t));
     }
 }
 
@@ -833,6 +863,9 @@ void RenderDevice::DrawTexturedQuadDMA(
     }
 
     lastPrimitiveWasConsumed = true;
+    if (IsTrExhausted()) {
+        return;
+    }
 
     // Compute constants up-front.
     const float x0 = static_cast<float>(x) * pixelScaleX;
@@ -845,7 +878,7 @@ void RenderDevice::DrawTexturedQuadDMA(
     const float v1 = shz_div_posf(sprY1, surface->height);
     const float z  = GetDepth();
 
-    pvr_sprite_txr_t *spr = (pvr_sprite_txr_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+    pvr_sprite_txr_t *spr = (pvr_sprite_txr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
     spr->ax = x0;
     spr->ay = y0;
     spr->az = z;
@@ -861,7 +894,7 @@ void RenderDevice::DrawTexturedQuadDMA(
     spr->buv = PVR_PACK_16BIT_UV(u1, v0);
     spr->cuv = PVR_PACK_16BIT_UV(u1, v1);
     spr->flags = PVR_CMD_VERTEX_EOL;
-    pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_sprite_txr_t));
+    safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_sprite_txr_t));
 }
 
 // JN64 TODO
@@ -988,8 +1021,8 @@ void RenderDevice::PrepareTexturedPolyDR(int32 y, int inkEffect, const GFXSurfac
     }
 }
 
-#define next_dma_hdr (pvr_poly_hdr_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY)
-#define next_dma_vert (pvr_vertex_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY)
+#define next_dma_hdr (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY)
+#define next_dma_vert (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY)
 
 // static
 void RenderDevice::PrepareTexturedPolyDMA(int32 y, int inkEffect, const GFXSurface *surface) {
@@ -1042,9 +1075,9 @@ void RenderDevice::PrepareTexturedPolyDMA(int32 y, int inkEffect, const GFXSurfa
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
 
-        pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         pvr_poly_compile(hdr_ptr, &context);   
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));     
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
     }
 }
 
@@ -1167,6 +1200,10 @@ void RenderDevice::DrawTexturedPolyDMA(
 
     lastPrimitiveWasConsumed = true;
 
+    if (IsTrExhausted()) {
+        return;
+    }
+
     // Compute constants up-front
     const float x0 = static_cast<float>(x) * pixelScaleX;
     const float y0 = static_cast<float>(y) * pixelScaleY;
@@ -1250,7 +1287,7 @@ void RenderDevice::DrawTexturedPolyDMA(
     if (lastInkEffect != INK_SUB) {
         pvr_vertex_t *newverts = next_dma_vert;
         memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
     } else {
         pvr_poly_cxt_t context;
         pvr_poly_cxt_t contextcol;
@@ -1291,14 +1328,14 @@ void RenderDevice::DrawTexturedPolyDMA(
 
             pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY);
             pvr_poly_compile(hdr_ptr, &contextcol);
-            pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
             pvr_vertex_t *newverts = next_dma_vert;
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
             for (int i = 0; i < 4; i++) {
                 newverts[i].argb = 0x00ffffff;
             }
-            pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
         }
 
         // step two
@@ -1313,14 +1350,14 @@ void RenderDevice::DrawTexturedPolyDMA(
 
             pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
             pvr_poly_compile(hdr_ptr, &contextcol);
-            pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
             pvr_vertex_t *newverts = next_dma_vert;
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
             for (int i = 0; i < 4; i++) {
                 newverts[i].argb = 0xffffffff;
             }
-            pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
         }
 
         // step three
@@ -1338,14 +1375,14 @@ void RenderDevice::DrawTexturedPolyDMA(
 
             pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
             pvr_poly_compile(hdr_ptr, &context);
-            pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
             pvr_vertex_t *newverts = next_dma_vert;
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
             for (int i = 0; i < 4; i++) {
                 newverts[i].argb = argb;
             }
-            pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
         }
 
         // step four
@@ -1361,14 +1398,14 @@ void RenderDevice::DrawTexturedPolyDMA(
 
             pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
             pvr_poly_compile(hdr_ptr, &contextcol);
-            pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
             pvr_vertex_t *newverts = next_dma_vert;
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
             for (int i = 0; i < 4; i++) {
                 newverts[i].argb = 0xffffffff;
             }
-            pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
         }
 
         // step five
@@ -1387,14 +1424,14 @@ void RenderDevice::DrawTexturedPolyDMA(
 
             pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
             pvr_poly_compile(hdr_ptr, &contextcol);
-            pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
             pvr_vertex_t *newverts = next_dma_vert;
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
             for (int i = 0; i < 4; i++) {
                 newverts[i].argb = 0xffffffff;
             }
-            pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
         }
 
         lastInkEffect = 0xffffffff;
@@ -1458,7 +1495,7 @@ void RenderDevice::PrepareColoredPolyDMA(int32 y, int inkEffect) {
         
         pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
         pvr_poly_compile(hdr_ptr, &context);
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
     }
 }
 
@@ -1535,6 +1572,10 @@ void RenderDevice::DrawColoredPolyDMA(
 
     lastPrimitiveWasConsumed = true;
 
+    if (IsTrExhausted()) {
+        return;
+    }
+
     // Compute constants up-front.
     const float x0 = static_cast<float>(x) * pixelScaleX;
     const float y0 = static_cast<float>(y) * pixelScaleY;
@@ -1582,7 +1623,7 @@ void RenderDevice::DrawColoredPolyDMA(
         vert->z = z;
         vert->argb = color;
 
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
     } else {
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
@@ -1595,7 +1636,7 @@ void RenderDevice::DrawColoredPolyDMA(
         
         pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
         pvr_poly_compile(hdr_ptr, &context);
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
         color = 0xffffffff;
 
@@ -1631,7 +1672,7 @@ void RenderDevice::DrawColoredPolyDMA(
         vert->z = z;
         vert->argb = color;
 
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
 
         lastInkEffect = 0xffffffff;
     }
@@ -1686,7 +1727,7 @@ void RenderDevice::PrepareLinePolyDMA(int inkEffect) {
         
         pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
         pvr_poly_compile(hdr_ptr, &context);
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
         lastLineInkEffect = inkEffect;
         lastPrimitiveType = PrimitiveTypes_LineDMA;
     }
@@ -1772,6 +1813,10 @@ void RenderDevice::DrawLinePolyDMA(int lx1, int ly1, int lx2, int ly2, int color
 
     lastPrimitiveWasConsumed = true;
 
+    if (IsTrExhausted()) {
+        return;
+    }
+
     const float x1 = static_cast<float>(lx1) * pixelScaleX;
     const float y1 = static_cast<float>(ly1) * pixelScaleY;
     const float x2 = static_cast<float>(lx2) * pixelScaleX;
@@ -1793,7 +1838,7 @@ void RenderDevice::DrawLinePolyDMA(int lx1, int ly1, int lx2, int ly2, int color
         SET_LINEPOLY_VERT_DMA(x2 + nx, y2 + ny, z, 0);
         SET_LINEPOLY_VERT_DMA(x2 - nx, y2 - ny, z, 1);
 
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
     } else {
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
@@ -1806,7 +1851,7 @@ void RenderDevice::DrawLinePolyDMA(int lx1, int ly1, int lx2, int ly2, int color
         
         pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
         pvr_poly_compile(hdr_ptr, &context);
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
         color = 0xffffffff;
 
@@ -1816,7 +1861,7 @@ void RenderDevice::DrawLinePolyDMA(int lx1, int ly1, int lx2, int ly2, int color
         SET_LINEPOLY_VERT_DMA(x2 + nx, y2 + ny, z, 0);
         SET_LINEPOLY_VERT_DMA(x2 - nx, y2 - ny, z, 1);
 
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
 
         lastLineInkEffect = 0xffffffff;
     }
@@ -1887,7 +1932,7 @@ void RenderDevice::PrepareFacePolyDMA(int inkEffect) {
 
         pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
         pvr_poly_compile(hdr_ptr, &context);
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
         lastFaceInkEffect = inkEffect;
         lastPrimitiveType = PrimitiveTypes_FaceDMA;
@@ -1974,7 +2019,11 @@ void RenderDevice::DrawFacePolyDMA(
     }
 
     lastPrimitiveWasConsumed = true;
-    
+
+    if (IsTrExhausted()) {
+        return;
+    }
+
     const float z = GetDepth();
     const float scale_x = (pixelScaleX / 65535.0f);
     const float scale_y = (pixelScaleY / 65535.0f);
@@ -1996,7 +2045,7 @@ void RenderDevice::DrawFacePolyDMA(
             SET_FACEPOLY_VERT_DMA(2, z, 1);
         }
 
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, vertCount * sizeof(pvr_vertex_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, vertCount * sizeof(pvr_vertex_t));
     } else {
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
@@ -2009,7 +2058,7 @@ void RenderDevice::DrawFacePolyDMA(
         
         pvr_poly_hdr_t *hdr_ptr = next_dma_hdr;
         pvr_poly_compile(hdr_ptr, &context);
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
         pvr_vertex_t *vert = next_dma_vert;
         use_fc = 1;
         faceColor = 0x00ffffff;
@@ -2026,7 +2075,7 @@ void RenderDevice::DrawFacePolyDMA(
             SET_FACEPOLY_VERT_DMA(2, z, 1);
         }
 
-        pvr_vertbuf_written(PVR_LIST_TR_POLY, vertCount * sizeof(pvr_vertex_t));
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, vertCount * sizeof(pvr_vertex_t));
 
         lastFaceInkEffect = 0xffffffff;
     }
