@@ -58,8 +58,6 @@ private:
     static bool PreparePrimitive(int primitiveType,
                                  uint32 gamePaletteBankIndex,
                                  uint32 pvrPaletteBankIndex,
-                                 /* int srcBlend,
-                                 int dstBlend, */
                                  int inkEffect,
                                  pvr_ptr_t texture);
 
