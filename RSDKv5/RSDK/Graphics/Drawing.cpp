@@ -646,6 +646,7 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
 
         color = (color_r << 19) | (color_g << 11) | (color_b<<3);
 #endif
+        // color poly is only ever used for fill
         if ((badAlpha == 255)) {
             RenderDevice::PrepareColoredPolyDR(0, INK_NONE);
             RenderDevice::DrawColoredPolyDR(0, 0, width, height, color | (badAlpha << 24));

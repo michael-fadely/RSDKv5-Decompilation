@@ -75,7 +75,7 @@ enum PrimitiveTypes {
 float drawDepth = 1.0f;
 pvr_ptr_t lastTexture = nullptr;
 pvr_dr_state_t drState = 0;
-
+uint8_t useCulling = 0;
 int lastInkEffect = -1;
 int lastLineInkEffect = -1;
 int lastFaceInkEffect = -1;
@@ -175,7 +175,7 @@ bool RenderDevice::Init()
         0,
 
         // autosort disabled?
-        0,
+        1,
 
         // Overflow buffer count
         2,
@@ -493,6 +493,7 @@ void RenderDevice::ShowCursor(bool)
 void RenderDevice::BeginScene() {
 #if defined(KOS_HARDWARE_RENDERER)
     SetDepth(0);
+    DisableCulling();
     lastPrimitiveType = PrimitiveTypes_None;
 
     // Update our cached values for pixel global pixel scaling.
@@ -530,6 +531,17 @@ void RenderDevice::EndScene() {
 #endif
 #endif
 }
+
+// static
+void RenderDevice::EnableCulling() {
+    useCulling = 1;
+}
+
+// static
+void RenderDevice::DisableCulling() {
+    useCulling = 0;
+}
+
 
 // static
 float RenderDevice::GetDepth() {
@@ -708,8 +720,8 @@ void RenderDevice::PrepareTexturedQuadDR(int32 y, const GFXSurface* surface) {
                 PVR_FILTER_NEAREST
         );
 
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
 
         auto *header = reinterpret_cast<pvr_sprite_hdr_t *>(pvr_dr_target(drState));
         pvr_sprite_compile(header, &context);
@@ -745,8 +757,8 @@ void RenderDevice::PrepareTexturedQuadDMA(int32 y, const GFXSurface* surface) {
                 PVR_FILTER_NEAREST
         );
 
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
 
         pvr_sprite_hdr_t *hdr_ptr = (pvr_sprite_hdr_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         pvr_sprite_compile(hdr_ptr, &context);
@@ -831,7 +843,7 @@ void RenderDevice::DrawTexturedQuadDMA(
     const float v0 = shz_div_posf(sprY0, surface->height);
     const float u1 = shz_div_posf(sprX1, surface->width);
     const float v1 = shz_div_posf(sprY1, surface->height);
-    const float z  = GetDepth();// + 2.0f;
+    const float z  = GetDepth();
 
     pvr_sprite_txr_t *spr = (pvr_sprite_txr_t *)pvr_vertbuf_tail(PVR_LIST_TR_POLY);
     spr->ax = x0;
@@ -964,8 +976,8 @@ void RenderDevice::PrepareTexturedPolyDR(int32 y, int inkEffect, const GFXSurfac
             );
         }
         context.gen.alpha = 1;
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
 
@@ -1025,8 +1037,8 @@ void RenderDevice::PrepareTexturedPolyDMA(int32 y, int inkEffect, const GFXSurfa
         }
 
         context.gen.alpha = 1;
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
 
@@ -1407,8 +1419,8 @@ void RenderDevice::PrepareColoredPolyDR(int32 y, int inkEffect) {
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
         context.gen.alpha = 1;
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
@@ -1438,8 +1450,8 @@ void RenderDevice::PrepareColoredPolyDMA(int32 y, int inkEffect) {
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
         context.gen.alpha = 1;
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
@@ -1576,8 +1588,8 @@ void RenderDevice::DrawColoredPolyDMA(
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
 
         context.gen.alpha = 1;
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = PVR_BLEND_INVDESTCOLOR;
         context.blend.dst = PVR_BLEND_ZERO;
         
@@ -1640,8 +1652,8 @@ void RenderDevice::PrepareLinePolyDR(int inkEffect) {
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
         context.gen.alpha = 1;
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastLineSrcBlend;
         context.blend.dst = lastLineDstBlend;
 
@@ -1667,8 +1679,8 @@ void RenderDevice::PrepareLinePolyDMA(int inkEffect) {
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
         context.gen.alpha = 1;
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastLineSrcBlend;
         context.blend.dst = lastLineDstBlend;
         
@@ -1787,8 +1799,8 @@ void RenderDevice::DrawLinePolyDMA(int lx1, int ly1, int lx2, int ly2, int color
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
 
         context.gen.alpha = 1;
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = PVR_BLEND_INVDESTCOLOR;
         context.blend.dst = PVR_BLEND_ZERO;
         
@@ -1839,8 +1851,8 @@ void RenderDevice::PrepareFacePolyDR(int inkEffect) {
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
         context.gen.alpha = 1;
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastFaceSrcBlend;
         context.blend.dst = lastFaceDstBlend;
                 
@@ -1868,8 +1880,8 @@ void RenderDevice::PrepareFacePolyDMA(int inkEffect) {
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
         context.gen.alpha = 1;
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastFaceSrcBlend;
         context.blend.dst = lastFaceDstBlend;
 
@@ -1927,6 +1939,20 @@ void RenderDevice::DrawFacePolyDR(
     ualpha <<= 24;
 
     if (vertCount == 3) {
+        // fix the rendering of pause menu yellow right triangle during special stages
+        if (use_fc && ((faceColor & 0x00FFFFFF) == 0xF0D808)) {
+            pvr_poly_cxt_t context;
+            pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
+            context.gen.alpha = 1;
+            context.gen.culling = PVR_CULLING_NONE;
+
+            auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
+            pvr_poly_compile(header, &context);
+            pvr_dr_commit(header);
+
+            lastFaceInkEffect == 0xffffffff;
+        }
+
         SET_FACEPOLY_VERT_DR(0, z, 0);
         SET_FACEPOLY_VERT_DR(2, z, 0);
         SET_FACEPOLY_VERT_DR(1, z, 1);
@@ -1975,8 +2001,8 @@ void RenderDevice::DrawFacePolyDMA(
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
         context.gen.alpha = 1;
-        context.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        context.depth.write = 0;
+        if (!useCulling)
+            context.gen.culling = PVR_CULLING_NONE;
 
         context.blend.src = PVR_BLEND_INVDESTCOLOR;
         context.blend.dst = PVR_BLEND_ZERO;

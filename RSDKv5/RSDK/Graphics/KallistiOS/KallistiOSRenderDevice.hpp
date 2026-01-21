@@ -45,6 +45,8 @@ public:
     // KallistiOS only!!!
     static void BeginScene();
     static void EndScene();
+    static void EnableCulling();
+    static void DisableCulling();
     static float GetDepth();
     static void SetDepth(uint32 depth);
 

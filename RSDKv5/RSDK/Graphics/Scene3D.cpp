@@ -859,7 +859,7 @@ static inline float tri_signed_area(Scene3DVertex *a, Scene3DVertex *b, Scene3DV
 }
 
 static inline int should_cull_face(Scene3DVertex *a, Scene3DVertex *b, Scene3DVertex *c) {
-    return tri_signed_area(a,b,c) >= -16384.0f;
+    return tri_signed_area(a,b,c) >= -32768.0f;
 }
 
 void RSDK::Draw3DScene(uint16 sceneID)

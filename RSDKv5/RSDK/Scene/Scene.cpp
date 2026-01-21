@@ -1923,6 +1923,9 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
 }
 void RSDK::DrawLayerRotozoom(TileLayer *layer)
 {
+#if defined(KOS_HARDWARE_RENDERER)
+    RenderDevice::EnableCulling();
+#endif
     // DCTODO: DrawLayerRotozoom
     // (using early return so I can still statically analyze stuff!)
     return;
