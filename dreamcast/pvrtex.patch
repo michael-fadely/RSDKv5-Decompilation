@@ -1,0 +1,26 @@
+diff --git a/utils/pvrtex/stb_image.h b/utils/pvrtex/stb_image.h
+index 9eedabed..8926d69b 100644
+--- a/utils/pvrtex/stb_image.h
++++ b/utils/pvrtex/stb_image.h
+@@ -6633,6 +6633,11 @@ static int stbi__gif_header(stbi__context *s, stbi__gif *g, int *comp, int is_in
+    if (g->flags & 0x80)
+       stbi__gif_parse_colortable(s,g->pal, 2 << (g->flags & 7), -1);
+ 
++   g->pal[0][0] = 0;
++   g->pal[0][1] = 0;
++   g->pal[0][2] = 0;
++   g->pal[0][3] = 0;
++
+    return 1;
+ }
+ 
+@@ -6896,7 +6901,7 @@ static stbi_uc *stbi__gif_load_next(stbi__context *s, stbi__gif *g, int *comp, i
+                // if first frame, any pixel not drawn to gets the background color
+                for (pi = 0; pi < pcount; ++pi) {
+                   if (g->history[pi] == 0) {
+-                     g->pal[g->bgindex][3] = 255; // just in case it was made transparent, undo that; It will be reset next frame if need be;
++                     g->pal[g->bgindex][3] = 0; // just in case it was made transparent, undo that; It will be reset next frame if need be;
+                      memcpy( &g->out[pi * 4], &g->pal[g->bgindex], 4 );
+                   }
+                }
+
