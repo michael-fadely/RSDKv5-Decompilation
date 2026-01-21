@@ -137,7 +137,7 @@ inline void StopAllSfx()
     LockAudioDevice();
 #endif
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    wav_destroy();
+    stream_destroy();
 #endif
     for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
         if (channels[i].state == CHANNEL_SFX) {
