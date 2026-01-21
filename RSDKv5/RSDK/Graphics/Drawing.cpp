@@ -6,11 +6,6 @@ using namespace RSDK;
 #include "Legacy/DrawingLegacy.cpp"
 #endif
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-#define DO_240 0
-#define DO_24BPP 0
-#endif
-
 // all render devices need to access the initial vertex buffer :skull:
 
 // clang-format off
@@ -611,11 +606,6 @@ void RSDK::SwapDrawListEntries(uint8 drawGroup, uint16 slot1, uint16 slot2, uint
 
 void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
 {
-#if 0
-    uint16_t oar = abs(alphaR);
-    uint16_t oag = abs(alphaG);
-    uint16_t oab = abs(alphaB);
-#endif
     alphaR = CLAMP(alphaR, 0x00, 0xFF);
     alphaG = CLAMP(alphaG, 0x00, 0xFF);
     alphaB = CLAMP(alphaB, 0x00, 0xFF);
@@ -630,29 +620,14 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
 
         const auto width = currentScreen->size.x;
         const auto height = currentScreen->size.y;
-#if 0
-        uint8_t color_r = (color >> 16) & 0xff;
-        uint8_t color_g = (color >> 8) & 0xff;
-        uint8_t color_b = color & 0xff;
 
-// blendLookupTable[x + (y * 0x20)]    = y * x >> 8 alphaR * colorR >> 8
-        color_r = color_r >> 3;
-        color_g = color_g >> 3;
-        color_b = color_b >> 3;
-
-        color_r = ((color_r * oar) >> 8) & 0x001f;
-        color_g = ((color_g * oag) >> 8) & 0x001f;
-        color_b = ((color_b * oab) >> 8) & 0x001f;
-
-        color = (color_r << 19) | (color_g << 11) | (color_b<<3);
-#endif
         // color poly is only ever used for fill
         if ((badAlpha == 255)) {
-            RenderDevice::PrepareColoredPolyDR(0, INK_NONE);
-            RenderDevice::DrawColoredPolyDR(0, 0, width, height, color | (badAlpha << 24));
+            RenderDevice::PrepareColoredPolyPT(0, INK_NONE);
+            RenderDevice::DrawColoredPolyPT(0, 0, width, height, color | (badAlpha << 24));
         } else {
-            RenderDevice::PrepareColoredPolyDMA(0, INK_NONE);
-            RenderDevice::DrawColoredPolyDMA(0, 0, width, height, color | (badAlpha << 24));
+            RenderDevice::PrepareColoredPolyTR(0, INK_NONE);
+            RenderDevice::DrawColoredPolyTR(0, 0, width, height, color | (badAlpha << 24));
         }
         #else
         validDraw        = true;
@@ -665,7 +640,6 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
         uint16 clrBlendG = blendLookupTable[0x20 * alphaG + (((color >> 0x08) & 0xFF) >> 3)];
         uint16 clrBlendB = blendLookupTable[0x20 * alphaB + ((color & 0xFF) >> 3)];
         #endif
-
 
         uint16 *fbBlendR = &blendLookupTable[0x20 * (0xFF - alphaR)];
         uint16 *fbBlendG = &blendLookupTable[0x20 * (0xFF - alphaG)];
@@ -868,7 +842,7 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
 #endif // !defined(KOS_HARDWARE_RENDERER)
 
 #if defined(KOS_HARDWARE_RENDERER)
-    if (!RenderDevice::InkToBlendModes(inkEffect, nullptr, nullptr)) {
+    if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
 
@@ -876,12 +850,8 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
         alpha = 0xff;
     }
 
-    if (inkEffect == INK_BLEND) {
-        alpha /= 2;
-    }
-
-    if (alpha <= 0) alpha = 255;
-    if (alpha >= 255) alpha = 255;
+//    if (alpha <= 0) alpha = 255;
+//    if (alpha >= 255) alpha = 255;
 
     uint32 color32      = (alpha << 24) | color;
 
@@ -893,11 +863,11 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
     }
 
     if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 255)) {
-        RenderDevice::PrepareLinePolyDR(inkEffect);
-        RenderDevice::DrawLinePolyDR(drawX1, drawY1, drawX2, drawY2, color32);
+        RenderDevice::PrepareLinePolyPT(inkEffect);
+        RenderDevice::DrawLinePolyPT(drawX1, drawY1, drawX2, drawY2, color32);
     } else {
-        RenderDevice::PrepareLinePolyDMA(inkEffect);
-        RenderDevice::DrawLinePolyDMA(drawX1, drawY1, drawX2, drawY2, color32);
+        RenderDevice::PrepareLinePolyTR(inkEffect);
+        RenderDevice::DrawLinePolyTR(drawX1, drawY1, drawX2, drawY2, color32);
     }
 #else
     uint16 *frameBuffer = &currentScreen->frameBuffer[drawX1 + drawY1 * currentScreen->pitch];
@@ -1258,7 +1228,7 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
 void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
 #if defined(KOS_HARDWARE_RENDERER)
-    int darken_tint = 1;
+    bool darkenTint = true;
 #endif
     switch (inkEffect) {
         default: break;
@@ -1283,7 +1253,7 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
 #if defined(KOS_HARDWARE_RENDERER)
             // distinguish between INVERT tint and alpha tint
             if (tintLookupTable[0] == 0xffff) 
-                darken_tint = 0;
+                darkenTint = false;
 #endif
             break;
     }
@@ -1315,35 +1285,62 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         return;
 
 #if defined(KOS_HARDWARE_RENDERER)
-    if (!RenderDevice::InkToBlendModes(inkEffect, nullptr, nullptr)) {
+    if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
-    
-    if (inkEffect == INK_TINT) {
-        alpha = 0x70;
+
+    if (inkEffect == INK_NONE) {
+        alpha = 0xff;
     }
 
-    if (inkEffect == INK_BLEND) {
-        if (alpha != 0x7f && color != 0xffffffff) {
-            alpha /= 2;
-        } else {
-            if (alpha != 0xff) {
-                alpha += 0x18;
-            }
-        }
+    if (inkEffect == INK_TINT) {
+        alpha = 0x80;
+    }
+
+    // water pools in GHZ Act 2 use INK_SUB with solid colored rectangles
+    // I don't have any special handling for this in KallistiOSRenderDevice
+    // if we don't handle it here, they will be opaque robin-egg blue rectangles
+    // this is THE ONLY DrawRect call with INK_SUB in Mania (I checked)
+    if (inkEffect == INK_SUB) {
+        uint8_t r = (color >> 16) & 0xff;
+        uint8_t g = (color >>  8) & 0xff;
+        uint8_t b = (color      ) & 0xff;
+        // INK_SUB isn't quite a linear darken, but not a lot we can do here
+        if (r > 32)
+            r -= 32;
+        else
+            r = 0;
+
+        if (b > 32)
+            b -= 32;
+        else
+            b = 0;
+
+        if (g > 32)
+            g -= 32;
+        else
+            g = 0;
+
+        color = (r << 16) | (g << 8) | b;
+        alpha = 0x60;
+        inkEffect = INK_ALPHA;
     }
 
     validDraw = true;
 
-    if ((inkEffect != INK_TINT) && (alpha == 255) && (inkEffect != INK_ADD)) {
-        RenderDevice::PrepareColoredPolyDR(y, inkEffect);
-        RenderDevice::DrawColoredPolyDR(x, y, width, height, color | (alpha << 24));
+    if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 255)) {
+        RenderDevice::PrepareColoredPolyPT(y, inkEffect);
+        RenderDevice::DrawColoredPolyPT(x, y, width, height, color | (alpha << 24));
     } else {
-        if ((inkEffect == INK_TINT) && darken_tint) {
+        // distinguish between INVERT tint and alpha tint
+        // when it is an alpha tint and not an invert tint,
+        // set high bit of inkEffect word to 1
+        // we check for this in KallistiOSRenderDevice
+        if ((inkEffect == INK_TINT) && darkenTint) {
             inkEffect |= 0x80000000;
         }
-        RenderDevice::PrepareColoredPolyDMA(y, inkEffect);
-        RenderDevice::DrawColoredPolyDMA(x, y, width, height, color | (alpha << 24));
+        RenderDevice::PrepareColoredPolyTR(y, inkEffect);
+        RenderDevice::DrawColoredPolyTR(x, y, width, height, color | (alpha << 24));
     }
 #else
     int32 pitch         = currentScreen->pitch - width;
@@ -1474,11 +1471,8 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
 // Draw a circle centered at (cx, cy) with radius r using line segments.
 // Uses <= 32 lines (segments). Pixel coords are integer/rounded.
-extern "C" {
-    extern int line_w;
-};
 
-static void DrawFilledCircleFromTris(int cx, int cy, int r, uint32 color, int32 alpha, int32 inkEffect)
+static void DrawFilledCircleFromTris(int cx, int cy, int radius, uint32 color, int32 alpha, int32 inkEffect)
 {
     const int segs = 32;
     const float step = 2.0f * (float)M_PI / (float)segs;
@@ -1489,20 +1483,21 @@ static void DrawFilledCircleFromTris(int cx, int cy, int r, uint32 color, int32 
     int32 green = (color >> 8) & 0xff;
     int32 blue = color & 0xff;
 
-    r <<= 16;
+    radius <<= 16;
     cx <<= 16;
     cy <<= 16;
 
-    int x0 = cx + r; 
+    int x0 = cx + radius;
     int y0 = cy;
 
     triv[2].x = cx;
     triv[2].y = cy;
+
     float angle = step;
 
     for (int i = 1; i <= segs; i++) {
-        int x1 = cx + (int)((float)r * cosf(angle));
-        int y1 = cy + (int)((float)r * sinf(angle));
+        int x1 = cx + (int)((float)radius * cosf(angle));
+        int y1 = cy + (int)((float)radius * sinf(angle));
         triv[1].x = x0;
         triv[1].y = y0;
         triv[0].x = x1;
@@ -1517,14 +1512,17 @@ static void DrawFilledCircleFromTris(int cx, int cy, int r, uint32 color, int32 
     }
 }
 
-static void DrawCircleOutlineWithLines(int cx, int cy, int r, uint32 color, int32 alpha, int32 inkEffect)
+static void DrawCircleOutlineWithLines(int cx, int cy, int radius, int width, uint32 color, int32 alpha, int32 inkEffect)
 {
     const int segs = 32;
     const float step = 2.0f * (float)M_PI / (float)segs;
 
-    int x0 = cx + r;
+    RenderDevice::SetLinePolyThickness(width);
+
+    int x0 = cx + radius;
     int y0 = cy;
 
+    // avoid blowing up hybrid rendering with a huge amount of buffered TR
     if (inkEffect == INK_BLEND) {
         inkEffect = INK_NONE;
         alpha = 0xff;
@@ -1532,8 +1530,8 @@ static void DrawCircleOutlineWithLines(int cx, int cy, int r, uint32 color, int3
 
     float angle = step;
     for (int i = 1; i <= segs; i++) {
-        int x1 = cx + (int)((float)r * cosf(angle));
-        int y1 = cy + (int)((float)r * sinf(angle));
+        int x1 = cx + (int)((float)radius * cosf(angle));
+        int y1 = cy + (int)((float)radius * sinf(angle));
 
         DrawLine(x0, y0, x1, y1, color, alpha, inkEffect, 2);
 
@@ -1542,44 +1540,13 @@ static void DrawCircleOutlineWithLines(int cx, int cy, int r, uint32 color, int3
 
         angle += step;
     }
+
+    RenderDevice::SetLinePolyThickness(2);
 }
 #endif
 
 void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
-#if defined(KOS_HARDWARE_RENDERER)
-    if (radius > 0) {
-        switch (inkEffect) {
-            default: break;
-            case INK_ALPHA:
-                if (alpha > 0xFF)
-                    inkEffect = INK_NONE;
-                else if (alpha <= 0)
-                    return;
-                break;
-
-            case INK_ADD:
-            case INK_SUB:
-                if (alpha > 0xFF)
-                    alpha = 0xFF;
-                else if (alpha <= 0)
-                    return;
-                break;
-
-            case INK_TINT:
-                if (!tintLookupTable)
-                    return;
-                break;
-        }
-
-        if (!screenRelative) {
-            x = (FROM_FIXED(x) - currentScreen->position.x);
-            y = (FROM_FIXED(y) - currentScreen->position.y);
-        }
-  
-        DrawFilledCircleFromTris(x, y, radius, color, alpha, inkEffect);
-    }
-#else
     if (radius > 0) {
         switch (inkEffect) {
             default: break;
@@ -1609,6 +1576,9 @@ void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha,
             y = FROM_FIXED(y) - currentScreen->position.y;
         }
 
+#if defined(KOS_HARDWARE_RENDERER)
+        DrawFilledCircleFromTris(x, y, radius, color, alpha, inkEffect);
+#else
         int32 yRadiusBottom = y + radius;
         int32 bottom        = yRadiusBottom + 1;
         int32 yRadiusTop    = y - radius;
@@ -1913,8 +1883,8 @@ void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha,
                     break;
             }
         }
-    }
 #endif
+    }
 }
 void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRadius, uint32 color, int32 alpha, int32 inkEffect,
                              bool32 screenRelative)
@@ -1979,17 +1949,7 @@ void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRad
             validDraw           = true;
 
 #if defined(KOS_HARDWARE_RENDERER)
-#if DO_240
-            line_w = (outerRadius-innerRadius) / 2;
-#else
-            line_w = (outerRadius-innerRadius);
-#endif
-            DrawCircleOutlineWithLines(x, y, outerRadius, color, alpha, inkEffect);
-#if DO_240
-            line_w = 1;
-#else
-            line_w = 2;
-#endif
+            DrawCircleOutlineWithLines(x, y, outerRadius, (outerRadius - innerRadius), color, alpha, inkEffect);
 #else
             uint16 *frameBuffer = &currentScreen->frameBuffer[left + top * currentScreen->pitch];
 #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
@@ -2219,14 +2179,7 @@ void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRad
 void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 b, int32 alpha, int32 inkEffect)
 {
 #if defined(KOS_HARDWARE_RENDERER)
-    if (inkEffect == INK_BLEND) {
-        alpha /= 2;
-    }
-    if (inkEffect == INK_TINT) {
-        alpha = 0x70;
-    }
-
-    if (!RenderDevice::InkToBlendModes(inkEffect, nullptr, nullptr)) {
+    if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
 #endif
@@ -2262,11 +2215,11 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
 
 #if defined(KOS_HARDWARE_RENDERER)
     if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 255)) {
-        RenderDevice::PrepareFacePolyDR(inkEffect);
-        RenderDevice::DrawFacePolyDR(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
+        RenderDevice::PrepareFacePolyPT(inkEffect);
+        RenderDevice::DrawFacePolyPT(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
     } else {
-        RenderDevice::PrepareFacePolyDMA(inkEffect);
-        RenderDevice::DrawFacePolyDMA(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
+        RenderDevice::PrepareFacePolyTR(inkEffect);
+        RenderDevice::DrawFacePolyTR(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
     }
 #else
     int32 top    = 0x7FFFFFFF;
@@ -2506,12 +2459,8 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
 void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, int32 alpha, int32 inkEffect)
 {
 #if defined(KOS_HARDWARE_RENDERER)
-    if (!RenderDevice::InkToBlendModes(inkEffect, nullptr, nullptr)) {
+    if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
-    }
-
-    if (inkEffect == INK_BLEND) {
-        alpha /= 2;
     }
 #endif
 
@@ -2546,11 +2495,11 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
 
 #if defined(KOS_HARDWARE_RENDERER)
     if ((inkEffect != INK_ADD) && (alpha == 255)) {
-        RenderDevice::PrepareFacePolyDR(inkEffect);
-        RenderDevice::DrawFacePolyDR(vertices, vertCount, 0, alpha, colors);
+        RenderDevice::PrepareFacePolyPT(inkEffect);
+        RenderDevice::DrawFacePolyPT(vertices, vertCount, 0, alpha, colors);
     } else {
-        RenderDevice::PrepareFacePolyDMA(inkEffect);
-        RenderDevice::DrawFacePolyDMA(vertices, vertCount, 0, alpha, colors);
+        RenderDevice::PrepareFacePolyTR(inkEffect);
+        RenderDevice::DrawFacePolyTR(vertices, vertCount, 0, alpha, colors);
     }
 #else
     int32 top    = 0x7FFFFFFF;
@@ -3242,7 +3191,7 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
         return;
     }
 
-    if (!RenderDevice::InkToBlendModes(inkEffect, nullptr, nullptr)) {
+    if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
 
@@ -3308,13 +3257,9 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
         alpha = 0xFF;
     }
 
-    if (inkEffect == INK_BLEND) {
-        alpha /= 2;
-    }
-
     if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 255)) {
-        RenderDevice::PrepareTexturedPolyDR(yClipped, inkEffect, surface);
-        RenderDevice::DrawTexturedPolyDR(
+        RenderDevice::PrepareTexturedPolyPT(yClipped, inkEffect, surface);
+        RenderDevice::DrawTexturedPolyPT(
                 xClipped, yClipped,
                 xClipped, yClipped,
                 widthClipped, heightClipped,
@@ -3324,8 +3269,8 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
                 alpha,
                 surface);
     } else {
-        RenderDevice::PrepareTexturedPolyDMA(yClipped, inkEffect, surface);
-        RenderDevice::DrawTexturedPolyDMA(
+        RenderDevice::PrepareTexturedPolyTR(yClipped, inkEffect, surface);
+        RenderDevice::DrawTexturedPolyTR(
                 xClipped, yClipped,
                 xClipped, yClipped,
                 widthClipped, heightClipped,
@@ -4010,7 +3955,7 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
         return;
     }
 
-    if (!RenderDevice::InkToBlendModes(inkEffect, nullptr, nullptr)) {
+    if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
 
@@ -4095,15 +4040,11 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
         alpha = 0xFF;
     }
 
-    if (inkEffect == INK_BLEND) {
-        alpha /= 2;
-    }
-
     RenderDevice::DisableCulling();
 
     if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 255)) {
-        RenderDevice::PrepareTexturedPolyDR(newY + marginTop, inkEffect, surface);
-        RenderDevice::DrawTexturedPolyDR(
+        RenderDevice::PrepareTexturedPolyPT(newY + marginTop, inkEffect, surface);
+        RenderDevice::DrawTexturedPolyPT(
                 newX, newY,
                 x, y,
                 scaledWidth, scaledHeight,
@@ -4113,8 +4054,8 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
                 alpha,
                 surface);
     } else {
-        RenderDevice::PrepareTexturedPolyDMA(newY + marginTop, inkEffect, surface);
-        RenderDevice::DrawTexturedPolyDMA(
+        RenderDevice::PrepareTexturedPolyTR(newY + marginTop, inkEffect, surface);
+        RenderDevice::DrawTexturedPolyTR(
                 newX, newY,
                 x, y,
                 scaledWidth, scaledHeight,

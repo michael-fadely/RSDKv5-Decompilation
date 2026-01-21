@@ -1073,7 +1073,7 @@ void RSDK::LoadStageGIF(char *filepath)
         }
 
         if (surface->texture != nullptr) {
-            surface->is_vq = 0;
+            surface->isVq = 0;
             // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
             // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h)
             pvr_txr_load_ex(
@@ -1447,7 +1447,7 @@ void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
         sprY1 += TILE_SIZE;
     }
 
-    RenderDevice::DrawTexturedQuadDR(
+    RenderDevice::DrawTexturedQuadPT(
         screenX, screenY,
         TILE_SIZE, TILE_SIZE,
         sprX0, sprX1,
@@ -1595,7 +1595,7 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
                 continue;
             }
 
-            RenderDevice::PrepareTexturedQuadDR(prepY, prepSurface);
+            RenderDevice::PrepareTexturedQuadPT(prepY, prepSurface);
 
             const Vector2 screenUpperLeft {
                 screenUpperX,
@@ -2001,7 +2001,7 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
 
             for (int32 screenX = currentScreen->clipBound_X1 - offsetX; screenX < currentScreen->clipBound_X2; screenX += TILE_SIZE) {
                 if (*layout != 0xFFFF) {
-                    RenderDevice::PrepareTexturedQuadDR(prepY, prepSurface);
+                    RenderDevice::PrepareTexturedQuadPT(prepY, prepSurface);
                     DrawByLayout(*layout, screenX, screenY);
                 }
 

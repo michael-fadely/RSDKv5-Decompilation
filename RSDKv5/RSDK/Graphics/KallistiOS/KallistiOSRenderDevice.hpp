@@ -1,5 +1,11 @@
 #pragma once
 #define KOS_HARDWARE_RENDERER
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define DO_240 0
+#define DO_24BPP 0
+#endif
+
 using ShaderEntry = ShaderEntryBase; // DCFIXME
 
 class RenderDevice : public RenderDeviceBase
@@ -54,6 +60,7 @@ public:
     static uint32 GetGamePaletteBankIndex(int32 y);
     static uint32 GameToPvrPaletteBankIndex(uint32 gamePaletteBankIndex);
     static void PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPaletteBankIndex);
+    static bool SupportedInk(int inkEffect);
     static bool InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend);
 
 private:
@@ -64,8 +71,8 @@ private:
                                  pvr_ptr_t texture);
 
 public:
-    static void PrepareTexturedQuadDR(int32 y, const GFXSurface* surface);
-    static void DrawTexturedQuadDR(
+    static void PrepareTexturedQuadPT(int32 y, const GFXSurface* surface);
+    static void DrawTexturedQuadPT(
             int32 x, int32 y,
             int32 width, int32 height,
             int32 sprX0, int32 sprX1,
@@ -73,8 +80,8 @@ public:
             const GFXSurface* surface
     );
 
-    static void PrepareTexturedQuadDMA(int32 y, const GFXSurface* surface);
-    static void DrawTexturedQuadDMA(
+    static void PrepareTexturedQuadTR(int32 y, const GFXSurface* surface);
+    static void DrawTexturedQuadTR(
             int32 x, int32 y,
             int32 width, int32 height,
             int32 sprX0, int32 sprX1,
@@ -82,8 +89,8 @@ public:
             const GFXSurface* surface
     );
 
-    static void PrepareTexturedPolyDR(int32 y, int inkEffect, const GFXSurface* surface);
-    static void DrawTexturedPolyDR(
+    static void PrepareTexturedPolyPT(int32 y, int inkEffect, const GFXSurface* surface);
+    static void DrawTexturedPolyPT(
             int32 x, int32 y,
             int32 ox, int32 oy,
             int32 width, int32 height,
@@ -94,8 +101,8 @@ public:
             const GFXSurface *surface
     );
 
-    static void PrepareTexturedPolyDMA(int32 y, int inkEffect, const GFXSurface* surface);
-    static void DrawTexturedPolyDMA(
+    static void PrepareTexturedPolyTR(int32 y, int inkEffect, const GFXSurface* surface);
+    static void DrawTexturedPolyTR(
             int32 x, int32 y,
             int32 ox, int32 oy,
             int32 width, int32 height,
@@ -106,39 +113,39 @@ public:
             const GFXSurface *surface
     );
 
-    static void PrepareColoredPolyDR(int32 y, int inkEffect);
-    static void DrawColoredPolyDR(
+    static void PrepareColoredPolyPT(int32 y, int inkEffect);
+    static void DrawColoredPolyPT(
             int32 x, int32 y,
             int32 width, int32 height,
             uint32 color
     );
 
-    static void PrepareColoredPolyDMA(int32 y, int inkEffect);
-    static void DrawColoredPolyDMA(
+    static void PrepareColoredPolyTR(int32 y, int inkEffect);
+    static void DrawColoredPolyTR(
             int32 x, int32 y,
             int32 width, int32 height,
             uint32 color
     );
 
-    static void PrepareLinePolyDR(int inkEffect);
-    static void DrawLinePolyDR(int x1, int y1, int x2, int y2, int color);
+    static void PrepareLinePolyPT(int inkEffect);
+    static void DrawLinePolyPT(int x1, int y1, int x2, int y2, int color);
 
-    static void PrepareLinePolyDMA(int inkEffect);
-    static void DrawLinePolyDMA(int x1, int y1, int x2, int y2, int color);
-
+    static void SetLinePolyThickness(int thickness);
+    static void PrepareLinePolyTR(int inkEffect);
+    static void DrawLinePolyTR(int x1, int y1, int x2, int y2, int color);
 
     static void PrepareRotoPoly(int inkEffect, pvr_ptr_t texture);
     static void DrawRotoPoly(int x, int y, int w, int h, float u, float v);
 
-    static void PrepareFacePolyDR(int inkEffect);
-    static void DrawFacePolyDR(
+    static void PrepareFacePolyPT(int inkEffect);
+    static void DrawFacePolyPT(
             Vector2 *vertices, int32 vertCount, 
             int32 faceColor, int32 alpha, 
             uint32 *colors
     );
 
-    static void PrepareFacePolyDMA(int inkEffect);
-    static void DrawFacePolyDMA(
+    static void PrepareFacePolyTR(int inkEffect);
+    static void DrawFacePolyTR(
             Vector2 *vertices, int32 vertCount, 
             int32 faceColor, int32 alpha, 
             uint32 *colors
