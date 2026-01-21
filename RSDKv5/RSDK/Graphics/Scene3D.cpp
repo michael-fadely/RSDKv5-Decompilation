@@ -1200,9 +1200,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             break;
                         }
                         else {
-                            float recipZ = shz_div_posf(65536.0f, (float)vertZ);
-                            vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) * recipZ); // / vertZ << 16);
-                            vertPos[v].y = (currentScreen->center.y << 16) - ((drawVert[v].y << scn->projectionY) * recipZ); // / vertZ << 16);
+                            float recipZ = shz_inverse_posf((float)vertZ);
+                            vertPos[v].x = ((currentScreen->center.x) + ((drawVert[v].x << scn->projectionX) * recipZ)) * 65536.0f;
+                            vertPos[v].y = ((currentScreen->center.y) - ((drawVert[v].y << scn->projectionY) * recipZ)) * 65536.0f;
                         }
                     }
 
@@ -1229,8 +1229,8 @@ void RSDK::Draw3DScene(uint16 sceneID)
                         }
                         else {
                             float recipZ = shz_inverse_posf((float)vertZ);
-                            vertPos[v].x = currentScreen->center.x + (drawVert[v].x << scn->projectionX) * recipZ; // / vertZ;
-                            vertPos[v].y = currentScreen->center.y - (drawVert[v].y << scn->projectionY) * recipZ; // / vertZ;
+                            vertPos[v].x = currentScreen->center.x + (drawVert[v].x << scn->projectionX) * recipZ;
+                            vertPos[v].y = currentScreen->center.y - (drawVert[v].y << scn->projectionY) * recipZ;
                             ny1 += drawVert[v].ny;
                         }
                     }
@@ -1294,9 +1294,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             break;
                         }
                         else {
-                            float recipZ = shz_div_posf(65536.0f, (float)vertZ);
-                            vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) * recipZ); // / vertZ << 16);
-                            vertPos[v].y = (currentScreen->center.y << 16) - ((drawVert[v].y << scn->projectionY) * recipZ); // / vertZ << 16);
+                            float recipZ = shz_inverse_posf((float)vertZ);
+                            vertPos[v].x = ((currentScreen->center.x) + ((drawVert[v].x << scn->projectionX) * recipZ)) * 65536.0f;
+                            vertPos[v].y = ((currentScreen->center.y) - ((drawVert[v].y << scn->projectionY) * recipZ)) * 65536.0f;
                             ny += drawVert[v].ny;
                         }
                     }
@@ -1355,9 +1355,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             break;
                         }
                         else {
-                            float recipZ = shz_div_posf(65536.0f, (float)vertZ);
-                            vertPos[v].x = (currentScreen->center.x << 16) + ((drawVert[v].x << scn->projectionX) * recipZ); // / vertZ << 16);
-                            vertPos[v].y = (currentScreen->center.y << 16) - ((drawVert[v].y << scn->projectionY) * recipZ); // / vertZ << 16);
+                            float recipZ = shz_inverse_posf((float)vertZ);
+                            vertPos[v].x = ((currentScreen->center.x) + ((drawVert[v].x << scn->projectionX) * recipZ)) * 65536.0f;
+                            vertPos[v].y = ((currentScreen->center.y) - ((drawVert[v].y << scn->projectionY) * recipZ)) * 65536.0f;
 
                             int32 normal    = drawVert[v].ny;
                             int32 normalVal = (normal >> 2) * (abs(normal) >> 2);
