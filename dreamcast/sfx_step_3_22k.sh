@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 
-# remove all WAV files that existed prior to step 2
+orig_dir=$(pwd)
 
-START_DIR=${1:-.}
+cd "$1"/SoundFX
 
-find "$START_DIR" -type f -iname "*.wav" -print0 |
+find ./ -type f -iname "*.wav" -print0 |
 while IFS= read -r -d '' file; do
     dir=$(dirname "$file")
     base=$(basename "$file")
@@ -20,5 +20,6 @@ while IFS= read -r -d '' file; do
     esac
 done
 
-#echo "Done."
+echo "Done."
 
+cd "$orig_dir"

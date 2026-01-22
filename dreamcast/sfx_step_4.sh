@@ -1,11 +1,10 @@
 #!/usr/bin/env sh
 
-# rename any of the files created in step 2
-# to match the original wav filenames from the RSDK file
+orig_dir=$(pwd)  
 
-START_DIR=${1:-.}
+cd "$1"/SoundFX
 
-find "$START_DIR" -type f -iname "*.wav" -print0 |
+find ./ -type f -iname "*.wav" -print0 |
 while IFS= read -r -d '' file; do
     dir=$(dirname "$file")
     base=$(basename "$file")
@@ -14,5 +13,6 @@ while IFS= read -r -d '' file; do
     mv "$file" "$dest"
 done
 
-#echo "Done."
+echo "Done."
 
+cd "$orig_dir"

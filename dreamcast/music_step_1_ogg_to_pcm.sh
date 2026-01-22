@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-in_dir="${1:-.}"
-out_dir="${2:-"$in_dir/s8_22050_raw"}"
+orig_dir=$(pwd)
 
-mkdir -p "$out_dir"
+cd "$1"/Music
 
 shopt -s nullglob
-for in_file in "$in_dir"/*.ogg "$in_dir"/*.OGG; do
+for in_file in *.ogg *.OGG; do
   base="$(basename "$in_file")"
   name="${base%.*}"
-  out_file="$out_dir/$name.s8"
+  out_file="$name.s8"
 
   ffmpeg -hide_banner -loglevel error -y \
     -i "$in_file" \
@@ -20,3 +19,5 @@ for in_file in "$in_dir"/*.ogg "$in_dir"/*.OGG; do
 
   echo "Wrote: $out_file"
 done
+
+cd "$orig_dir"
