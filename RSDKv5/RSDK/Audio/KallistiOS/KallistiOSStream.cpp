@@ -123,8 +123,7 @@ int stream_init(void)
     stream.status = SNDDEC_STATUS_NULL;
     stream.callback = NULL;
     audio_attr.create_detached = 0;
-    // if you make this smaller, it might overrun and crash everything
-    audio_attr.stack_size = 32768;
+    audio_attr.stack_size = 65536;
     audio_attr.stack_ptr = NULL;
     audio_attr.prio = PRIO_DEFAULT;
     audio_attr.label = "MusicPlayer";
