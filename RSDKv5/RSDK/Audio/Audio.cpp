@@ -198,6 +198,7 @@ void AudioDeviceBase::InitAudioChannels()
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
     AllocateStorage((void **)&sfxList[SFX_COUNT - 1].buffer, MIX_BUFFER_SIZE * sizeof(SAMPLE_FORMAT), DATASET_MUS, false);
 #endif
+
     initializedAudioChannels = true;
 }
 
