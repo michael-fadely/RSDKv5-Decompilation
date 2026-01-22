@@ -271,7 +271,7 @@ void RSDK::LoadStream(ChannelInfo *channel)
 int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint32 loopPoint, bool32 loadASync)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    sprintf_s(streamFilePath, sizeof(streamFilePath), "/pc/Data/Music/%s", filename);
+    sprintf_s(streamFilePath, sizeof(streamFilePath), "%s/Data/Music/%s", KOS_USER_DIR, filename);
 
     stream_destroy();
     stream_create(streamFilePath, loopPoint);
@@ -343,7 +343,7 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
     GEN_HASH_MD5(filename, hash);
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    sprintf_s(fullFilePath, sizeof(fullFilePath), "/pc/Data/SoundFX/%s", filename);
+    sprintf_s(fullFilePath, sizeof(fullFilePath), "%s/Data/SoundFX/%s", KOS_USER_DIR, filename);
 
     sfxhnd_t hnd = snd_sfx_load(fullFilePath);
 

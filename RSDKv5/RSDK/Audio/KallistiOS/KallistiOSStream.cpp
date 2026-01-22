@@ -304,6 +304,7 @@ static void *sndstream_thread(void *param)
 
 static void *stream_file_callback(snd_stream_hnd_t hnd, int req, int *done)
 {
+    printf("req %d\n", req);
     mutex_lock_scoped(&io_lock);
     (void)hnd;
     ssize_t read = fs_read(stream.stream_file, stream.drv_buf, req);
