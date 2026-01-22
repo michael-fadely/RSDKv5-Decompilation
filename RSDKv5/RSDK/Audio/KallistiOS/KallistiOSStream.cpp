@@ -46,8 +46,9 @@ __BEGIN_DECLS
 
 #include <kos/fs.h>
 
-#define STREAM_SAMPLE_RATE 22050
-#define STREAM_CHANNELS 2
+// the following two defines have values pulled in from Audio.hpp
+#define STREAM_SAMPLE_RATE (AUDIO_FREQUENCY)
+#define STREAM_CHANNELS (AUDIO_CHANNELS)
 
 int stream_data_length;
 

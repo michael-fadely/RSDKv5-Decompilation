@@ -24,7 +24,8 @@ stb_vorbis *vorbisInfo = NULL;
 stb_vorbis_alloc vorbisAlloc;
 #endif
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#if 0
+//RETRO_PLATFORM == RETRO_KALLISTIOS
 extern "C" {
 int stream_init(void);
 void stream_shutdown(void);
@@ -369,7 +370,7 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
         sfxList[slot].scope              = scope;
         sfxList[slot].maxConcurrentPlays = plays;
         sfxList[slot].length = 65534;
-        sfxList[slot].buffer = (float*)hnd;
+        sfxList[slot].handle = hnd;
     }
 #else
     FileInfo info;
@@ -509,16 +510,20 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
         return -1;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    if ((sfxhnd_t)sfxList[sfx].buffer != (sfxhnd_t)0) {
+    if (sfxList[sfx].handle != (sfxhnd_t)0) {
         sfx_play_data_t data = {0};
+        // sound effect to play, by handle
+        data.idx = sfxList[sfx].handle;
+        // -1 means "dynamically allocate an AICA channel for sample playback"
         data.chn = -1;
-        data.idx = (sfxhnd_t)sfxList[sfx].buffer;
+        // 192 is chosen as maximum value to avoid clipping/distortion in sfx playback
         data.vol = 192 * engine.soundFXVolume;
+        // 127 is neutral/center pan
         data.pan = 127;
         // looping was causing problems
         data.loop = 0; // loopPoint != 0
         data.loopstart = 0; // loopPoint
-        data.freq = 22050;
+        data.freq = AUDIO_FREQUENCY;
         return snd_sfx_play_ex(&data);
     }
 
@@ -661,7 +666,7 @@ void RSDK::ClearStageSfx()
     for (int32 s = 0; s < SFX_COUNT; ++s) {
         if (sfxList[s].scope >= SCOPE_STAGE) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-            snd_sfx_unload((sfxhnd_t)sfxList[s].buffer);
+            snd_sfx_unload(sfxList[s].handle);
 #endif
             MEM_ZERO(sfxList[s]);
             sfxList[s].scope = SCOPE_NONE;
@@ -695,7 +700,7 @@ void RSDK::ClearGlobalSfx()
         // clear global sfx (do NOT clear the stream channel 0 slot)
         if (sfxList[s].scope == SCOPE_GLOBAL && s != SFX_COUNT - 1) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-            snd_sfx_unload((sfxhnd_t)sfxList[s].buffer);
+            snd_sfx_unload(sfxList[s].handle);
 #endif
             MEM_ZERO(sfxList[s]);
             sfxList[s].scope = SCOPE_NONE;

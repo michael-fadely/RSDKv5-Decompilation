@@ -10,12 +10,24 @@ namespace RSDK
 #define MIX_BUFFER_SIZE (0x800)
 #define SAMPLE_FORMAT   float
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define AUDIO_FREQUENCY (22050)
+#else
 #define AUDIO_FREQUENCY (44100)
+#endif
 #define AUDIO_CHANNELS  (2)
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include <kos.h>
+#endif
 
 struct SFXInfo {
     RETRO_HASH_MD5(hash);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    sfxhnd_t handle;
+#else
     float *buffer;
+#endif
     size_t length;
     int32 playCount;
     uint8 maxConcurrentPlays;
