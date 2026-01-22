@@ -3,9 +3,7 @@
 using namespace RSDK;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-
 extern RetroEngine RSDK::engine;
-
 #include <RSDK/Core/Stub.hpp>
 #endif
 
