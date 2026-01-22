@@ -269,13 +269,7 @@ int32 RSDK::RunRetroEngine(int32 argc, char *argv[])
                         case 3: Legacy::v3::ProcessEngine(); break;
                     }
 #else
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-                    RenderDevice::BeginScene();
                     ProcessEngine();
-                    RenderDevice::EndScene();
-#else
-                    ProcessEngine();
-#endif
 #endif
                 }
 
@@ -516,11 +510,17 @@ void RSDK::ProcessEngine()
             break;
 
         case ENGINESTATE_DEVMENU:
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            RenderDevice::BeginScene();
+#endif
             ProcessInput();
             currentScreen = &screens[0];
 
             if (devMenu.state)
                 devMenu.state();
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            RenderDevice::EndScene();
+#endif
             break;
 
         case ENGINESTATE_VIDEOPLAYBACK:
