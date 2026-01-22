@@ -11,7 +11,11 @@ namespace RSDK
 {
 
 #define PLAYER_COUNT      (4)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
 #define INPUTDEVICE_COUNT (4)
+#else
+#define INPUTDEVICE_COUNT (0x10)
+#endif
 
 #define INPUT_DEADZONE (0.3)
 
