@@ -2,10 +2,7 @@
 
 #include "KallistiOSStream.cpp"
 
-extern "C" {
-    static bool32 device_inited = 0;
-    extern int stream_init(void);
-};
+static bool deviceInited;
 
 // static
 bool32 AudioDevice::Init()
@@ -29,9 +26,9 @@ void AudioDevice::ProcessAudioMixing(void *stream, int32 length)
 // static
 void AudioDevice::FrameInit()
 {
-    if (!device_inited) {
+    if (!deviceInited) {
         Init();
-        device_inited = 1;
+        deviceInited = true;
     }
 }
 
