@@ -41,6 +41,7 @@ __BEGIN_DECLS
 // the following two defines have values pulled in from Audio.hpp
 #define STREAM_SAMPLE_RATE (AUDIO_FREQUENCY)
 #define STREAM_CHANNELS (AUDIO_CHANNELS)
+#define STREAM_BUF_SIZE (8192)
 
 int stream_data_length;
 
@@ -84,7 +85,7 @@ typedef struct
     /* Contains the buffer that we are going to send
        to the AICA in the callback.  Should be 32-byte
        aligned */
-    uint8_t __attribute__((aligned(32))) drv_buf[16384];
+    uint8_t __attribute__((aligned(32))) drv_buf[STREAM_BUF_SIZE];
 
     /* Status of the stream that can be started, stopped
        paused, ready. etc */
@@ -181,7 +182,7 @@ int stream_create(const char *filename, int loop)
     if (file == FILEHND_INVALID)
         return SND_STREAM_INVALID;
 
-    index = snd_stream_alloc(stream_file_callback, 8192);
+    index = snd_stream_alloc(stream_file_callback, STREAM_BUF_SIZE);
     if (index == SND_STREAM_INVALID) {
         mutex_lock(&io_lock);
         fs_close(file);
@@ -304,7 +305,6 @@ static void *sndstream_thread(void *param)
 
 static void *stream_file_callback(snd_stream_hnd_t hnd, int req, int *done)
 {
-    printf("req %d\n", req);
     mutex_lock_scoped(&io_lock);
     (void)hnd;
     ssize_t read = fs_read(stream.stream_file, stream.drv_buf, req);
