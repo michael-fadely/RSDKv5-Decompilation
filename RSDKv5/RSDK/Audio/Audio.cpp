@@ -24,23 +24,6 @@ stb_vorbis *vorbisInfo = NULL;
 stb_vorbis_alloc vorbisAlloc;
 #endif
 
-#if 0
-//RETRO_PLATFORM == RETRO_KALLISTIOS
-extern "C" {
-int stream_init(void);
-void stream_shutdown(void);
-void stream_destroy(void);
-
-int stream_create(const char *filename, int loop);
-
-void stream_play(void);
-void stream_pause(void);
-void stream_stop(void);
-void stream_volume(int vol);
-int stream_is_playing(void);
-}
-#endif
-
 SFXInfo RSDK::sfxList[SFX_COUNT];
 ChannelInfo RSDK::channels[CHANNEL_COUNT];
 
