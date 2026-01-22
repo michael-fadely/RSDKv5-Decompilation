@@ -21,15 +21,7 @@ extern "C" {
  *  6) The math for data transfer rate matches between 44khz 4-bit and 22khz 8-bit data
  *     given the same sample rate.
  *
- * Given OGG files dumped from Data.rsdk, stream files can be created
- * with the following command, where $OGG_FILE is a filename of the form "song.ogg"
- * and $PCM_FILE is a filename of the form "song.s8":
- * ```
- *   ffmpeg -hide_banner -loglevel error -y -i $OGG_FILE \ 
- *   -ar 22050 -ac 2 -f s8 $PCM_FILE
- * ```
- * See `dreamcast/music_step_1_ogg_to_pcm.sh` and
- * `dreamcast/music_step_2_rename_to_ogg.sh` for more details
+ * See Dreamcast-specific documentation in the top-level `Sonic-Mania-Decompilation` repo for more details.
  */
 
 #include <kos.h>
