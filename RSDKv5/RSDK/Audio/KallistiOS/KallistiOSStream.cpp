@@ -1,4 +1,37 @@
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
 extern "C" {
+
+/**
+ * Simple streaming audio player, derived from:
+ * https://github.com/Dreamcast-Projects/libwav.git
+ * 
+ * Libwav is CC0/Public Domain code. So is this code.
+ * 
+ * The only format supported is as follows:
+ * raw (headerless), interleaved 8-bit stereo PCM @ 22kHz
+ *
+ * The rationale behind the format choice is as follows:
+ *  1) Sonic Mania requires streams to have functional loop points for seamless music.
+ *  2) Music must stream from CD-R without causing any noticeable impact on game performance.
+ *  3) 44khz stereo ADPCM is known to stream from CD-R without performance impact;
+ *     Dreamcast ports of Doom 64 and Wipeout are notable examples.
+ *  4) ADPCM streams *do not* support seamless looping to arbitrary stream positions
+ *     due to decoding/predictor state issues.
+ *  5) PCM streams *do* support seamless looping to arbitrary stream positions.
+ *  6) The math for data transfer rate matches between 44khz 4-bit and 22khz 8-bit data
+ *     given the same sample rate.
+ *
+ * Given OGG files dumped from Data.rsdk, stream files can be created
+ * with the following command, where $OGG_FILE is a filename of the form "song.ogg"
+ * and $PCM_FILE is a filename of the form "song.s8":
+ * ```
+ *   ffmpeg -hide_banner -loglevel error -y -i $OGG_FILE \ 
+ *   -ar 22050 -ac 2 -f s8 $PCM_FILE
+ * ```
+ * See `dreamcast/music_step_1_ogg_to_pcm.sh` and
+ * `dreamcast/music_step_2_rename_to_ogg.sh` for more details
+ */
+
 #include <kos.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,14 +46,10 @@ __BEGIN_DECLS
 
 #include <kos/fs.h>
 
-typedef struct {
-    uint32_t format;
-    uint32_t channels;
-    uint32_t sample_rate;
-    uint32_t sample_size;
-    uint32_t data_offset;
-    uint32_t data_length;
-} StreamFileInfo;
+#define STREAM_SAMPLE_RATE 22050
+#define STREAM_CHANNELS 2
+
+int stream_data_length;
 
 int stream_init(void);
 void stream_shutdown(void);
@@ -73,22 +102,8 @@ typedef struct
     uint32_t loop;
     uint32_t vol; /* 0-255 */
 
-    uint32_t format;      /* stream format */
-    uint32_t channels;      /* 1-Mono/2-Stereo */
-    uint32_t sample_rate; /* 44100Hz */
-    uint32_t sample_size; /* 4/8/16-Bit */
-
-    /* Offset into the file or buffer where the audio
-       data starts */
-    uint32_t data_offset;
-
     /* The length of the audio data */
     uint32_t data_length;
-
-    /* Used only in reading stream data from a buffer
-       and not a file */
-    uint32_t buf_offset;
-
 } snddrv_hnd;
 
 static snddrv_hnd stream;
@@ -114,6 +129,7 @@ int stream_init(void)
     stream.status = SNDDEC_STATUS_NULL;
     stream.callback = NULL;
     audio_attr.create_detached = 0;
+    // if you make this smaller, it might overrun and crash everything
     audio_attr.stack_size = 65536;
     audio_attr.stack_ptr = NULL;
     audio_attr.prio = PRIO_DEFAULT;
@@ -157,25 +173,9 @@ void stream_destroy(void)
     mutex_unlock(&stream_mutex);
 }
 
-#define WAVE_FORMAT_PCM                   0x0001 /* PCM */
-
-static int stream_get_info_pcm(file_t file, StreamFileInfo *result) {
-    result->format = WAVE_FORMAT_PCM;
-    result->channels = 2;
-    result->sample_rate = 22050;
-    result->sample_size = 2;
-    mutex_lock(&io_lock);
-    result->data_length = fs_total(file);
-    mutex_unlock(&io_lock);
-    result->data_offset = 0;
-
-    return 1;
-}
-
 int stream_create(const char *filename, int loop)
 {
     file_t file;
-    StreamFileInfo info;
     int index;
 
     if (filename == NULL)
@@ -197,21 +197,25 @@ int stream_create(const char *filename, int loop)
         return SND_STREAM_INVALID;
     }
 
-    stream_get_info_pcm(file, &info);
+    mutex_lock(&io_lock);
+    stream_data_length = fs_total(file);
+    mutex_unlock(&io_lock);
+    if (stream_data_length == -1) {
+        mutex_lock(&io_lock);
+        fs_close(file);
+        mutex_unlock(&io_lock);
+        snd_stream_destroy(index);
+        return SND_STREAM_INVALID;
+    }
 
     stream.shnd = index;
     stream.stream_file = file;
     stream.loop = loop;
     stream.callback = stream_file_callback;
     stream.vol = 192 * engine.streamVolume;
-    stream.format = info.format;
-    stream.channels = info.channels;
-    stream.sample_rate = info.sample_rate;
-    stream.sample_size = info.sample_size;
-    stream.data_length = info.data_length;
-    stream.data_offset = info.data_offset;
+    stream.data_length = stream_data_length;
     mutex_lock(&io_lock);
-    fs_seek(stream.stream_file, stream.data_offset, SEEK_SET);
+    fs_seek(stream.stream_file, 0, SEEK_SET);
     mutex_unlock(&io_lock);
     snd_stream_volume(stream.shnd, stream.vol);
     stream.status = SNDDEC_STATUS_READY;
@@ -273,7 +277,7 @@ static void *sndstream_thread(void *param)
         switch (stream.status) {
         case SNDDEC_STATUS_RESUMING:
             snd_stream_volume(stream.shnd, stream.vol);
-            snd_stream_start_pcm8(stream.shnd, stream.sample_rate, stream.channels - 1);
+            snd_stream_start_pcm8(stream.shnd, STREAM_SAMPLE_RATE, STREAM_CHANNELS - 1);
             snd_stream_volume(stream.shnd, stream.vol);
             stream.status = SNDDEC_STATUS_STREAMING;
             break;
@@ -283,11 +287,11 @@ static void *sndstream_thread(void *param)
             break;
         case SNDDEC_STATUS_STOPPING:
             snd_stream_stop(stream.shnd);
-            if (stream.stream_file != FILEHND_INVALID)
-                fs_seek(stream.stream_file, stream.data_offset, SEEK_SET);
-            else
-                stream.buf_offset = stream.data_offset;
-
+            if (stream.stream_file != FILEHND_INVALID) {
+                mutex_lock(&io_lock);
+                fs_seek(stream.stream_file, 0, SEEK_SET);
+                mutex_unlock(&io_lock);
+            }
             stream.status = SNDDEC_STATUS_READY;
             break;
         case SNDDEC_STATUS_STREAMING:
@@ -320,7 +324,13 @@ static void *stream_file_callback(snd_stream_hnd_t hnd, int req, int *done)
     if (read != req) {
 
         if (stream.loop) {
-            fs_seek(stream.stream_file, stream.data_offset + stream.loop, SEEK_SET);
+            off_t seek1 = fs_seek(stream.stream_file, (off_t)stream.loop, SEEK_SET);
+            if (seek1 != (off_t)stream.loop) {
+                snd_stream_stop(stream.shnd);
+                stream.status = SNDDEC_STATUS_READY;
+                return NULL;
+            }
+
             ssize_t read2 = fs_read(stream.stream_file, stream.drv_buf + read, req - read);
 
             if (read2 == -1) {
@@ -341,3 +351,4 @@ static void *stream_file_callback(snd_stream_hnd_t hnd, int req, int *done)
 }
 
 } // extern "C"
+#endif

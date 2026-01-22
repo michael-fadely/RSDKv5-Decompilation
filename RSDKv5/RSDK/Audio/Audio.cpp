@@ -521,6 +521,8 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
         data.freq = 22050;
         return snd_sfx_play_ex(&data);
     }
+
+    return -1;
 #else
     uint8 count = 0;
     for (int32 c = 0; c < CHANNEL_COUNT; ++c) {

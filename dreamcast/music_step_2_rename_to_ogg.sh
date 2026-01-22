@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-for file in *.u8 *.U8; do
+for file in *.s8 *.S8; do
     [ -e "$file" ] || continue  # skip if no match
     base=${file%.*}
     echo "Renaming $file → $base.ogg"
