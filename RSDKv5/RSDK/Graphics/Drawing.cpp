@@ -850,9 +850,6 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
         alpha = 0xff;
     }
 
-//    if (alpha <= 0) alpha = 255;
-//    if (alpha >= 255) alpha = 255;
-
     uint32 color32      = (alpha << 24) | color;
 
     if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 255)) {
