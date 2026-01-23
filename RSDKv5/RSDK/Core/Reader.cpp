@@ -180,10 +180,6 @@ inline bool ends_with(std::string const &value, std::string const &ending)
 }
 #endif
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-extern mutex_t io_lock;
-#endif
-
 bool32 RSDK::OpenDataFile(FileInfo *info, const char *filename)
 {
     char hashBuffer[0x400];

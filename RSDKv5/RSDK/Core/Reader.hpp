@@ -55,7 +55,6 @@ extern "C" {
                                                         mutex_unlock(&io_lock); \
                                                         closeRes; \
                                                         })
-
 #define fWrite(buffer, elementSize, elementCount, file) \
                                                         ({ \
                                                         size_t writeRes; \
@@ -64,6 +63,7 @@ extern "C" {
                                                         mutex_unlock(&io_lock); \
                                                         writeRes; \
                                                         })
+#define fError(file)                                    ferror(file)
 #else
 #define fOpen(path, mode)                               fopen(path, mode)
 #define fRead(buffer, elementSize, elementCount, file)  fread(buffer, elementSize, elementCount, file)
@@ -80,13 +80,6 @@ FileIO *fOpen(const char *path, const char *mode);
 #endif
 
 #include <miniz/miniz.h>
-
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-extern "C" {
-#include <kos.h>
-extern mutex_t io_lock;
-};
-#endif
 
 namespace RSDK
 {

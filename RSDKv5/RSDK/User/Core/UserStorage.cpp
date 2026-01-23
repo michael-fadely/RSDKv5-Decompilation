@@ -6,10 +6,6 @@
 // API Cores
 // ====================
 
-extern "C" {
-extern mutex_t io_lock;
-};
-
 namespace RSDK
 {
 namespace SKU
