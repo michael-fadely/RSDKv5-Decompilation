@@ -8,7 +8,7 @@ find ./ -type f -iname "*.wav" -print0 |
 while IFS= read -r -d '' file; do
     dir=$(dirname "$file")
     base=$(basename "$file")
-    newbase=${base#adpcm_22k_}
+    newbase=${base#adpcm_resample_}
     dest="$1/SoundFX/$dir/$newbase"
     rm "$dest"
     mv "$file" "$dest"

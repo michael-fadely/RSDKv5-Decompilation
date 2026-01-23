@@ -10,8 +10,8 @@ while IFS= read -r -d '' file; do
     base=$(basename "$file")
 
     case "$base" in
-        adpcm_22k_*)
-            newbase=${base#adpcm_22k_}
+        adpcm_resample_*)
+            newbase=${base#adpcm_resample_}
             ;;
         *)
             rm "$file"
