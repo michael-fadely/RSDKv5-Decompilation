@@ -199,25 +199,13 @@ bool32 RSDK::OpenDataFile(FileInfo *info, const char *filename)
 
         info->usingFileBuffer = file->useFileBuffer;
         if (!file->useFileBuffer) {
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-            mutex_lock(&io_lock);
-#endif
             info->file = fOpen(dataPacks[file->packID].name, "rb");
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-            mutex_unlock(&io_lock);
-#endif
             if (!info->file) {
                 PrintLog(PRINT_NORMAL, "File not found (Unable to open datapack): %s", filename);
                 return false;
             }
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-            mutex_lock(&io_lock);
-#endif
             fSeek(info->file, file->offset, SEEK_SET);
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-            mutex_unlock(&io_lock);
-#endif
         }
         else {
             // a bit of a hack, but it is how it is in the original
@@ -329,12 +317,10 @@ bool32 RSDK::LoadFile(FileInfo *info, const char *filename, uint8 fileMode)
 
     if (fileMode == FMODE_RB || fileMode == FMODE_WB || fileMode == FMODE_RB_PLUS) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-        mutex_lock(&io_lock);
         if (fileMode == FMODE_WB || fileMode == FMODE_RB_PLUS)
             info->file = NULL;
         else
             info->file = fOpen(fullFilePath, openModes[fileMode - 1]);
-        mutex_unlock(&io_lock);
 #else
         info->file = fOpen(fullFilePath, openModes[fileMode - 1]);
 #endif
@@ -351,15 +337,9 @@ bool32 RSDK::LoadFile(FileInfo *info, const char *filename, uint8 fileMode)
     info->fileSize = 0;
 
     if (fileMode != FMODE_WB) {
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-        mutex_lock(&io_lock);
-#endif
         fSeek(info->file, 0, SEEK_END);
         info->fileSize = (int32)fTell(info->file);
         fSeek(info->file, 0, SEEK_SET);
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-        mutex_unlock(&io_lock);
-#endif
     }
 #if !RETRO_USE_ORIGINAL_CODE
     PrintLog(PRINT_NORMAL, "Loaded file %s", fullFilePath);

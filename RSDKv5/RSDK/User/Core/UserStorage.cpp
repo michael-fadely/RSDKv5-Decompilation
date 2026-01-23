@@ -6,6 +6,10 @@
 // API Cores
 // ====================
 
+extern "C" {
+extern mutex_t io_lock;
+};
+
 namespace RSDK
 {
 namespace SKU
@@ -1091,6 +1095,7 @@ char RSDK::SKU::userFileDir[0x100];
 
 bool32 RSDK::SKU::LoadUserFile(const char *filename, void *buffer, uint32 bufSize)
 {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (preLoadSaveFileCB)
         preLoadSaveFileCB();
 
@@ -1127,11 +1132,12 @@ bool32 RSDK::SKU::LoadUserFile(const char *filename, void *buffer, uint32 bufSiz
 
         PrintLog(PRINT_NORMAL, "Nope!");
     }
-
+#endif
     return false;
 }
 bool32 RSDK::SKU::SaveUserFile(const char *filename, void *buffer, uint32 bufSize)
 {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (preLoadSaveFileCB)
         preLoadSaveFileCB();
 
@@ -1145,8 +1151,6 @@ bool32 RSDK::SKU::SaveUserFile(const char *filename, void *buffer, uint32 bufSiz
     sprintf_s(fullFilePath, sizeof(fullFilePath), "%s%s", userFileDir, filename);
 #endif
 
-    // DCFIXME: SaveUserFile disabled
-#if RETRO_PLATFORM != RETRO_KALLISTIOS
     PrintLog(PRINT_NORMAL, "Attempting to save user file: %s", fullFilePath);
 
     FileIO *file = fOpen(fullFilePath, "wb");
@@ -1170,6 +1174,7 @@ bool32 RSDK::SKU::SaveUserFile(const char *filename, void *buffer, uint32 bufSiz
 }
 bool32 RSDK::SKU::DeleteUserFile(const char *filename)
 {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (preLoadSaveFileCB)
         preLoadSaveFileCB();
 
@@ -1189,6 +1194,8 @@ bool32 RSDK::SKU::DeleteUserFile(const char *filename)
         postLoadSaveFileCB();
 
     return status == 0;
+#endif
+    return 0;
 }
 
 #if !RETRO_REV02

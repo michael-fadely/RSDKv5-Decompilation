@@ -19,11 +19,6 @@ int32 ReadGifCode(ImageGIF *image);
 uint8 ReadGifByte(ImageGIF *image);
 uint8 TraceGifPrefix(uint32 *prefix, int32 code, int32 clearCode);
 
-extern "C" {
-extern mutex_t io_lock;
-};
-
-
 void InitGifDecoder(ImageGIF *image)
 {
     uint8 initCodeSize             = ReadInt8(&image->info);
@@ -913,7 +908,7 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
     uint16 id = -1;
     size_t vqDtexCompressedSize;
     // filename of the sprite sheet, converted to DTEX format with VQ compression, ARGB1555
-    file_t vqDtexFile;
+    FileIO *vqDtexFile;
     // width and height of sprite sheet, from DTEX file header
     uint16 vqDtexWidth;
     uint16 vqDtexHeight;
@@ -945,12 +940,10 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
 
     sprintf_s(fullFilePath, sizeof(fullFilePath), "%s/Data/Sprites/%s", KOS_USER_DIR, filename);
 
-    mutex_lock(&io_lock);
-    vqDtexFile = fs_open(fullFilePath, O_RDONLY);
+    vqDtexFile = fOpen(fullFilePath, "r");
 
-    if (vqDtexFile == -1) {
+    if (vqDtexFile == NULL) {
         printf("couldnt open %s\n", filename);
-        mutex_unlock(&io_lock);
         return -1;
     }
 
@@ -969,56 +962,51 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
     }
 
     off_t seekRv;
-    ssize_t readRv;
+    size_t readRv;
 
     // skip magic value at start of DTEX header
 #define SKIP_SEEK_TO_TEXTURE_WIDTH 4
-    seekRv = fs_seek(vqDtexFile, SKIP_SEEK_TO_TEXTURE_WIDTH, SEEK_SET);
-    if (seekRv != SKIP_SEEK_TO_TEXTURE_WIDTH) {
-        fs_close(vqDtexFile);
-        mutex_unlock(&io_lock);
+    seekRv = fSeek(vqDtexFile, SKIP_SEEK_TO_TEXTURE_WIDTH, SEEK_SET);
+    if (seekRv != 0) {
+        fClose(vqDtexFile);
         return -1;
     }
 
     // read texture width from DTEX header
-    readRv = fs_read(vqDtexFile, &vqDtexWidth, sizeof(uint16));
-    if (readRv < 0) {
-        fs_close(vqDtexFile);
-        mutex_unlock(&io_lock);
+    //fread(void *restrict ptr, size_t size, size_t nitems, FILE *restrict stream);
+    readRv = fRead(&vqDtexWidth, 1, sizeof(uint16), vqDtexFile);
+    if (readRv < sizeof(uint16)) {
+        fClose(vqDtexFile);
         return -1;
     }
 
     // read texture height from DTEX header
-    readRv = fs_read(vqDtexFile, &vqDtexHeight, sizeof(uint16));
+    readRv = fRead(&vqDtexHeight, 1, sizeof(uint16), vqDtexFile);
     if (readRv < 0) {
-        fs_close(vqDtexFile);
-        mutex_unlock(&io_lock);
+        fClose(vqDtexFile);
         return -1;
     }
 
     // skip other DTEX header bytes until we get to compressed texture size
 #define SKIP_SEEK_TO_TEXTURE_SIZE 12
-    seekRv = fs_seek(vqDtexFile, SKIP_SEEK_TO_TEXTURE_SIZE, SEEK_SET);
-    if (seekRv != SKIP_SEEK_TO_TEXTURE_SIZE) {
-        fs_close(vqDtexFile);
-        mutex_unlock(&io_lock);
+    seekRv = fSeek(vqDtexFile, SKIP_SEEK_TO_TEXTURE_SIZE, SEEK_SET);
+    if (seekRv != 0) {
+        fClose(vqDtexFile);
         return -1;
     }
 
     // read compressed texture data size from DTEX header
-    readRv = fs_read(vqDtexFile, &vqDtexCompressedSize, sizeof(uint32));
-    if (readRv < 0) {
-        fs_close(vqDtexFile);
-        mutex_unlock(&io_lock);
+    readRv = fRead(&vqDtexCompressedSize, 1, sizeof(uint32), vqDtexFile);
+    if (readRv < sizeof(uint32)) {
+        fClose(vqDtexFile);
         return -1;
     }
 
     // skip remainder of DTEX header
 #define SKIP_SEEK_TO_TEXTURE_DATA 16
-    seekRv = fs_seek(vqDtexFile, SKIP_SEEK_TO_TEXTURE_DATA, SEEK_SET);
-    if (seekRv != SKIP_SEEK_TO_TEXTURE_DATA) {
-        fs_close(vqDtexFile);
-        mutex_unlock(&io_lock);
+    seekRv = fSeek(vqDtexFile, SKIP_SEEK_TO_TEXTURE_DATA, SEEK_SET);
+    if (seekRv != 0) {
+        fClose(vqDtexFile);
         return -1;
     }
 
@@ -1028,8 +1016,7 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
     if (vqDtexCompressedSize < 0) {
         printf("[pvr] [NG] [Data/Sprites/%s] texture size is negative!!! %ld * %ld = %ld\n",
                filename, surface->width, surface->height, vqDtexCompressedSize);
-        fs_close(vqDtexFile);
-        mutex_unlock(&io_lock);
+        fClose(vqDtexFile);
         return -1;
     }
     uint32 pvrMemBefore;
@@ -1063,15 +1050,13 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
 
     if (surface->pixels == NULL) {
         printf("[pvr] [NG] [Data/Sprites/%s] AllocateStorage failed!!!\n", filename);
-        fs_close(vqDtexFile);
-        mutex_unlock(&io_lock);
+        fClose(vqDtexFile);
         return -1;
     } else {
         // get the compressed texture data from the DTEX file
-        readRv = fs_read(vqDtexFile, surface->pixels, vqDtexCompressedSize);
-        if (readRv < 0) {
-            fs_close(vqDtexFile);
-            mutex_unlock(&io_lock);
+        readRv = fRead(surface->pixels, 1, vqDtexCompressedSize, vqDtexFile);
+        if (readRv < vqDtexCompressedSize) {
+            fClose(vqDtexFile);
             return -1;
         }
         pvrMemBefore = pvr_mem_available();
@@ -1083,8 +1068,7 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
             printf("[pvr] [NG] [Data/Sprites/%s] pvr_mem_malloc(%ld) failed!!!\n",
                     filename, vqDtexCompressedSize);
             printPvrMem(pvrMemBefore, pvrMemAfter);
-            fs_close(vqDtexFile);
-            mutex_unlock(&io_lock);
+            fClose(vqDtexFile);
             return -1;
         } else {
             printf("[pvr] [OK] [Data/Sprites/%s] pvr_mem_malloc(%ld) succeeded.\n",
@@ -1102,8 +1086,7 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
     RemoveStorageEntry((void **)&surface->pixels);
     surface->pixels = NULL;
 
-    fs_close(vqDtexFile);
-    mutex_unlock(&io_lock);
+    fClose(vqDtexFile);
 
     return id;
 }
