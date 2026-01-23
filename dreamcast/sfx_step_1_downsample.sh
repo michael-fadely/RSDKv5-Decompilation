@@ -37,12 +37,12 @@ while IFS= read -r -d '' file; do
             echo "    too many samples in $out1, trying 22khz"
             rm "$out1"
             ffmpeg -v error -f wav -c:a pcm_s16le -i "$file" -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le -ar 22050 -ac 1 $out1
-            osamples=$(soxi -s "$out1")
-            if (( osamples > 65534 )); then
-                echo "        too many samples in $out1, trying 11khz"
-                rm "$out1"
-                ffmpeg -v error -f wav -c:a pcm_s16le -i "$file" -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le -ar 11025 -ac 1 $out1
-            fi
+#            osamples=$(soxi -s "$out1")
+#            if (( osamples > 65534 )); then
+#                echo "        too many samples in $out1, trying 11khz"
+#                rm "$out1"
+#                ffmpeg -v error -f wav -c:a pcm_s16le -i "$file" -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le -ar 11025 -ac 1 $out1
+#            fi
         fi
 
         if echo "$output" | grep -q "data has size 1"; then
@@ -55,12 +55,12 @@ while IFS= read -r -d '' file; do
                 rm tmpfile.wav
                 ffmpeg -v error -f wav -c:a pcm_u8 -i "$file" -c:a pcm_s16le -ar 22050 tmpfile.wav
             fi
-            tsamples=$(soxi -s tmpfile.wav)
-            if (( tsamples > 65534 )); then
-                echo "        too many samples in $out1, trying 11khz"
-                rm tmpfile.wav
-                ffmpeg -v error -f wav -c:a pcm_u8 -i "$file" -c:a pcm_s16le -ar 11025 tmpfile.wav
-            fi
+#            tsamples=$(soxi -s tmpfile.wav)
+#            if (( tsamples > 65534 )); then
+#                echo "        too many samples in $out1, trying 11khz"
+#                rm tmpfile.wav
+#                ffmpeg -v error -f wav -c:a pcm_u8 -i "$file" -c:a pcm_s16le -ar 11025 tmpfile.wav
+#            fi
             ffmpeg -v error -n -f wav -c:a pcm_s16le -i tmpfile.wav -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le "$out1"
             rm tmpfile.wav
             echo "converted $file"
