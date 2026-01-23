@@ -10,7 +10,7 @@ if [ -z "$KOS_BASE" ]; then
     exit 1
 fi
 
-find ./ -type f -iname "22k_*.wav" -print0 |
+find ./ -type f -iname "resample_*.wav" -print0 |
 while IFS= read -r -d '' file; do
     dir=$(dirname "$file")
     base=$(basename "$file")

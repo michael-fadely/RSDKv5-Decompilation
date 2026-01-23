@@ -19,28 +19,51 @@ while IFS= read -r -d '' file; do
     dir=$(dirname "$file")
     base=$(basename "$file")
     mkdir -p "$outdir/$dir"
-    out1="$outdir/$dir/22k_$base"
+    out1="$outdir/$dir/resample_$base"
 
-#    echo "$out1"
-
+    # i know continue is < 50000 samples @ 22khz
     if echo "$base" | grep "Continue.wav"; then
-        if echo "$output" | grep -q "data has size 1"; then
-            #echo "$file s16 decode failed, trying u8 decode"
-            #rm "$out1"
-            ffmpeg -v error -n -f wav -c:a pcm_u8 -i "$file" -c:a pcm_s16le tmpfile.wav
-            ffmpeg -v error -n -f wav -c:a pcm_s16le -i tmpfile.wav -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le "$out1"
-            rm tmpfile.wav
-        fi
-
-    else        output="$(ffmpeg -v error -f wav -c:a pcm_s16le -i $file -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le -ar 44100 -ac 1 $out1 2>&1 >/dev/null)"
+        echo "$file s16 decode failed, trying u8 decode"
+        ffmpeg -v error -n -f wav -c:a pcm_u8 -i "$file" -c:a pcm_s16le tmpfile.wav
+        ffmpeg -v error -n -f wav -c:a pcm_s16le -i tmpfile.wav -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le -ar 22050 -ac 1 "$out1"
+        echo "converted $file"
+        rm tmpfile.wav
+    else
+	output="$(ffmpeg -v error -f wav -c:a pcm_s16le -i $file -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le -ar 44100 -ac 1 $out1 2>&1 >/dev/null)"
         status=$?
+        echo "converted $file"
+        samples=$(soxi -s "$out1")
+        if (( samples > 65534 )); then
+            echo "    too many samples in $out1, trying 22khz"
+            rm "$out1"
+            ffmpeg -v error -f wav -c:a pcm_s16le -i "$file" -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le -ar 22050 -ac 1 $out1
+            osamples=$(soxi -s "$out1")
+            if (( osamples > 65534 )); then
+                echo "        too many samples in $out1, trying 11khz"
+                rm "$out1"
+                ffmpeg -v error -f wav -c:a pcm_s16le -i "$file" -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le -ar 11025 -ac 1 $out1
+            fi
+        fi
 
         if echo "$output" | grep -q "data has size 1"; then
             echo "$file s16 decode failed, trying u8 decode"
             rm "$out1"
             ffmpeg -v error -n -f wav -c:a pcm_u8 -i "$file" -c:a pcm_s16le tmpfile.wav
+            tsamples=$(soxi -s tmpfile.wav)
+            if (( tsamples > 65534 )); then
+                echo "    too many samples in $out1, trying 22khz"
+                rm tmpfile.wav
+                ffmpeg -v error -f wav -c:a pcm_u8 -i "$file" -c:a pcm_s16le -ar 22050 tmpfile.wav
+            fi
+            tsamples=$(soxi -s tmpfile.wav)
+            if (( tsamples > 65534 )); then
+                echo "        too many samples in $out1, trying 11khz"
+                rm tmpfile.wav
+                ffmpeg -v error -f wav -c:a pcm_u8 -i "$file" -c:a pcm_s16le -ar 11025 tmpfile.wav
+            fi
             ffmpeg -v error -n -f wav -c:a pcm_s16le -i tmpfile.wav -filter:a "rubberband=tempo=2.0:pitch=2.0" -c:a pcm_s16le "$out1"
             rm tmpfile.wav
+            echo "converted $file"
         fi
     fi
 done
