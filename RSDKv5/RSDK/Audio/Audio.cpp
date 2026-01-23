@@ -335,6 +335,22 @@ int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint3
 #define WAV_SIG_HEADER (0x46464952) // RIFF
 #define WAV_SIG_DATA   (0x61746164) // data
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+struct snd_effect;
+LIST_HEAD(selist, snd_effect);
+
+typedef struct snd_effect {
+    uint32_t  locl, locr;
+    uint32_t  len;
+    uint32_t  rate;
+    uint32_t  used;
+    uint32_t  fmt;
+    uint16_t  stereo;
+
+    LIST_ENTRY(snd_effect)  list;
+} snd_effect_t;
+#endif
+
 void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 {
     char fullFilePath[0x80];
@@ -348,11 +364,13 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
     sfxhnd_t hnd = snd_sfx_load(fullFilePath);
 
     if (hnd != 0) {
+        snd_effect_t *t = (snd_effect_t *)hnd;
         HASH_COPY_MD5(sfxList[slot].hash, hash);
         sfxList[slot].scope              = scope;
         sfxList[slot].maxConcurrentPlays = plays;
-        sfxList[slot].length = 65534;
+        sfxList[slot].length = t->len;
         sfxList[slot].handle = hnd;
+        sfxList[slot].ratediv = 44100 / t->rate;
     }
 #else
     FileInfo info;
@@ -505,7 +523,7 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
         // looping was causing problems
         data.loop = 0; // loopPoint != 0
         data.loopstart = 0; // loopPoint
-        data.freq = AUDIO_FREQUENCY;
+        data.freq = AUDIO_FREQUENCY / sfxList[sfx].ratediv;
         return snd_sfx_play_ex(&data);
     }
 

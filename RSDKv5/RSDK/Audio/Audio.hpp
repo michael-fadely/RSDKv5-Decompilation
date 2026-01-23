@@ -25,6 +25,7 @@ struct SFXInfo {
     RETRO_HASH_MD5(hash);
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     sfxhnd_t handle;
+    uint32 ratediv;
 #else
     float *buffer;
 #endif
