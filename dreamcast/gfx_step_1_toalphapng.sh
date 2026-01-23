@@ -13,9 +13,20 @@ for dir in Global TMZ1 UI; do
 
     echo "Converting: $file"
 
+    palette0=$(
+      magick identify -verbose "$file[0]" \
+        | awk '
+          $1=="Colormap:" {inmap=1; next}
+          inmap && $1=="0:" {
+              for (i=1;i<=NF;i++)
+                  if ($i ~ /^#[0-9A-Fa-f]{6}/) { print substr($i,1,7); exit }
+          }
+        '
+    )
+
     magick "$file" \
       -alpha on \
-      -transparent '#FF00FF' \
+      -transparent "$palette0" \
       -define png:color-type=6 \
       "$base.png"
   done
