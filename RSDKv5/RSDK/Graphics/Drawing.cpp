@@ -690,7 +690,7 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
     int32 drawY2 = y2;
     int32 drawX2 = x2;
 
-    if (screenRelative == 0) {
+    if (!screenRelative) {
         drawX1 = FROM_FIXED(x1) - currentScreen->position.x;
         drawY1 = FROM_FIXED(y1) - currentScreen->position.y;
         drawX2 = FROM_FIXED(x2) - currentScreen->position.x;
@@ -854,13 +854,6 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
 //    if (alpha >= 255) alpha = 255;
 
     uint32 color32      = (alpha << 24) | color;
-
-    if (screenRelative == 1) {
-        drawY1 = FROM_FIXED(y1);
-        drawX1 = FROM_FIXED(x1);
-        drawY2 = FROM_FIXED(y2);
-        drawX2 = FROM_FIXED(x2);
-    }
 
     if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 255)) {
         RenderDevice::PrepareLinePolyPT(inkEffect);
@@ -1533,7 +1526,7 @@ static void DrawCircleOutlineWithLines(int cx, int cy, int radius, int width, ui
         int x1 = cx + (int)((float)radius * cosf(angle));
         int y1 = cy + (int)((float)radius * sinf(angle));
 
-        DrawLine(x0, y0, x1, y1, color, alpha, inkEffect, 2);
+        DrawLine(x0, y0, x1, y1, color, alpha, inkEffect, true);
 
         x0 = x1;
         y0 = y1;
