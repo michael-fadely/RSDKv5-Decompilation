@@ -576,7 +576,7 @@ void RenderDevice::DisableCulling() {
 // static
 float RenderDevice::GetDepth() {
 #if defined(KOS_HARDWARE_RENDERER)
-    drawDepth += 0.001f;
+    drawDepth += 0.0001f;
     return drawDepth;
 #else
     return 1.0f;
