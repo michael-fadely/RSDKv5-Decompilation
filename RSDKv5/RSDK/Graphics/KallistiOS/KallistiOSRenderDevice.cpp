@@ -76,6 +76,7 @@ pvr_ptr_t lastTexture = nullptr;
 pvr_dr_state_t drState = 0;
 
 float currentLineThickness = 2.0f;
+bool exceededPalettes = false;
 int lastPvrPaletteBankIndex = -1;
 int lastInkEffect = -1;
 int lastLineInkEffect = -1;
@@ -521,6 +522,7 @@ void RenderDevice::BeginScene() {
     SetDepth(0);
     DisableCulling();
     SetLinePolyThickness(2);
+    exceededPalettes = false;
     lastPrimitiveType = PrimitiveTypes_None;
     vbPos = 0;
     trExhausted = false;
@@ -606,10 +608,13 @@ uint32 RenderDevice::GameToPvrPaletteBankIndex(uint32 gamePaletteBankIndex) {
 
     if (gamePaletteBankIndex >= 4) {
         const uint32 corrected = gamePaletteBankIndex % 4;
-
-        printf("[pvr] WARNING: palette bank index exceeds 4: %lu; applying mod, using this instead: %lu\n",
+        if (!exceededPalettes) {
+            printf("[pvr] WARNING: palette bank index exceeds 4: %lu; applying mod, using this instead: %lu\n",
                gamePaletteBankIndex,
                corrected);
+            printf("\tfurther warnings will not be printed this frame.\n");
+            exceededPalettes = true;
+        }
 
         pvrPaletteBankIndex = corrected;
     }

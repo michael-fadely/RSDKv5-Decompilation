@@ -1055,7 +1055,6 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
         // get the compressed texture data from the file
         readRv = fRead(surface->pixels, 1, vqTexCompressedSize, vqTexFile);
         if (readRv < vqTexCompressedSize) {
-            printf("short read texture\n");
             fClose(vqTexFile);
             return -1;
         }
