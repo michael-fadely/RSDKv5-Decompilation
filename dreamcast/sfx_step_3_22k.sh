@@ -2,7 +2,7 @@
 
 orig_dir=$(pwd)
 
-cd "$1"/SoundFX
+cd "$1"/StagingSoundFX
 
 find ./ -type f -iname "*.wav" -print0 |
 while IFS= read -r -d '' file; do

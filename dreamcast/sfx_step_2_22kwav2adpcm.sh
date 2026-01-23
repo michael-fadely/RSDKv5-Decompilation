@@ -2,7 +2,7 @@
 
 orig_dir=$(pwd)
 
-cd "$1"/SoundFX
+cd "$1"/StagingSoundFX
 
 # Ensure KOS_BASE is set
 if [ -z "$KOS_BASE" ]; then
