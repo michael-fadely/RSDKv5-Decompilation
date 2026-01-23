@@ -11,12 +11,67 @@
 #define fWrite(buffer, elementSize, elementCount, file) SDL_RWwrite(file, buffer, elementSize, elementCount)
 #else
 #define FileIO                                          FILE
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+extern "C" {
+    extern mutex_t io_lock;
+};
+#define fOpen(path, mode)                               \
+                                                        ({ \
+                                                        FileIO *openRes; \
+                                                        mutex_lock(&io_lock); \
+                                                        openRes = fopen(path, mode); \
+                                                        mutex_unlock(&io_lock); \
+                                                        openRes; \
+                                                        })
+#define fRead(buffer, elementSize, elementCount, file)  \
+                                                        ({ \
+                                                        size_t readRes; \
+                                                        mutex_lock(&io_lock); \
+                                                        readRes = fread(buffer, elementSize, elementCount, file); \
+                                                        mutex_unlock(&io_lock); \
+                                                        readRes; \
+                                                        })
+#define fSeek(file, offset, whence)                     \
+                                                        ({ \
+                                                        int seekRes; \
+                                                        mutex_lock(&io_lock); \
+                                                        seekRes = fseek(file, offset, whence); \
+                                                        mutex_unlock(&io_lock); \
+                                                        seekRes; \
+                                                        })
+#define fTell(file)                                     \
+                                                        ({ \
+                                                        long tellRes; \
+                                                        mutex_lock(&io_lock); \
+                                                        tellRes = ftell(file); \
+                                                        mutex_unlock(&io_lock); \
+                                                        tellRes; \
+                                                        })
+#define fClose(file)                                    \
+                                                        ({ \
+                                                        int closeRes; \
+                                                        mutex_lock(&io_lock); \
+                                                        closeRes = fclose(file); \
+                                                        mutex_unlock(&io_lock); \
+                                                        closeRes; \
+                                                        })
+#define fWrite(buffer, elementSize, elementCount, file) \
+                                                        ({ \
+                                                        size_t writeRes; \
+                                                        mutex_lock(&io_lock); \
+                                                        writeRes = fwrite(buffer, elementSize, elementCount, file); \
+                                                        mutex_unlock(&io_lock); \
+                                                        writeRes; \
+                                                        })
+#define fError(file)                                    ferror(file)
+#else
 #define fOpen(path, mode)                               fopen(path, mode)
 #define fRead(buffer, elementSize, elementCount, file)  fread(buffer, elementSize, elementCount, file)
 #define fSeek(file, offset, whence)                     fseek(file, offset, whence)
 #define fTell(file)                                     ftell(file)
 #define fClose(file)                                    fclose(file)
 #define fWrite(buffer, elementSize, elementCount, file) fwrite(buffer, elementSize, elementCount, file)
+#endif
 #endif
 
 #if RETRO_PLATFORM == RETRO_ANDROID

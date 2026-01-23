@@ -43,7 +43,7 @@ __BEGIN_DECLS
 #define STREAM_CHANNELS (AUDIO_CHANNELS)
 #define STREAM_BUF_SIZE (8192)
 
-int stream_data_length;
+long stream_data_length;
 
 int stream_init(void);
 void stream_shutdown(void);
@@ -80,7 +80,7 @@ typedef struct
 
     /* We either read the stream data from a file or
        we read from a buffer */
-    file_t stream_file;
+    FileIO *stream_file;
 
     /* Contains the buffer that we are going to send
        to the AICA in the callback.  Should be 32-byte
@@ -108,8 +108,6 @@ static mutex_t stream_mutex;
 
 static void *sndstream_thread(void *param);
 static void *stream_file_callback(snd_stream_hnd_t hnd, int req, int *done);
-
-extern mutex_t io_lock;
 
 int stream_init(void)
 {
@@ -157,10 +155,8 @@ void stream_destroy(void)
     stream.vol = 0;
     stream.callback = NULL;
 
-    if (stream.stream_file != FILEHND_INVALID) {
-        mutex_lock(&io_lock);
-        fs_close(stream.stream_file);
-        mutex_unlock(&io_lock);
+    if (stream.stream_file != NULL) {
+        fClose(stream.stream_file);
     }
 
     mutex_unlock(&stream_mutex);
@@ -168,35 +164,34 @@ void stream_destroy(void)
 
 int stream_create(const char *filename, int loop)
 {
-    file_t file;
+    FileIO *file;
     int index;
 
     if (filename == NULL)
         return SND_STREAM_INVALID;
 
-    mutex_lock(&io_lock);
-    file = fs_open(filename, O_RDONLY);
-    mutex_unlock(&io_lock);
+    file = fOpen(filename, "r");
 
-    if (file == FILEHND_INVALID)
+    if (file == NULL)
         return SND_STREAM_INVALID;
 
     index = snd_stream_alloc(stream_file_callback, STREAM_BUF_SIZE);
     if (index == SND_STREAM_INVALID) {
-        mutex_lock(&io_lock);
-        fs_close(file);
-        mutex_unlock(&io_lock);
+        fClose(file);
         snd_stream_destroy(index);
         return SND_STREAM_INVALID;
     }
 
-    mutex_lock(&io_lock);
-    stream_data_length = fs_total(file);
-    mutex_unlock(&io_lock);
-    if (stream_data_length == -1) {
-        mutex_lock(&io_lock);
-        fs_close(file);
-        mutex_unlock(&io_lock);
+    if (fSeek(file, 0, SEEK_END) != 0) {
+        fClose(file);
+        snd_stream_destroy(index);
+        return SND_STREAM_INVALID;
+    }
+
+    long stream_data_length = fTell(file);
+
+    if (stream_data_length == -1L) {
+        fClose(file);
         snd_stream_destroy(index);
         return SND_STREAM_INVALID;
     }
@@ -207,9 +202,11 @@ int stream_create(const char *filename, int loop)
     stream.callback = stream_file_callback;
     stream.vol = 192 * engine.streamVolume;
     stream.data_length = stream_data_length;
-    mutex_lock(&io_lock);
-    fs_seek(stream.stream_file, 0, SEEK_SET);
-    mutex_unlock(&io_lock);
+    if (fSeek(stream.stream_file, 0, SEEK_SET) != 0) {
+        fClose(file);
+        snd_stream_destroy(index);
+        return SND_STREAM_INVALID;
+    }
     snd_stream_volume(stream.shnd, stream.vol);
     stream.status = SNDDEC_STATUS_READY;
 
@@ -280,10 +277,9 @@ static void *sndstream_thread(void *param)
             break;
         case SNDDEC_STATUS_STOPPING:
             snd_stream_stop(stream.shnd);
-            if (stream.stream_file != FILEHND_INVALID) {
-                mutex_lock(&io_lock);
-                fs_seek(stream.stream_file, 0, SEEK_SET);
-                mutex_unlock(&io_lock);
+            if (stream.stream_file != NULL) {
+                // ok if this fails, we are stopping anyway
+                fSeek(stream.stream_file, 0, SEEK_SET);
             }
             stream.status = SNDDEC_STATUS_READY;
             break;
@@ -304,29 +300,25 @@ static void *sndstream_thread(void *param)
 
 static void *stream_file_callback(snd_stream_hnd_t hnd, int req, int *done)
 {
-    mutex_lock_scoped(&io_lock);
     (void)hnd;
-    ssize_t read = fs_read(stream.stream_file, stream.drv_buf, req);
-
-    if (read == -1) {
-        snd_stream_stop(stream.shnd);
-        stream.status = SNDDEC_STATUS_READY;
-        return NULL;
-    }
+    size_t read = fRead(stream.drv_buf, 1, req, stream.stream_file);
 
     if (read != req) {
-
-        if (stream.loop) {
-            off_t seek1 = fs_seek(stream.stream_file, (off_t)stream.loop, SEEK_SET);
-            if (seek1 != (off_t)stream.loop) {
+        if (fError(stream.stream_file)) {
+            snd_stream_stop(stream.shnd);
+            stream.status = SNDDEC_STATUS_READY;
+            return NULL;
+        } else if (stream.loop) {
+            int seek1 = fSeek(stream.stream_file, (off_t)stream.loop, SEEK_SET);
+            if (seek1 != 0) {
                 snd_stream_stop(stream.shnd);
                 stream.status = SNDDEC_STATUS_READY;
                 return NULL;
             }
 
-            ssize_t read2 = fs_read(stream.stream_file, stream.drv_buf + read, req - read);
+            size_t read2 = fRead(stream.drv_buf + read, 1, req - read, stream.stream_file);
 
-            if (read2 == -1) {
+            if (read2 != (req - read)) {
                 snd_stream_stop(stream.shnd);
                 stream.status = SNDDEC_STATUS_READY;
                 return NULL;
