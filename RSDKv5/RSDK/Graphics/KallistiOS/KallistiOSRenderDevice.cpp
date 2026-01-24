@@ -1923,7 +1923,6 @@ void RenderDevice::PrepareFacePolyPT(int inkEffect) {
     }
 }
 
-
 // static
 void RenderDevice::PrepareFacePolyTR(int inkEffect) {
     if ((lastPrimitiveType != PrimitiveTypes_FaceTR) || (lastFaceInkEffect != inkEffect)) {
