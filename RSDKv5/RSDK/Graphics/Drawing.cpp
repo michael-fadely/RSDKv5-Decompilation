@@ -1288,9 +1288,9 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
     }
 
     // water pools in GHZ Act 2 use INK_SUB with solid colored rectangles
-    // I don't have any special handling for this in KallistiOSRenderDevice
+    // we don't have any special handling for this in KallistiOSRenderDevice
     // if we don't handle it here, they will be opaque robin-egg blue rectangles
-    // this is THE ONLY DrawRect call with INK_SUB in Mania (I checked)
+    // this is THE ONLY DrawRect call with INK_SUB in Mania (I checked -- jn64)
     if (inkEffect == INK_SUB) {
         uint8_t r = (color >> 16) & 0xff;
         uint8_t g = (color >>  8) & 0xff;
@@ -1457,11 +1457,8 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
     }
 #endif
 }
-
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-// Draw a circle centered at (cx, cy) with radius r using line segments.
-// Uses <= 32 lines (segments). Pixel coords are integer/rounded.
-
+// Helpers for DrawCircle/DrawCircleOutline functions
 static void DrawFilledCircleFromTris(int cx, int cy, int radius, uint32 color, int32 alpha, int32 inkEffect)
 {
     const int segs = 64;
@@ -1534,7 +1531,6 @@ static void DrawCircleOutlineWithLines(int cx, int cy, int radius, int width, ui
     RenderDevice::SetLinePolyThickness(2);
 }
 #endif
-
 void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
     if (radius > 0) {
@@ -2445,7 +2441,6 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
     }
 #endif
 }
-
 void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, int32 alpha, int32 inkEffect)
 {
 #if defined(KOS_HARDWARE_RENDERER)
@@ -3141,13 +3136,6 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
         }
     }
 }
-
-//#if RETRO_PLATFORM == RETRO_KALLISTIOS
-//extern "C" {
-//    int doing_sub_mode = 0;
-//};
-//#endif
-
 void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 sprX, int32 sprY, int32 direction, int32 inkEffect, int32 alpha,
                              int32 sheetID)
 {
