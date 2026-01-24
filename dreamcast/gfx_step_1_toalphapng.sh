@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 orig_dir=$(pwd)
@@ -10,8 +10,6 @@ for dir in Global TMZ1 UI; do
     [ -e "$file" ] || continue
 
     base=${file%.gif}
-
-    echo "Converting: $file"
 
     palette0=$(
       magick identify -verbose "$file[0]" \

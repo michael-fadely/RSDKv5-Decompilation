@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/bin/bash
 
 orig_dir=$(pwd)  
 
@@ -18,6 +18,3 @@ done
 cd "$orig_dir"
 
 rmdir "$1"/StagingSoundFX
-
-echo "Done."
-
