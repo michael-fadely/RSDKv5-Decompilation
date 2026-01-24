@@ -128,31 +128,6 @@ bool32 RSDK::InitStorage()
 #endif
     }
 
-// if you would like to see how much RAM is left after allocating the storage buckets
-#if 0
-for(int mi=0;mi<6*1048576;mi+=65536) {
-        void *test_m = malloc(mi);
-        if (test_m != NULL) {
-            free(test_m);
-            test_m = NULL;
-            continue;
-        } else {
-            int bi = mi - 65536;
-            for (; bi < 6 * 1048576; bi++) {
-                test_m = malloc(bi);
-                if (test_m != NULL) {
-                    free(test_m);
-                    test_m = NULL;
-                    continue;
-                } else {
-                    printf("free ram for malloc: %d\n", bi);
-                    goto run_game_loop;
-                }
-            }
-        }
-    }
-run_game_loop:
-#endif
     return true;
 }
 
