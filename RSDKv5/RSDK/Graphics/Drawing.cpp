@@ -2474,7 +2474,7 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
             break;
     }
 
-    if (inkEffect == INK_NONE && alpha != 0xC0) {
+    if (inkEffect == INK_NONE) {
         alpha = 0xff;
     }
 
@@ -2483,8 +2483,11 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
         RenderDevice::PrepareFacePolyPT(inkEffect);
         RenderDevice::DrawFacePolyPT(vertices, vertCount, 0, alpha, colors);
     } else {
+        // need to disable culling to fix the spotlights on SSZ2 
+        RenderDevice::DisableCulling();
         RenderDevice::PrepareFacePolyTR(inkEffect);
         RenderDevice::DrawFacePolyTR(vertices, vertCount, 0, alpha, colors);
+        RenderDevice::EnableCulling();
     }
 #else
     int32 top    = 0x7FFFFFFF;
