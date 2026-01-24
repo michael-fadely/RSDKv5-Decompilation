@@ -8,7 +8,7 @@
 
 #if defined(KOS_HARDWARE_RENDERER)
 #define TR_VERTBUF_SIZE (256 * 1024)
-static uint8_t __attribute__((aligned(32))) tr_buf[TR_VERTBUF_SIZE];
+static uint8_t __attribute__((aligned(32))) trDmaBuffer[TR_VERTBUF_SIZE];
 #endif
 
 struct KOSTexture
@@ -240,7 +240,7 @@ bool RenderDevice::Init()
     }
 
 #if defined(KOS_HARDWARE_RENDERER)
-    pvr_set_vertbuf(PVR_LIST_TR_POLY, tr_buf, TR_VERTBUF_SIZE);
+    pvr_set_vertbuf(PVR_LIST_TR_POLY, trDmaBuffer, TR_VERTBUF_SIZE);
 #endif
 
     pvr_set_bg_color(0.0f, 1.0f, 1.0f);
