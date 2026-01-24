@@ -1102,7 +1102,6 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
         return LoadVQSpriteSheet(filename, scope);
     }
 #endif
-
     char fullFilePath[0x100];
     sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Sprites/%s", filename);
 

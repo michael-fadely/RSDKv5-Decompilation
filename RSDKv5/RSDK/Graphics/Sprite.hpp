@@ -128,7 +128,6 @@ struct ImageTGA : public Image {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
 uint16 LoadVQSpriteSheet(const char *filename, uint8 scope);
 #endif
-
 uint16 LoadSpriteSheet(const char *filename, uint8 scope);
 bool32 LoadImage(const char *filename, double displayLength, double fadeSpeed, bool32 (*skipCallback)());
 
