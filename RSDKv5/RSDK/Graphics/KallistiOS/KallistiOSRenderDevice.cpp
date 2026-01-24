@@ -4,13 +4,6 @@
 #include <RSDK/Core/Stub.hpp>
 #include <RSDK/Core/Math.hpp>
 
-#define KOS_HARDWARE_RENDERER
-
-#if defined(KOS_HARDWARE_RENDERER)
-#define TR_VERTBUF_SIZE (256 * 1024)
-static uint8_t __attribute__((aligned(32))) trDmaBuffer[TR_VERTBUF_SIZE];
-#endif
-
 struct KOSTexture
 {
 #if !defined(KOS_HARDWARE_RENDERER)
@@ -91,6 +84,12 @@ int lastFaceDstBlend = -1;
 
 bool useCulling = true;
 bool trExhausted = false;
+
+#if defined(KOS_HARDWARE_RENDERER)
+// PVR header/vertex buffer for TR list DMA rendering
+#define TR_VERTBUF_SIZE (256 * 1024)
+static uint8_t __attribute__((aligned(32))) trDmaBuffer[TR_VERTBUF_SIZE];
+#endif
 
 bool IsTrExhausted(void) {
     return trExhausted;
