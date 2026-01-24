@@ -95,10 +95,14 @@ bool IsTrExhausted(void) {
     return trExhausted;
 }
 
-// this is submitting `INK_SUB` textured poly
+// this is the amount of TR data submitted for an `INK_SUB` textured poly
 #define TR_WORSTCASE_SUBMISSION (25*32)
 
+// safe wrapper for vertbuf_tail, fails if a worst-case submission
+// would exceed usable buffer size
+// the actual pvr api call does not fail in this case
 void *safe_pvr_vertbuf_tail(int list) {
+    // TR_VERTBUF_SIZE / 2 because DMA is double-buffered
     if ((vbPos + TR_WORSTCASE_SUBMISSION) > (TR_VERTBUF_SIZE / 2)) {
 #if RSDK_DEBUG
         printf("tr vertbuf has been exhausted\n");
@@ -110,11 +114,15 @@ void *safe_pvr_vertbuf_tail(int list) {
     return pvr_vertbuf_tail(list);
 }
 
+// safe wrapper for vertbuf_written, fails if the current submission
+// would exceed usable buffer size
+// avoid buffer overrun or possible assertion failure
 void safe_pvr_vertbuf_written(int list, size_t amount) {
     if (IsTrExhausted()) {
         return;
     }
 
+    // TR_VERTBUF_SIZE / 2 because DMA is double-buffered
     if ((vbPos + amount) > (TR_VERTBUF_SIZE / 2)) {
 #if RSDK_DEBUG
         printf("tr vertbuf has been exhausted\n");
