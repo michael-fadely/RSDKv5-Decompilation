@@ -1,4 +1,5 @@
-#!/usr/bin/env bash
+#!/bin/bash
+
 set -euo pipefail
 
 orig_dir=$(pwd)
@@ -16,8 +17,6 @@ for in_file in *.ogg *.OGG; do
     -ar 22050 -ac 2 \
     -f s8 \
     "$out_file"
-
-  echo "Wrote: $out_file"
 done
 
 cd "$orig_dir"

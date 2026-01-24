@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/bin/bash
 
 orig_dir=$(pwd)
 
@@ -19,7 +19,5 @@ while IFS= read -r -d '' file; do
             ;;
     esac
 done
-
-echo "Done."
 
 cd "$orig_dir"

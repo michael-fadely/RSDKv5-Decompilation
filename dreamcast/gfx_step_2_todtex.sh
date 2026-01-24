@@ -1,7 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 
 orig_dir=$(pwd)
-#trap 'cd "$orig_dir"' EXIT
 
 cd "$1"/Sprites
 
@@ -30,8 +29,6 @@ for dir in Global TMZ1 UI; do
     [ -e "$file" ] || continue
 
     base="${file%.png}"
-
-    echo "Converting: $file"
 
     "$PVRTXEX" \
         -i "$file" \
