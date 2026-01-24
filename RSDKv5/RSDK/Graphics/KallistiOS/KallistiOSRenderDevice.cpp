@@ -7,10 +7,8 @@
 #define KOS_HARDWARE_RENDERER
 
 #if defined(KOS_HARDWARE_RENDERER)
-extern "C" {
 #define TR_VERTBUF_SIZE (256 * 1024)
-    uint8_t __attribute__((aligned(32))) tr_buf[TR_VERTBUF_SIZE];
-};
+static uint8_t __attribute__((aligned(32))) tr_buf[TR_VERTBUF_SIZE];
 #endif
 
 struct KOSTexture
