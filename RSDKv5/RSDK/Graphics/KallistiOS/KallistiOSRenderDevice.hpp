@@ -134,9 +134,6 @@ public:
     static void PrepareLinePolyTR(int inkEffect);
     static void DrawLinePolyTR(int x1, int y1, int x2, int y2, int color);
 
-    static void PrepareRotoPoly(int inkEffect, pvr_ptr_t texture);
-    static void DrawRotoPoly(int x, int y, int w, int h, float u, float v);
-
     static void PrepareFacePolyPT(int inkEffect);
     static void DrawFacePolyPT(
             Vector2 *vertices, int32 vertCount, 

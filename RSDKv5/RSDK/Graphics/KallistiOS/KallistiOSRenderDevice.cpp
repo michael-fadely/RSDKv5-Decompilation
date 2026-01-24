@@ -577,7 +577,6 @@ void RenderDevice::DisableCulling() {
     useCulling = false;
 }
 
-
 // static
 float RenderDevice::GetDepth() {
 #if defined(KOS_HARDWARE_RENDERER)
@@ -762,7 +761,6 @@ bool RenderDevice::PreparePrimitive(int primitiveType,
 void RenderDevice::PrepareTexturedQuadPT(int32 y, const GFXSurface* surface) {
     const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
     const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
-    
     if (PreparePrimitive(PrimitiveTypes_TexturedQuadPT,
                          gamePaletteBankIndex,
                          pvrPaletteBankIndex,
@@ -872,8 +870,8 @@ void RenderDevice::DrawTexturedQuadPT(
     pvr_dr_commit(spr1);
 
     /* NOTE: Disgusting manual pointer offsetting is due to the fact that KOS's
-            PVR DR API only returns `pvr_vertex_t*,` even though it works fine with
-            all geometry types. */
+             PVR DR API only returns `pvr_vertex_t*,` even though it works fine with
+             all geometry types. */
     // Second 32 bytes of a 'pvr_sprite_txr_t' structure mapped to the second SQ.
     auto *spr2 = reinterpret_cast<pvr_sprite_txr_t *>(reinterpret_cast<uintptr_t>(pvr_dr_target(drState)) - 32);
     spr2->cy = y1;
@@ -934,7 +932,6 @@ void RenderDevice::DrawTexturedQuadTR(
     safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_sprite_txr_t));
 }
 
-// JN64 TODO
 // static
 void RenderDevice::DrawTexturedQuadEx(
         const Vector2& upperLeft, const Vector2& upperRight,
@@ -1216,6 +1213,9 @@ void RenderDevice::DrawTexturedPolyPT(
         rotate(verts[3]);
     }
 
+    /* This is the routine called by `pvr_prim()` under-the-hood when
+       the current list does not use DMA transfers and PVR DR mode is
+       enabled. We can call this directly to shave off a few cycles. */
     sq_fast_cpy(SQ_MASK_DEST(PVR_TA_INPUT), verts, 4);
 }
 
@@ -1579,9 +1579,6 @@ void RenderDevice::DrawColoredPolyPT(
              all verts, since both of the 2 SQs already have the value. */
     // bottom left
     vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
-    vert->flags = PVR_CMD_VERTEX;
-    vert->argb = color;
-    vert->z = z;
     vert->x = x0;
     vert->y = y1;
     pvr_dr_commit(vert);
@@ -1589,8 +1586,6 @@ void RenderDevice::DrawColoredPolyPT(
     // bottom right
     vert = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState));
     vert->flags = PVR_CMD_VERTEX_EOL;
-    vert->argb = color;
-    vert->z = z;
     vert->x = x1;
     vert->y = y1;
     pvr_dr_commit(vert);
@@ -1777,7 +1772,6 @@ void RenderDevice::PrepareLinePolyTR(int inkEffect) {
     }
 }
 
-
 #define SET_LINEPOLY_VERT_DR(_v, _x, _y, _z, _end)    { \
     (_v) = reinterpret_cast<pvr_vertex_t *>(pvr_dr_target(drState)); \
     (_v)->flags = (_end) ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX; \
@@ -1786,14 +1780,6 @@ void RenderDevice::PrepareLinePolyTR(int inkEffect) {
     (_v)->z = (_z); \
     (_v)->argb = color; \
     pvr_dr_commit((_v)); \
-}
-
-#define SET_LINEPOLY_VERT_DMA(_v, _x, _y, _z, _end)    { \
-    (_v)->flags = (_end) ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX; \
-    (_v)->x = (_x); \
-    (_v)->y = (_y); \
-    (_v)->z = (_z); \
-    (_v)++->argb = color; \
 }
 
 // static
@@ -1832,6 +1818,13 @@ void RenderDevice::DrawLinePolyPT(int lx1, int ly1, int lx2, int ly2, int color)
     SET_LINEPOLY_VERT_DR(vert, x2 - nx, y2 - ny, z, 1);
 }
 
+#define SET_LINEPOLY_VERT_DMA(_v, _x, _y, _z, _end)    { \
+    (_v)->flags = (_end) ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX; \
+    (_v)->x = (_x); \
+    (_v)->y = (_y); \
+    (_v)->z = (_z); \
+    (_v)++->argb = color; \
+}
 
 // static
 void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
@@ -1900,21 +1893,6 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
 
         lastLineInkEffect = 0xffffffff;
     }
-}
-
-// static
-void RenderDevice::PrepareRotoPoly(int inkEffect, pvr_ptr_t texture) {
-#if 0
-    lastPrimitiveWasConsumed = false;
-    lastPrimitiveType = PrimitiveTypes_Roto;
-#endif
-}
-
-// static
-void RenderDevice::DrawRotoPoly(int x, int y, int w, int h, float u, float v) {
-#if 0
-    lastPrimitiveWasConsumed = true;
-#endif
 }
 
 // static
@@ -1987,17 +1965,6 @@ void RenderDevice::PrepareFacePolyTR(int inkEffect) {
             pvr_dr_commit((_v)); \
 }
 
-#define SET_FACEPOLY_VERT_DMA(_v, _idx, _z, _end)   { \
-            (_v)->flags = (_end) ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX; \
-            if (use_fc) \
-                (_v)->argb = ualpha | faceColor; \
-            else \
-               (_v)->argb = ualpha | colors[(_idx)]; \
-            (_v)->x = static_cast<float>(vertices[(_idx)].x) * scale_x; \
-            (_v)->y = static_cast<float>(vertices[(_idx)].y) * scale_y; \
-            (_v)++->z = (_z); \
-}
-
 // static
 void RenderDevice::DrawFacePolyPT(
         Vector2 *vertices, int32 vertCount, int32 faceColor, int32 alpha, uint32 *colors
@@ -2042,6 +2009,17 @@ void RenderDevice::DrawFacePolyPT(
         SET_FACEPOLY_VERT_DR(vert, 3, z, 0);
         SET_FACEPOLY_VERT_DR(vert, 2, z, 1);
     }
+}
+
+#define SET_FACEPOLY_VERT_DMA(_v, _idx, _z, _end)   { \
+            (_v)->flags = (_end) ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX; \
+            if (use_fc) \
+                (_v)->argb = ualpha | faceColor; \
+            else \
+               (_v)->argb = ualpha | colors[(_idx)]; \
+            (_v)->x = static_cast<float>(vertices[(_idx)].x) * scale_x; \
+            (_v)->y = static_cast<float>(vertices[(_idx)].y) * scale_y; \
+            (_v)++->z = (_z); \
 }
 
 // static
