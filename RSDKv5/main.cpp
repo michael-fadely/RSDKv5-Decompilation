@@ -84,7 +84,6 @@ mutex_t io_lock;
 #endif
 int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
 {
-    mutex_init(&io_lock, MUTEX_TYPE_NORMAL);
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 #if RSDK_DEBUG
     gdb_init();
@@ -93,6 +92,9 @@ int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
         //exit(EXIT_SUCCESS);
         arch_abort();
     });
+
+    // all filesystem accesses use this lock
+    mutex_init(&io_lock, MUTEX_TYPE_NORMAL);
 #endif
 
     RSDK::linkGameLogic = (RSDK::LogicLinkHandle)linkLogicPtr;
