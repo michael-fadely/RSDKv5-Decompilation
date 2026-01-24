@@ -3164,7 +3164,6 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
                 return;
             break;
     }
-
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     GFXSurface *surface = &gfxSurface[sheetID];
 
