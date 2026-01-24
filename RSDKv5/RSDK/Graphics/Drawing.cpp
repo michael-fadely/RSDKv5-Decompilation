@@ -278,13 +278,13 @@ void RSDK::GenerateBlendLookupTable()
     }
 #endif
 
-#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
+    #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
     for (int32 c = 0; c < 0x100; ++c) {
         rgb32To16_R[c] = (c & 0xFFF8) << 8;
         rgb32To16_G[c] = (c & 0xFFFC) << 3;
         rgb32To16_B[c] = c >> 3;
     }
-#endif
+    #endif
 }
 
 void RSDK::InitSystemSurfaces()
