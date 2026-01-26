@@ -3,14 +3,24 @@
 
 namespace RSDK
 {
+#ifndef _arch_dreamcast
 #define STORAGE_ENTRY_COUNT (0x1000)
+#else
+#define STORAGE_ENTRY_COUNT (0x800)
+#endif
 
 enum StorageDataSets {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    DATASET_STG = 0,
+    DATASET_STR = 1,
+    DATASET_TMP = 2,
+#else
     DATASET_STG = 0,
     DATASET_MUS = 1,
     DATASET_SFX = 2,
     DATASET_STR = 3,
     DATASET_TMP = 4,
+#endif
     DATASET_MAX, // used to signify limits
 };
 

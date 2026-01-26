@@ -903,8 +903,199 @@ bool32 RSDK::ImageTGA::Load(const char *fileName, bool32 loadHeader)
 }
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
+    uint16 id = -1;
+    size_t vqTexCompressedSize;
+    // filename of the sprite sheet, converted to texconv format with VQ compression, ARGB1555
+    FileIO *vqTexFile;
+    // width and height of sprite sheet, from texconv file header
+    uint16 vqTexWidth;
+    uint16 vqTexHeight;
+
+    char fullFilePath[0x100];
+    sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Sprites/%s", filename);
+
+    if (!scope || scope > SCOPE_STAGE)
+        return -1;
+
+    RETRO_HASH_MD5(hash);
+    GEN_HASH_MD5(filename, hash);
+
+    for (int32 i = 0; i < SURFACE_COUNT; ++i) {
+        if (HASH_MATCH_MD5(gfxSurface[i].hash, hash)) {
+            return i;
+        }
+    }
+
+    for (id = 0; id < SURFACE_COUNT; ++id) {
+        if (gfxSurface[id].scope == SCOPE_NONE)
+            break;
+    }
+
+    if (id >= SURFACE_COUNT)
+        return -1;
+
+    GFXSurface *surface = &gfxSurface[id];
+
+    sprintf_s(fullFilePath, sizeof(fullFilePath), "%s/Data/Sprites/%s", KOS_USER_DIR, filename);
+
+    vqTexFile = fOpen(fullFilePath, "r");
+
+    if (vqTexFile == NULL) {
+        printf("couldnt open %s\n", filename);
+        return -1;
+    }
+
+    surface->isVq = 1;
+
+    memcpy(surface->hash, hash, 4 * sizeof(int32));
+
+    int32 w = surface->width;
+    if (w > 1) {
+        int32 ls = 0;
+        do {
+            w >>= 1;
+            ++ls;
+        } while (w > 1);
+        surface->lineSize = ls;
+    }
+
+    int seekRv;
+    size_t readRv;
+
+    // skip magic value at start of header
+#define SKIP_SEEK_TO_TEXTURE_WIDTH 4
+    seekRv = fSeek(vqTexFile, SKIP_SEEK_TO_TEXTURE_WIDTH, SEEK_SET);
+    if (seekRv != 0) {
+        fClose(vqTexFile);
+        return -1;
+    }
+
+    // read texture width from header
+    readRv = fRead(&vqTexWidth, 1, sizeof(uint16), vqTexFile);
+    if (readRv < sizeof(uint16)) {
+        fClose(vqTexFile);
+        return -1;
+    }
+
+    // read texture height from header
+    readRv = fRead(&vqTexHeight, 1, sizeof(uint16), vqTexFile);
+    if (readRv < sizeof(uint16)) {
+        fClose(vqTexFile);
+        return -1;
+    }
+
+    // skip other header bytes until we get to compressed texture size
+#define SKIP_SEEK_TO_TEXTURE_SIZE 12
+    seekRv = fSeek(vqTexFile, SKIP_SEEK_TO_TEXTURE_SIZE, SEEK_SET);
+    if (seekRv != 0) {
+        fClose(vqTexFile);
+        return -1;
+    }
+
+    // read compressed texture data size from header
+    readRv = fRead(&vqTexCompressedSize, 1, sizeof(size_t), vqTexFile);
+    if (readRv < sizeof(size_t)) {
+        fClose(vqTexFile);
+        return -1;
+    }
+
+    // skip remainder of header
+#define SKIP_SEEK_TO_TEXTURE_DATA 16
+    seekRv = fSeek(vqTexFile, SKIP_SEEK_TO_TEXTURE_DATA, SEEK_SET);
+    if (seekRv != 0) {
+        fClose(vqTexFile);
+        return -1;
+    }
+
+    surface->width = vqTexWidth;
+    surface->height = vqTexHeight;
+
+    uint32 pvrMemBefore;
+    uint32 pvrMemAfter;
+
+    const auto printPvrMem = [](uint32 before, uint32 after) {
+        auto change = static_cast<int32>(after - before);
+        printf("[pvr] memory: %lu -> %lu; change: %ld\n",
+               before, after, change);
+    };
+
+    if (surface->texture != nullptr) {
+        pvrMemBefore = pvr_mem_available();
+
+        pvr_mem_free(surface->texture);
+        surface->texture = nullptr;
+
+        pvrMemAfter = pvr_mem_available();
+
+        printf("[pvr] [OK] [Data/Sprites/%s] freed existing surface texture for use.\n",
+               filename);
+
+        printPvrMem(pvrMemBefore, pvrMemAfter);
+    }
+
+    if (surface->pixels != NULL) {
+        RemoveStorageEntry((void**)&surface->pixels);
+    }
+
+    AllocateStorage((void **)&surface->pixels, vqTexCompressedSize, DATASET_STG, false);
+
+    if (surface->pixels == NULL) {
+        printf("[pvr] [NG] [Data/Sprites/%s] AllocateStorage failed!!!\n", filename);
+        fClose(vqTexFile);
+        return -1;
+    } else {
+        // get the compressed texture data from the file
+        readRv = fRead(surface->pixels, 1, vqTexCompressedSize, vqTexFile);
+        if (readRv < vqTexCompressedSize) {
+            fClose(vqTexFile);
+            return -1;
+        }
+        pvrMemBefore = pvr_mem_available();
+
+        surface->texture = pvr_mem_malloc(static_cast<size_t>(vqTexCompressedSize));
+        pvrMemAfter = pvr_mem_available();
+
+        if (surface->texture == nullptr) {
+            printf("[pvr] [NG] [Data/Sprites/%s] pvr_mem_malloc(%ld) failed!!!\n",
+                    filename, vqTexCompressedSize);
+            printPvrMem(pvrMemBefore, pvrMemAfter);
+            fClose(vqTexFile);
+            return -1;
+        } else {
+            printf("[pvr] [OK] [Data/Sprites/%s] pvr_mem_malloc(%ld) succeeded.\n",
+                   filename, vqTexCompressedSize);
+            printPvrMem(pvrMemBefore, pvrMemAfter);
+                pvr_txr_load(
+                surface->pixels,
+                surface->texture,
+                vqTexCompressedSize
+            );
+            surface->scope = scope;
+        }
+    }
+
+    RemoveStorageEntry((void **)&surface->pixels);
+    surface->pixels = NULL;
+
+    fClose(vqTexFile);
+
+    return id;
+}
+#endif
+
 uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+#if DO_240
+    if ((strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("UI/", filename, 3) == 0)) {
+#else
+    if ((strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("Global/", filename, 7) == 0) || (strncmp("UI/", filename, 3) == 0)) {
+#endif
+        return LoadVQSpriteSheet(filename, scope);
+    }
+#endif
     char fullFilePath[0x100];
     sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Sprites/%s", filename);
 

@@ -377,6 +377,7 @@ void RSDK::DevMenu_MainMenu()
     DrawRectangle(currentScreen->center.x - 39, y + 1, stgUsed, 6, 0xF0F0F0, 0xFF, INK_NONE, true);
     DrawDevString("STG", currentScreen->center.x - 64, y, 0, 0xF0F080);
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     // Music Storage
     int32 musUsed = (int32)((sizeof(int32) * dataStorage[DATASET_MUS].usedStorage) / (float)dataStorage[DATASET_MUS].storageLimit * 126.0);
     y += 10;
@@ -390,6 +391,14 @@ void RSDK::DevMenu_MainMenu()
     DrawRectangle(currentScreen->center.x - 40, y, 0x80, 0x08, 0x80, 0xFF, INK_NONE, true);
     DrawRectangle(currentScreen->center.x - 39, y + 1, sfxUsed, 6, 0xF0F0F0, 0xFF, INK_NONE, true);
     DrawDevString("SFX", currentScreen->center.x - 64, y, 0, 0xF0F080);
+#else
+    // VRAM
+    int32 pvrUsed = (int32)((((float)(1048576*8) - (float)pvr_mem_available()) / (float)(1048576*8)) * 126.0);
+    y += 10;
+    DrawRectangle(currentScreen->center.x - 40, y, 0x80, 0x08, 0x80, 0xFF, INK_NONE, true);
+    DrawRectangle(currentScreen->center.x - 39, y + 1, pvrUsed  , 6, 0xF0F0F0, 0xFF, INK_NONE, true);
+    DrawDevString("PVR", currentScreen->center.x - 64, y, 0, 0xF0F080);
+#endif
 
     // String Storage
     int32 strUsed = (int32)((sizeof(int32) * dataStorage[DATASET_STR].usedStorage) / (float)dataStorage[DATASET_STR].storageLimit * 126.0);
