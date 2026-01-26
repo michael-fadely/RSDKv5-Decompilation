@@ -10,12 +10,25 @@ namespace RSDK
 #define MIX_BUFFER_SIZE (0x800)
 #define SAMPLE_FORMAT   float
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define AUDIO_FREQUENCY (22050)
+#else
 #define AUDIO_FREQUENCY (44100)
+#endif
 #define AUDIO_CHANNELS  (2)
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include <kos.h>
+#endif
 
 struct SFXInfo {
     RETRO_HASH_MD5(hash);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    sfxhnd_t handle;
+    uint32 ratediv;
+#else
     float *buffer;
+#endif
     size_t length;
     int32 playCount;
     uint8 maxConcurrentPlays;
@@ -93,9 +106,20 @@ inline uint16 GetSfx(const char *sfxName)
     GEN_HASH_MD5(sfxName, hash);
 
     for (int32 s = 0; s < SFX_COUNT; ++s) {
-        if (HASH_MATCH_MD5(sfxList[s].hash, hash))
+        if (HASH_MATCH_MD5(sfxList[s].hash, hash)) {
             return s;
+        }
     }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    LoadSfx((char*)sfxName, 1, 1);
+
+    for (int32 s = 0; s < SFX_COUNT; ++s) {
+        if (HASH_MATCH_MD5(sfxList[s].hash, hash)) {
+            return s;
+        }
+    }
+#endif
 
     return -1;
 }
@@ -125,7 +149,9 @@ inline void StopAllSfx()
 #if !RETRO_USE_ORIGINAL_CODE
     LockAudioDevice();
 #endif
-
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    stream_destroy();
+#endif
     for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
         if (channels[i].state == CHANNEL_SFX) {
             MEM_ZERO(channels[i]);
