@@ -19,7 +19,7 @@ extern "C" {
                                                         ({ \
                                                         FileIO *openRes; \
                                                         mutex_lock(&io_lock); \
-                                                        openRes = fopen(path, mode); \
+                                                        openRes = fopen((path), (mode)); \
                                                         mutex_unlock(&io_lock); \
                                                         openRes; \
                                                         })
@@ -27,7 +27,7 @@ extern "C" {
                                                         ({ \
                                                         size_t readRes; \
                                                         mutex_lock(&io_lock); \
-                                                        readRes = fread(buffer, elementSize, elementCount, file); \
+                                                        readRes = fread((buffer), (elementSize), (elementCount), (file)); \
                                                         mutex_unlock(&io_lock); \
                                                         readRes; \
                                                         })
@@ -35,7 +35,7 @@ extern "C" {
                                                         ({ \
                                                         int seekRes; \
                                                         mutex_lock(&io_lock); \
-                                                        seekRes = fseek(file, offset, whence); \
+                                                        seekRes = fseek((file), (offset), (whence)); \
                                                         mutex_unlock(&io_lock); \
                                                         seekRes; \
                                                         })
@@ -43,7 +43,7 @@ extern "C" {
                                                         ({ \
                                                         long tellRes; \
                                                         mutex_lock(&io_lock); \
-                                                        tellRes = ftell(file); \
+                                                        tellRes = ftell((file)); \
                                                         mutex_unlock(&io_lock); \
                                                         tellRes; \
                                                         })
@@ -51,7 +51,7 @@ extern "C" {
                                                         ({ \
                                                         int closeRes; \
                                                         mutex_lock(&io_lock); \
-                                                        closeRes = fclose(file); \
+                                                        closeRes = fclose((file)); \
                                                         mutex_unlock(&io_lock); \
                                                         closeRes; \
                                                         })
@@ -59,11 +59,18 @@ extern "C" {
                                                         ({ \
                                                         size_t writeRes; \
                                                         mutex_lock(&io_lock); \
-                                                        writeRes = fwrite(buffer, elementSize, elementCount, file); \
+                                                        writeRes = fwrite((buffer), (elementSize), (elementCount), (file)); \
                                                         mutex_unlock(&io_lock); \
                                                         writeRes; \
                                                         })
-#define fError(file)                                    ferror(file)
+#define fError(file)                                    \
+                                                        ({ \
+                                                        int errorRes; \
+                                                        mutex_lock(&io_lock); \
+                                                        errorRes = ferror((file)); \
+                                                        mutex_unlock(&io_lock); \
+                                                        errorRes; \
+                                                        })
 #else
 #define fOpen(path, mode)                               fopen(path, mode)
 #define fRead(buffer, elementSize, elementCount, file)  fread(buffer, elementSize, elementCount, file)
