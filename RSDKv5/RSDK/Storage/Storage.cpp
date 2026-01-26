@@ -88,11 +88,9 @@ bool32 RSDK::InitStorage()
 #if RETRO_PLATFORM == RETRO_KALLISTIOS  /* SAYGA DREAMCAST: Where Sonic Belongs! */
                                                                        // RAM: 32  / 16  MB
                                                                        // -----------------
-    dataStorage[DATASET_STG].storageLimit = (DBL_MEM? 4 : 4) * 1024 * 1024; // 4   / 4   MB
-    dataStorage[DATASET_MUS].storageLimit = (DBL_MEM? 4 : 0) * 1024 * 1024; // 4   / 0   MB
-    dataStorage[DATASET_SFX].storageLimit = (DBL_MEM? 2 : 0) * 1024 * 1024; // 2   / 0   MB
-    dataStorage[DATASET_STR].storageLimit = (DBL_MEM? 2 : 1) *   32 * 1024; // 64  / 32  KB
-    dataStorage[DATASET_TMP].storageLimit = (DBL_MEM? 6 : 3) * 1024 * 1024; // 6   / 3   MB
+    dataStorage[DATASET_STG].storageLimit = 400000 + (DBL_MEM? 4 : 4) * 1024 * 1024; // 4   / 4   MB
+    dataStorage[DATASET_STR].storageLimit = (DBL_MEM? 2 : 2) *  32 * 1024; // 64  / 32  KB
+    dataStorage[DATASET_TMP].storageLimit = 100000 + (DBL_MEM? 6 : 3) * 1024 * 1024; // 6   / 3   MB
                                                                      //   -----------------
 #else                                                                // Total: 16+ / 7+  MB 
                                         /* PCs AND BORING SHIT */
@@ -163,10 +161,6 @@ const char* DataSetToString(uint32 dataSet) {
     switch (dataSet) {
         case DATASET_STG:
             return "DATASET_STG";
-        case DATASET_MUS:
-            return "DATASET_MUS";
-        case DATASET_SFX:
-            return "DATASET_SFX";
         case DATASET_STR:
             return "DATASET_STR";
         case DATASET_TMP:
