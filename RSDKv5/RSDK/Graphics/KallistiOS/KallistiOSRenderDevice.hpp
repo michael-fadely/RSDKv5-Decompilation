@@ -1,5 +1,11 @@
 #pragma once
 #define KOS_HARDWARE_RENDERER
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define DO_240 0
+#define DO_24BPP 0
+#endif
+
 using ShaderEntry = ShaderEntryBase; // DCFIXME
 
 class RenderDevice : public RenderDeviceBase
@@ -45,6 +51,8 @@ public:
     // KallistiOS only!!!
     static void BeginScene();
     static void EndScene();
+    static void EnableCulling();
+    static void DisableCulling();
     static float GetDepth();
     static void SetDepth(uint32 depth);
 
@@ -52,35 +60,37 @@ public:
     static uint32 GetGamePaletteBankIndex(int32 y);
     static uint32 GameToPvrPaletteBankIndex(uint32 gamePaletteBankIndex);
     static void PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPaletteBankIndex);
+    static bool SupportedInk(int inkEffect);
     static bool InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend);
 
 private:
     static bool PreparePrimitive(int primitiveType,
                                  uint32 gamePaletteBankIndex,
                                  uint32 pvrPaletteBankIndex,
-                                 int srcBlend,
-                                 int dstBlend,
+                                 int inkEffect,
                                  pvr_ptr_t texture);
 
 public:
-    static void PrepareTexturedQuad(int32 y, const GFXSurface* surface);
-    static void DrawTexturedQuad(
+    static void PrepareTexturedQuadPT(int32 y, const GFXSurface* surface);
+    static void DrawTexturedQuadPT(
             int32 x, int32 y,
             int32 width, int32 height,
             int32 sprX0, int32 sprX1,
             int32 sprY0, int32 sprY1,
             const GFXSurface* surface
     );
-    static void DrawTexturedQuadEx(
-        const Vector2& upperLeft, const Vector2& upperRight,
-        const Vector2& lowerLeft, const Vector2& lowerRight,
-        int32 sprX0, int32 sprX1,
-        int32 sprY0, int32 sprY1,
-        const GFXSurface* surface
+
+    static void PrepareTexturedQuadTR(int32 y, const GFXSurface* surface);
+    static void DrawTexturedQuadTR(
+            int32 x, int32 y,
+            int32 width, int32 height,
+            int32 sprX0, int32 sprX1,
+            int32 sprY0, int32 sprY1,
+            const GFXSurface* surface
     );
 
-    static void PrepareTexturedPoly(int32 y, int srcBlend, int dstBlend, const GFXSurface* surface);
-    static void DrawTexturedPoly(
+    static void PrepareTexturedPolyPT(int32 y, int inkEffect, const GFXSurface* surface);
+    static void DrawTexturedPolyPT(
             int32 x, int32 y,
             int32 ox, int32 oy,
             int32 width, int32 height,
@@ -91,11 +101,59 @@ public:
             const GFXSurface *surface
     );
 
-    static void PrepareColoredPoly(int32 y, int srcBlend, int dstBlend);
-    static void DrawColoredPoly(
+    static void PrepareTexturedPolyTR(int32 y, int inkEffect, const GFXSurface* surface);
+    static void DrawTexturedPolyTR(
+            int32 x, int32 y,
+            int32 ox, int32 oy,
+            int32 width, int32 height,
+            int32 sprX0, int32 sprX1,
+            int32 sprY0, int32 sprY1,
+            int32 rotation,
+            int32 alpha,
+            const GFXSurface *surface
+    );
+
+    static void PrepareColoredPolyPT(int32 y, int inkEffect);
+    static void DrawColoredPolyPT(
             int32 x, int32 y,
             int32 width, int32 height,
             uint32 color
+    );
+
+    static void PrepareColoredPolyTR(int32 y, int inkEffect);
+    static void DrawColoredPolyTR(
+            int32 x, int32 y,
+            int32 width, int32 height,
+            uint32 color
+    );
+
+    static void PrepareLinePolyPT(int inkEffect);
+    static void DrawLinePolyPT(int x1, int y1, int x2, int y2, int color);
+
+    static void SetLinePolyThickness(int thickness);
+    static void PrepareLinePolyTR(int inkEffect);
+    static void DrawLinePolyTR(int x1, int y1, int x2, int y2, int color);
+
+    static void PrepareFacePolyPT(int inkEffect);
+    static void DrawFacePolyPT(
+            Vector2 *vertices, int32 vertCount, 
+            int32 faceColor, int32 alpha, 
+            uint32 *colors
+    );
+
+    static void PrepareFacePolyTR(int inkEffect);
+    static void DrawFacePolyTR(
+            Vector2 *vertices, int32 vertCount, 
+            int32 faceColor, int32 alpha, 
+            uint32 *colors
+    );
+
+    static void DrawTexturedQuadPTEx(
+        const Vector2& upperLeft, const Vector2& upperRight,
+        const Vector2& lowerLeft, const Vector2& lowerRight,
+        int32 sprX0, int32 sprX1,
+        int32 sprY0, int32 sprY1,
+        const GFXSurface* surface
     );
 #endif
 

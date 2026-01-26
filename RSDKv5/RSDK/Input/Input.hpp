@@ -1,11 +1,21 @@
 #ifndef INPUT_H
 #define INPUT_H
 
+#ifdef _arch_dreamcast
+#include <functional>
+#include <array>
+#include <string>
+#endif
+
 namespace RSDK
 {
 
 #define PLAYER_COUNT      (4)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define INPUTDEVICE_COUNT (4)
+#else
 #define INPUTDEVICE_COUNT (0x10)
+#endif
 
 #define INPUT_DEADZONE (0.3)
 
