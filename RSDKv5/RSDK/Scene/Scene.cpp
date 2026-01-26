@@ -136,7 +136,9 @@ void RSDK::LoadSceneFolder()
 
     // Clear stage storage
     DefragmentAndGarbageCollectStorage(DATASET_STG);
-    DefragmentAndGarbageCollectStorage(DATASET_SFX);
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
+     DefragmentAndGarbageCollectStorage(DATASET_SFX);
+#endif
 
     for (int32 s = 0; s < SCREEN_COUNT; ++s) {
         screens[s].position.x = 0;
@@ -370,6 +372,20 @@ void RSDK::LoadSceneAssets()
         */
 
         // Skip over Metadata, since we won't be using it at all in-game
+        //uint8 unknown1 = ReadInt8(&info); // usually 3, sometimes 4, LRZ1 (old) is 2
+        // bg color
+        //uint8 r                = ReadInt8(&info);
+        //uint8 g                = ReadInt8(&info);
+        //uint8 b                = ReadInt8(&info);
+        //uint8 a                = ReadInt8(&info);
+        //color backgroundColor1 = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+
+        //b                      = ReadInt8(&info);
+        //g                      = ReadInt8(&info);
+        //r                      = ReadInt8(&info);
+        //a                      = ReadInt8(&info);
+        //color backgroundColor2 = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+        //Seek_Cur(&info, 0x10 - 4);
         Seek_Cur(&info, 0x10);
         uint8 strLen = ReadInt8(&info);
         Seek_Cur(&info, strLen + 1);
@@ -1057,6 +1073,7 @@ void RSDK::LoadStageGIF(char *filepath)
         }
 
         if (surface->texture != nullptr) {
+            surface->isVq = 0;
             // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
             // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h)
             pvr_txr_load_ex(
@@ -1430,7 +1447,7 @@ void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
         sprY1 += TILE_SIZE;
     }
 
-    RenderDevice::DrawTexturedQuad(
+    RenderDevice::DrawTexturedQuadPT(
         screenX, screenY,
         TILE_SIZE, TILE_SIZE,
         sprX0, sprX1,
@@ -1468,7 +1485,7 @@ void DrawByLayoutEx(uint16 layout,
         sprY1 += TILE_SIZE;
     }
 
-    RenderDevice::DrawTexturedQuadEx(
+    RenderDevice::DrawTexturedQuadPTEx(
         upperLeft, upperRight,
         lowerLeft, lowerRight,
         sprX0, sprX1,
@@ -1578,7 +1595,7 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
                 continue;
             }
 
-            RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
+            RenderDevice::PrepareTexturedQuadPT(prepY, prepSurface);
 
             const Vector2 screenUpperLeft {
                 screenUpperX,
@@ -1906,6 +1923,9 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
 }
 void RSDK::DrawLayerRotozoom(TileLayer *layer)
 {
+#if defined(KOS_HARDWARE_RENDERER)
+    RenderDevice::EnableCulling();
+#endif
     // DCTODO: DrawLayerRotozoom
     // (using early return so I can still statically analyze stuff!)
     return;
@@ -1981,7 +2001,7 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
 
             for (int32 screenX = currentScreen->clipBound_X1 - offsetX; screenX < currentScreen->clipBound_X2; screenX += TILE_SIZE) {
                 if (*layout != 0xFFFF) {
-                    RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
+                    RenderDevice::PrepareTexturedQuadPT(prepY, prepSurface);
                     DrawByLayout(*layout, screenX, screenY);
                 }
 
