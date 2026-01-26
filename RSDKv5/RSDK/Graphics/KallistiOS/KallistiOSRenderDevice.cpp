@@ -144,7 +144,7 @@ void draw_one_textured_poly(const Vector2& screenSize, const KOSTexture& kost) {
     pvr_vertex_t vert;
 
     vert.flags = PVR_CMD_VERTEX;
-    vert.argb = 0xffffffff;
+    vert.argb = 0xFFFFFFFF;
     vert.oargb = 0;
 
     // top left
@@ -1143,7 +1143,7 @@ void RenderDevice::DrawTexturedPolyPT(
     const float v0 = shz_div_posf(sprY0, surface->height);
     const float u1 = shz_div_posf(sprX1, surface->width);
     const float v1 = shz_div_posf(sprY1, surface->height);
-    const uint32 argb = 0x00ffffffu | (alpha << 24);
+    const uint32 argb = 0x00FFFFFFu | (alpha << 24);
 
     /* Since we have to potentially modify the vertex stream later on to apply
        rotation to it, we're better off constructing it in RAM rather than 
@@ -1251,7 +1251,7 @@ void RenderDevice::DrawTexturedPolyTR(
     const float v0 = shz_div_posf(sprY0, surface->height);
     const float u1 = shz_div_posf(sprX1, surface->width);
     const float v1 = shz_div_posf(sprY1, surface->height);
-    const uint32 argb = 0x00ffffffu | (alpha << 24);
+    const uint32 argb = 0x00FFFFFFu | (alpha << 24);
 
     /* Since we have to potentially modify the vertex stream later on to apply
        rotation to it, we're better off constructing it in RAM rather than 
@@ -1370,7 +1370,7 @@ void RenderDevice::DrawTexturedPolyTR(
             pvr_vertex_t *newverts = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
             for (int i = 0; i < 4; i++) {
-                newverts[i].argb = 0x00ffffff;
+                newverts[i].argb = 0x00FFFFFF;
             }
             safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
         }
@@ -1392,7 +1392,7 @@ void RenderDevice::DrawTexturedPolyTR(
             pvr_vertex_t *newverts = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
             for (int i = 0; i < 4; i++) {
-                newverts[i].argb = 0xffffffff;
+                newverts[i].argb = 0xFFFFFFFF;
             }
             safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
         }
@@ -1440,7 +1440,7 @@ void RenderDevice::DrawTexturedPolyTR(
             pvr_vertex_t *newverts = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
             for (int i = 0; i < 4; i++) {
-                newverts[i].argb = 0xffffffff;
+                newverts[i].argb = 0xFFFFFFFF;
             }
             safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
         }
@@ -1466,12 +1466,12 @@ void RenderDevice::DrawTexturedPolyTR(
             pvr_vertex_t *newverts = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
             for (int i = 0; i < 4; i++) {
-                newverts[i].argb = 0xffffffff;
+                newverts[i].argb = 0xFFFFFFFF;
             }
             safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
         }
 
-        lastInkEffect = 0xffffffff;
+        lastInkEffect = 0xFFFFFFFF;
     }
 }
 
@@ -1622,9 +1622,9 @@ void RenderDevice::DrawColoredPolyTR(
     // this is an otherwise invalid `INK_` value
     if (lastInkEffect & 0x80000000) {
         // use a semi-transparent black for the poly
-        color = 0x7f000000;
+        color = 0x7F000000;
         // and force the next draw to reset header
-        lastInkEffect = 0xffffffff;
+        lastInkEffect = 0xFFFFFFFF;
     }
 
     if (lastInkEffect != INK_TINT) {
@@ -1675,7 +1675,7 @@ void RenderDevice::DrawColoredPolyTR(
         pvr_poly_compile(hdr_ptr, &context);
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
-        color = 0xffffffff;
+        color = 0xFFFFFFFF;
 
         pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         // top left
@@ -1711,7 +1711,7 @@ void RenderDevice::DrawColoredPolyTR(
 
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
 
-        lastInkEffect = 0xffffffff;
+        lastInkEffect = 0xFFFFFFFF;
     }
 }
 
@@ -1881,7 +1881,7 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
         pvr_poly_compile(hdr_ptr, &context);
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
-        color = 0xffffffff;
+        color = 0xFFFFFFFF;
 
         pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         SET_LINEPOLY_VERT_DMA(vert, x1 + nx, y1 + ny, z, 0);
@@ -1891,7 +1891,7 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
 
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
 
-        lastLineInkEffect = 0xffffffff;
+        lastLineInkEffect = 0xFFFFFFFF;
     }
 }
 
@@ -1986,7 +1986,7 @@ void RenderDevice::DrawFacePolyPT(
 
     if (vertCount == 3) {
         // fix the rendering of pause menu yellow right triangle during special stages
-        if (use_fc && ((faceColor & 0x00FFFFFF) == 0xF0D808)) {
+        if (use_fc && ((faceColor & 0x00FFFFFF) == 0x00F0D808)) {
             pvr_poly_cxt_t context;
             pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
             context.gen.alpha = 1;
@@ -1996,7 +1996,7 @@ void RenderDevice::DrawFacePolyPT(
             pvr_poly_compile(header, &context);
             pvr_dr_commit(header);
 
-            lastFaceInkEffect == 0xffffffff;
+            lastFaceInkEffect == 0xFFFFFFFF;
         }
 
         SET_FACEPOLY_VERT_DR(vert, 0, z, 0);
@@ -2073,8 +2073,8 @@ void RenderDevice::DrawFacePolyTR(
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
         pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         use_fc = 1;
-        faceColor = 0x00ffffff;
-        ualpha = 0xff000000;
+        faceColor = 0x00FFFFFF;
+        ualpha = 0xFF000000;
 
         if (vertCount == 3) {
             SET_FACEPOLY_VERT_DMA(vert, 0, z, 0);
@@ -2089,6 +2089,6 @@ void RenderDevice::DrawFacePolyTR(
 
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, vertCount * sizeof(pvr_vertex_t));
 
-        lastFaceInkEffect = 0xffffffff;
+        lastFaceInkEffect = 0xFFFFFFFF;
     }
 }
