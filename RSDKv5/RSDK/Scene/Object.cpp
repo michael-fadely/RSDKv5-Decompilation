@@ -722,6 +722,9 @@ void RSDK::ProcessFrozenObjects()
 void RSDK::ProcessObjectDrawLists()
 {
     if (sceneInfo.state != ENGINESTATE_LOAD && sceneInfo.state != (ENGINESTATE_LOAD | ENGINESTATE_STEPOVER)) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        RenderDevice::BeginScene();
+#endif
         for (int32 s = 0; s < videoSettings.screenCount; ++s) {
             currentScreen             = &screens[s];
             sceneInfo.currentScreenID = s;
@@ -1003,6 +1006,9 @@ void RSDK::ProcessObjectDrawLists()
             currentScreen++;
             sceneInfo.currentScreenID++;
         }
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        RenderDevice::EndScene();
+#endif
     }
 }
 
