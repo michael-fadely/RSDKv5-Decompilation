@@ -148,7 +148,7 @@ public:
             uint32 *colors
     );
 
-    static void DrawTexturedQuadEx(
+    static void DrawTexturedQuadPTEx(
         const Vector2& upperLeft, const Vector2& upperRight,
         const Vector2& lowerLeft, const Vector2& lowerRight,
         int32 sprX0, int32 sprX1,

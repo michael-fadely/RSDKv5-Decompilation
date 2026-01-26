@@ -1485,7 +1485,7 @@ void DrawByLayoutEx(uint16 layout,
         sprY1 += TILE_SIZE;
     }
 
-    RenderDevice::DrawTexturedQuadEx(
+    RenderDevice::DrawTexturedQuadPTEx(
         upperLeft, upperRight,
         lowerLeft, lowerRight,
         sprX0, sprX1,
