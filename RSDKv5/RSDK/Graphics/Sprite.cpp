@@ -995,8 +995,8 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
     }
 
     // read compressed texture data size from header
-    readRv = fRead(&vqTexCompressedSize, 1, sizeof(uint32), vqTexFile);
-    if (readRv < sizeof(uint32)) {
+    readRv = fRead(&vqTexCompressedSize, 1, sizeof(size_t), vqTexFile);
+    if (readRv < sizeof(size_t)) {
         fClose(vqTexFile);
         return -1;
     }
@@ -1012,12 +1012,6 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
     surface->width = vqTexWidth;
     surface->height = vqTexHeight;
 
-    if (vqTexCompressedSize < 0) {
-        printf("[pvr] [NG] [Data/Sprites/%s] texture size is negative!!! %ld * %ld = %ld\n",
-               filename, surface->width, surface->height, vqTexCompressedSize);
-        fClose(vqTexFile);
-        return -1;
-    }
     uint32 pvrMemBefore;
     uint32 pvrMemAfter;
 
