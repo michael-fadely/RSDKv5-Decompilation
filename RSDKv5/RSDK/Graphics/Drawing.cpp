@@ -622,7 +622,7 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
         const auto height = currentScreen->size.y;
 
         // color poly is only ever used for fill
-        if ((badAlpha == 255)) {
+        if ((badAlpha == 0xFF)) {
             RenderDevice::PrepareColoredPolyPT(0, INK_NONE);
             RenderDevice::DrawColoredPolyPT(0, 0, width, height, color | (badAlpha << 24));
         } else {
