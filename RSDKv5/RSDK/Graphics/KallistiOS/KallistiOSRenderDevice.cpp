@@ -222,17 +222,9 @@ bool RenderDevice::Init()
 #if defined(KOS_HARDWARE_RENDERER)
 #if DO_240
     if (vid_check_cable() != CT_VGA) {
-#if DO_24BPP
-        vid_set_mode(DM_320x240_NTSC, PM_RGB888P);
-#else
         vid_set_mode(DM_320x240_NTSC, PM_RGB565);
-#endif
     } else {
-#if DO_24BPP
-        vid_set_mode(DM_320x240_VGA, PM_RGB888P);
-#else
         vid_set_mode(DM_320x240_VGA, PM_RGB565);
-#endif
     }
 #endif
 #endif
@@ -245,6 +237,15 @@ bool RenderDevice::Init()
     else {
         printf("pvr_init success. pvr_mem_available: %lu\n", pvr_mem_available());
     }
+
+#if defined(KOS_HARDWARE_RENDERER)
+    // do not rely on compiling against a version of KOS
+    // that is new enough to include `vid_set_dithering`
+#define PM_DITHER_BIT 8
+    uint32_t cfg = PVR_GET(PVR_FB_CFG_2);
+    cfg &= ~PM_DITHER_BIT;
+    PVR_SET(PVR_FB_CFG_2, cfg);
+#endif
 
 #if defined(KOS_HARDWARE_RENDERER)
     pvr_set_vertbuf(PVR_LIST_TR_POLY, trDmaBuffer, TR_VERTBUF_SIZE);
