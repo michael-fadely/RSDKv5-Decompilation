@@ -5154,8 +5154,9 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
                         }
                     }
 #else
-                    // DCFIXME: vram_s used to avoid creating another texture
-                    uint8 *frameBuffer = (uint8_t*)&vram_s[(drawX + y * 320)*3];
+                    // DCFIXME: vram_l used to avoid creating another texture
+                    uint8_t *vram_p = (uint8_t *)vram_l;
+                    uint8 *frameBuffer = &vram_p[(drawX + (y * 320))*3];
 
                     if ((*curChar < '\t' || *curChar > '\n') && *curChar != ' ') {
                         uint8 *textStencilPtr = &devTextStencil[8 * *curChar];
@@ -5163,9 +5164,9 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
                         for (int32 h = 0; h < 8; ++h) {
                             for (int32 w = 0; w < 8; ++w) {
                                 if (((*textStencilPtr >> w) & 1) != 0) {
-                                    frameBuffer[1] = 0xFF;
-                                    frameBuffer[2] = 0xFF;
-                                    frameBuffer[3] = 0xFF;
+                                    frameBuffer[0] = (color >> 16) & 0xff;
+                                    frameBuffer[1] = (color >> 8) & 0xff;
+                                    frameBuffer[2] = color & 0xff;
                                 }
 
                                 frameBuffer = frameBuffer + 3;
