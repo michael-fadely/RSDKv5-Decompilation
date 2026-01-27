@@ -6,6 +6,10 @@ using namespace RSDK;
 #include "Legacy/ObjectLegacy.cpp"
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include <algorithm>
+#endif
+
 ObjectClass RSDK::objectClassList[OBJECT_COUNT];
 int32 RSDK::objectClassCount = 0;
 
@@ -719,6 +723,7 @@ void RSDK::ProcessFrozenObjects()
     RunModCallbacks(MODCB_ONLATEUPDATE, INT_TO_VOID(ENGINESTATE_FROZEN));
 #endif
 }
+
 void RSDK::ProcessObjectDrawLists()
 {
     if (sceneInfo.state != ENGINESTATE_LOAD && sceneInfo.state != (ENGINESTATE_LOAD | ENGINESTATE_STEPOVER)) {
@@ -750,6 +755,16 @@ void RSDK::ProcessObjectDrawLists()
                         list->hookCB();
 
                     if (list->sorted) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                        // Use the faster std::sort instead
+                        std::sort(
+                                list->entries,
+                                list->entries + list->entityCount,
+                                [&](int32 a, int32 b) {
+                                    return objectEntityList[a].zdepth > objectEntityList[b].zdepth;
+                                }
+                            );
+#else
                         for (int32 e = 0; e < list->entityCount; ++e) {
                             for (int32 i = list->entityCount - 1; i > e; --i) {
                                 int32 slot1 = list->entries[i - 1];
@@ -760,6 +775,7 @@ void RSDK::ProcessObjectDrawLists()
                                 }
                             }
                         }
+#endif
                     }
 
                     for (int32 i = 0; i < list->entityCount; ++i) {
