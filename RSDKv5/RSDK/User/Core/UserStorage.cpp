@@ -1,5 +1,9 @@
 #include "RSDK/Core/RetroEngine.hpp"
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include "RSDK/User/KallistiOS/KallistiOSStorage.hpp"
+#endif
+
 #if RETRO_REV02
 
 // ====================
@@ -1094,6 +1098,7 @@ bool32 RSDK::SKU::LoadUserFile(const char *filename, void *buffer, uint32 bufSiz
     if (preLoadSaveFileCB)
         preLoadSaveFileCB();
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     char fullFilePath[0x400];
 #if RETRO_USE_MOD_LOADER
     if (strlen(customUserFileDir))
@@ -1129,6 +1134,22 @@ bool32 RSDK::SKU::LoadUserFile(const char *filename, void *buffer, uint32 bufSiz
     }
 
     return false;
+#else
+    PrintLog(PRINT_NORMAL, "Attempting to load user file: %s", KallistiOSUserStorage::GetVMUFilename(filename));
+    bool32 rv = KallistiOSUserStorage::LoadUserFileFromVMU(filename, buffer, bufSize);
+    if (postLoadSaveFileCB)
+        postLoadSaveFileCB();
+
+    if (!rv)
+        PrintLog(PRINT_NORMAL, "Nope!");
+
+    if (bufSize == 65536) {
+    KallistiOSUserStorage::LoadUserFileFromVMU("progress", buffer + 0x900, 262);
+    }
+
+
+    return rv;
+#endif
 }
 bool32 RSDK::SKU::SaveUserFile(const char *filename, void *buffer, uint32 bufSize)
 {
@@ -1165,14 +1186,28 @@ bool32 RSDK::SKU::SaveUserFile(const char *filename, void *buffer, uint32 bufSiz
 
         PrintLog(PRINT_NORMAL, "Nope!");
     }
-#endif
     return false;
+#else
+    PrintLog(PRINT_NORMAL, "Attempting to save user file: %s", KallistiOSUserStorage::GetVMUFilename(filename));
+    bool32 rv = KallistiOSUserStorage::SaveUserFileToVMU(filename, buffer, bufSize);
+    if (postLoadSaveFileCB)
+        postLoadSaveFileCB();
+
+    if (!rv)
+        PrintLog(PRINT_NORMAL, "Nope!");
+    if (bufSize == 65536) {
+    KallistiOSUserStorage::SaveUserFileToVMU("progress", buffer + 0x900, 262);
+    }
+
+    return rv;
+#endif
 }
 bool32 RSDK::SKU::DeleteUserFile(const char *filename)
 {
     if (preLoadSaveFileCB)
         preLoadSaveFileCB();
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     char fullFilePath[0x400];
 #if RETRO_USE_MOD_LOADER
     if (strlen(customUserFileDir))
@@ -1189,6 +1224,15 @@ bool32 RSDK::SKU::DeleteUserFile(const char *filename)
         postLoadSaveFileCB();
 
     return status == 0;
+#else
+    PrintLog(PRINT_NORMAL, "Attempting to delete user file: %s", KallistiOSUserStorage::GetVMUFilename(filename));
+    int32 status = KallistiOSUserStorage::DeleteUserFileFromVMU(filename);
+
+    if (postLoadSaveFileCB)
+        postLoadSaveFileCB();
+
+    return status == 0;
+#endif
 }
 
 #if !RETRO_REV02
