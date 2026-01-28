@@ -1,45 +1,47 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
 
-orig_dir=$(pwd)
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
-cd "$1"/Sprites
+[[ $# -eq 1 ]] || die "Usage: ${0##*/} <stage_dir>"
 
-# Fail on error
-set -e
+stage=$1
+[[ -d "$stage" ]] || die "not a directory: $stage"
+[[ -d "$stage/Sprites" ]] || die "missing directory: $stage/Sprites"
 
 # Check KOS_BASE
-if [ -z "$KOS_BASE" ]; then
-    echo "Error: KOS_BASE is not set"
-    exit 1
-fi
+: "${KOS_BASE:?KOS_BASE is not set}"
 
 PVRTXEX="$KOS_BASE/utils/pvrtex/pvrtex"
+[[ -x "$PVRTXEX" ]] || die "pvrtex not found or not executable: $PVRTXEX"
 
-# Check pvrtex exists
-if [ ! -x "$PVRTXEX" ]; then
-    echo "Error: pvrtex not found or not executable at:"
-    echo "  $PVRTXEX"
-    exit 1
-fi
+orig_dir=$(pwd -P)
+restore_dir() { cd -- "$orig_dir" || true; }
+trap restore_dir EXIT
 
-# Loop over PNG files
+cd -- "$stage/Sprites"
+
+shopt -s nullglob
+
 for dir in Global TMZ1 UI; do
-  for file in "$dir"/*.png; do
-    # Handle case where no PNGs exist
-    [ -e "$file" ] || continue
+  [[ -d "$dir" ]] || die "missing sprites subdir: $PWD/$dir"
 
-    base="${file%.png}"
+  for file in "$dir"/*.png "$dir"/*.PNG; do
+    base=${file%.[pP][nN][gG]}
 
     "$PVRTXEX" \
-        -i "$file" \
-        -o "$base.tex" \
-        -f ARGB1555 \
-        --compress "small"
+      -i "$file" \
+      -o "$base.tex" \
+      -f ARGB1555 \
+      --compress "small"
 
-    rm "$file"
-    rm "$base.gif"
-    mv "$base.tex" "$base.gif"
+    # Clean up inputs/previous outputs
+    rm -f -- "$file"
+    rm -f -- "$base.gif"
+
+    # Replace .gif with the new .tex
+    mv -f -- "$base.tex" "$base.gif"
   done
 done
 
-cd "$orig_dir"

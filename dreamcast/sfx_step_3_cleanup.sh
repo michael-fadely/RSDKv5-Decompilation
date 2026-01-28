@@ -1,23 +1,31 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
 
-orig_dir=$(pwd)
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
-cd "$1"/StagingSoundFX
+[[ $# -eq 1 ]] || die "Usage: ${0##*/} <stage_dir>"
+stage=$1
 
-find ./ -type f -iname "*.wav" -print0 |
+[[ -d "$stage" ]] || die "not a directory: $stage"
+[[ -d "$stage/StagingSoundFX" ]] || die "missing directory: $stage/StagingSoundFX"
+
+orig_dir=$(pwd -P)
+restore_dir() { cd -- "$orig_dir" || true; }
+trap restore_dir EXIT
+
+cd -- "$stage/StagingSoundFX"
+
+find . -type f -iname '*.wav' -print0 |
 while IFS= read -r -d '' file; do
-    dir=$(dirname "$file")
-    base=$(basename "$file")
-
-    case "$base" in
-        adpcm_resample_*)
-            newbase=${base#adpcm_resample_}
-            ;;
-        *)
-            rm "$file"
-            continue
-            ;;
-    esac
+  base=$(basename -- "$file")
+  case "$base" in
+    adpcm_resample_*) 
+      # keep
+      ;;
+    *)
+      rm -f -- "$file"
+      ;;
+  esac
 done
 
-cd "$orig_dir"

@@ -1,14 +1,24 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
 
-orig_dir=$(pwd)
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
-cd "$1"/Music
+[[ $# -eq 1 ]] || die "Usage: ${0##*/} <stage_dir>"
 
+stage=$1
+[[ -d "$stage" ]] || die "not a directory: $stage"
+[[ -d "$stage/Music" ]] || die "missing directory: $stage/Music"
+
+orig_dir=$(pwd -P)
+restore_dir() { cd -- "$orig_dir" || true; }
+trap restore_dir EXIT
+
+cd -- "$stage/Music"
+
+shopt -s nullglob
 for file in *.s8 *.S8; do
-    [ -e "$file" ] || continue  # skip if no match
-    base=${file%.*}
-    rm "$base.ogg"
-    mv "$file" "$base.ogg"
+  base=${file%.*}
+  mv -f -- "$file" "$base.ogg"
 done
 
-cd "$orig_dir"
