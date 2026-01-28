@@ -46,8 +46,8 @@ get_samples() {
   awk -v d="$d" -v sr="$sr" 'BEGIN{ printf "%.0f\n", d*sr }'
 }
 
-find . -type f -iname "*.wav" -print0 |
-while IFS= read -r -d '' file; do
+while IFS= read -r -d '' file <&3; do
+  exec </dev/null
   # file is like "./path/to/name.wav"
   rel=${file#./}
   dir=${rel%/*}
@@ -63,16 +63,16 @@ while IFS= read -r -d '' file; do
 
   if [[ "$base" == *Continue.wav ]]; then
     # convert u8 -> s16 temp then stretch + resample to 22050
-    ffmpeg -v error -y -f wav -c:a pcm_u8 -i "$file" \
+    ffmpeg -nostdin -v error -y -f wav -c:a pcm_u8 -i "$file" \
       -f wav -c:a pcm_s16le -- "$tmp_wav"
 
-    ffmpeg -v error -y -f wav -c:a pcm_s16le -i "$tmp_wav" \
+    ffmpeg -nostdin -v error -y -f wav -c:a pcm_s16le -i "$tmp_wav" \
       -filter:a "rubberband=tempo=2.0:pitch=2.0" \
       -c:a pcm_s16le -ar 22050 -ac 1 -- "$out1"
   else
     # First attempt as s16le input, capture stderr in case this was a u8 file
     fferr="$(
-      ffmpeg -v error -y -f wav -c:a pcm_s16le -i "$file" \
+      ffmpeg -nostdin -v error -y -f wav -c:a pcm_s16le -i "$file" \
         -filter:a "rubberband=tempo=2.0:pitch=2.0" \
         -c:a pcm_s16le -ar 44100 -ac 1 -- "$out1" 2>&1 >/dev/null || true
     )"
@@ -82,7 +82,7 @@ while IFS= read -r -d '' file; do
       if samples=$(get_samples "$out1"); then
         if (( samples > 65534 )); then
           rm -f -- "$out1"
-          ffmpeg -v error -y -f wav -c:a pcm_s16le -i "$file" \
+          ffmpeg -nostdin -v error -y -f wav -c:a pcm_s16le -i "$file" \
             -filter:a "rubberband=tempo=2.0:pitch=2.0" \
             -c:a pcm_s16le -ar 22050 -ac 1 -- "$out1"
         fi
@@ -93,21 +93,21 @@ while IFS= read -r -d '' file; do
     if printf '%s' "$fferr" | grep -q "data has size 1"; then
       rm -f -- "$out1"
 
-      ffmpeg -v error -y -f wav -c:a pcm_u8 -i "$file" \
+      ffmpeg -nostdin -v error -y -f wav -c:a pcm_u8 -i "$file" \
         -f wav -c:a pcm_s16le -- "$tmp_wav"
 
       # If tmp would be too long, resample to 22050 during conversion
       if tsamples=$(get_samples "$tmp_wav"); then
         if (( tsamples > 65534 )); then
-          ffmpeg -v error -y -f wav -c:a pcm_u8 -i "$file" \
+          ffmpeg -nostdin -v error -y -f wav -c:a pcm_u8 -i "$file" \
             -f wav -c:a pcm_s16le -ar 22050 -- "$tmp_wav"
         fi
       fi
 
-      ffmpeg -v error -y -f wav -c:a pcm_s16le -i "$tmp_wav" \
+      ffmpeg -nostdin -v error -y -f wav -c:a pcm_s16le -i "$tmp_wav" \
         -filter:a "rubberband=tempo=2.0:pitch=2.0" \
         -c:a pcm_s16le -- "$out1"
     fi
   fi
-done
+done 3< <(find . -type f -iname "*.wav" -print0)
 
