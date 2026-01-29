@@ -142,15 +142,15 @@ public:
 
     static void PrepareFacePolyPT(int inkEffect);
     static void DrawFacePolyPT(
-            Vector2 *vertices, int32 vertCount, 
-            int32 faceColor, int32 alpha, 
+            Vector2 *vertices, int32 vertCount,
+            int32 faceColor, int32 alpha,
             uint32 *colors
     );
 
     static void PrepareFacePolyTR(int inkEffect);
     static void DrawFacePolyTR(
-            Vector2 *vertices, int32 vertCount, 
-            int32 faceColor, int32 alpha, 
+            Vector2 *vertices, int32 vertCount,
+            int32 faceColor, int32 alpha,
             uint32 *colors
     );
 
