@@ -1,5 +1,9 @@
 #include "RSDK/Core/RetroEngine.hpp"
 
+#ifdef KOS_HARDWARE_RENDERER
+#include <RSDK/Graphics/KallistiOS/AniTileTracker.hpp>
+#endif
+
 using namespace RSDK;
 
 #if RETRO_REV0U
@@ -274,6 +278,10 @@ void RSDK::LoadSceneFolder()
 
         CloseFile(&info);
     }
+
+#ifdef KOS_HARDWARE_RENDERER
+    AniTileTracker::ResetAllTiles();
+#endif
 
     sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Stages/%s/16x16Tiles.gif", currentSceneFolder);
     LoadStageGIF(fullFilePath);
@@ -1425,13 +1433,36 @@ void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
     const int32 flip = layout / TILE_COUNT;
     layout %= TILE_COUNT;
 
-    const int32 tilesetX = TILE_SIZE * ((int32)layout % KOS_ATLAS_WIDTH_TILES);
-    const int32 tilesetY = TILE_SIZE * ((int32)layout / KOS_ATLAS_WIDTH_TILES);
+    bool usePoly;
+    const GFXSurface* surface;
+    const AniTileState* aniTileState = AniTileTracker::GetAniTile(layout);
 
-    int32 sprX0 = tilesetX;
-    int32 sprX1 = tilesetX;
-    int32 sprY0 = tilesetY;
-    int32 sprY1 = tilesetY;
+    int32 sprX0;
+    int32 sprX1;
+    int32 sprY0;
+    int32 sprY1;
+
+    if (aniTileState != nullptr && aniTileState->sheetID != 0) {
+        usePoly = !aniTileState->IsTileAligned();
+        surface = &gfxSurface[aniTileState->sheetID];
+
+        sprX0 = aniTileState->u;
+        sprX1 = aniTileState->u;
+        sprY0 = aniTileState->v;
+        sprY1 = aniTileState->v;
+    }
+    else {
+        usePoly = false;
+        surface = &gfxSurface[0];
+
+        const int32 tilesetX = TILE_SIZE * (static_cast<int32>(layout) % KOS_ATLAS_WIDTH_TILES);
+        const int32 tilesetY = TILE_SIZE * (static_cast<int32>(layout) / KOS_ATLAS_WIDTH_TILES);
+
+        sprX0 = tilesetX;
+        sprX1 = tilesetX;
+        sprY0 = tilesetY;
+        sprY1 = tilesetY;
+    }
 
     if (flip & FLIP_X) {
         sprX0 += TILE_SIZE;
@@ -1447,13 +1478,33 @@ void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
         sprY1 += TILE_SIZE;
     }
 
-    RenderDevice::DrawTexturedQuadPT(
-        screenX, screenY,
-        TILE_SIZE, TILE_SIZE,
-        sprX0, sprX1,
-        sprY0, sprY1,
-        &gfxSurface[0]
-    );
+    const int32 prepY = std::max<int32>(0, screenY);
+
+    if (usePoly) {
+        RenderDevice::PrepareTexturedPolyPT(prepY, INK_NONE, surface);
+
+        RenderDevice::DrawTexturedPolyPT(
+            screenX, screenY,
+            screenX, screenY,
+            TILE_SIZE, TILE_SIZE,
+            sprX0, sprX1,
+            sprY0, sprY1,
+            0,
+            255,
+            surface
+        );
+    }
+    else {
+        RenderDevice::PrepareTexturedQuadPT(prepY, surface);
+
+        RenderDevice::DrawTexturedQuadPT(
+            screenX, screenY,
+            TILE_SIZE, TILE_SIZE,
+            sprX0, sprX1,
+            sprY0, sprY1,
+            &gfxSurface[0]
+        );
+    }
 }
 
 void DrawByLayoutEx(uint16 layout,
@@ -1463,13 +1514,36 @@ void DrawByLayoutEx(uint16 layout,
     const int32 flip = layout / TILE_COUNT;
     layout %= TILE_COUNT;
 
-    const int32 tilesetX = TILE_SIZE * (static_cast<int32>(layout) % KOS_ATLAS_WIDTH_TILES);
-    const int32 tilesetY = TILE_SIZE * (static_cast<int32>(layout) / KOS_ATLAS_WIDTH_TILES);
+    bool usePoly;
+    const GFXSurface* surface;
+    const AniTileState* aniTileState = AniTileTracker::GetAniTile(layout);
 
-    int32 sprX0 = tilesetX;
-    int32 sprX1 = tilesetX;
-    int32 sprY0 = tilesetY;
-    int32 sprY1 = tilesetY;
+    int32 sprX0;
+    int32 sprX1;
+    int32 sprY0;
+    int32 sprY1;
+
+    if (aniTileState != nullptr && aniTileState->sheetID != 0) {
+        usePoly = !aniTileState->IsTileAligned();
+        surface = &gfxSurface[aniTileState->sheetID];
+
+        sprX0 = aniTileState->u;
+        sprX1 = aniTileState->u;
+        sprY0 = aniTileState->v;
+        sprY1 = aniTileState->v;
+    }
+    else {
+        usePoly = false;
+        surface = &gfxSurface[0];
+
+        const int32 tilesetX = TILE_SIZE * (static_cast<int32>(layout) % KOS_ATLAS_WIDTH_TILES);
+        const int32 tilesetY = TILE_SIZE * (static_cast<int32>(layout) / KOS_ATLAS_WIDTH_TILES);
+
+        sprX0 = tilesetX;
+        sprX1 = tilesetX;
+        sprY0 = tilesetY;
+        sprY1 = tilesetY;
+    }
 
     if (flip & FLIP_X) {
         sprX0 += TILE_SIZE;
@@ -1485,13 +1559,29 @@ void DrawByLayoutEx(uint16 layout,
         sprY1 += TILE_SIZE;
     }
 
-    RenderDevice::DrawTexturedQuadPTEx(
-        upperLeft, upperRight,
-        lowerLeft, lowerRight,
-        sprX0, sprX1,
-        sprY0, sprY1,
-        &gfxSurface[0]
-    );
+    const int32 prepY = std::max<int32>(0, std::min(upperLeft.y, upperRight.y));
+
+    if (usePoly) {
+        RenderDevice::PrepareTexturedPolyPT(prepY, INK_NONE, surface);
+
+        RenderDevice::DrawTexturedPolyPTEx(
+            upperLeft, upperRight,
+            lowerLeft, lowerRight,
+            sprX0, sprX1,
+            sprY0, sprY1,
+            surface);
+    }
+    else {
+        RenderDevice::PrepareTexturedQuadPT(prepY, surface);
+
+        RenderDevice::DrawTexturedQuadPTEx(
+            upperLeft, upperRight,
+            lowerLeft, lowerRight,
+            sprX0, sprX1,
+            sprY0, sprY1,
+            surface
+        );
+    }
 }
 
 int32 GetLayerWrappedFromFixedX(const TileLayer* layer, int32 fixed_x) {
@@ -1515,9 +1605,6 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
 
 #if defined(KOS_HARDWARE_RENDERER)
     const ScanlineInfo* upperScanline = &scanlines[currentScreen->clipBound_Y1];
-
-    const int32 prepY = currentScreen->clipBound_Y1;
-    const GFXSurface* prepSurface = &gfxSurface[0];
 
     const int32 sheetY = FROM_FIXED(upperScanline->position.y) & 0xF;
     int32 scanlineIncrement = TILE_SIZE - sheetY;
@@ -1567,8 +1654,6 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
             if (layout == 0xFFFF) {
                 continue;
             }
-
-            RenderDevice::PrepareTexturedQuadPT(prepY, prepSurface);
 
             const Vector2 screenUpperLeft {
                 screenUpperX,
@@ -1956,9 +2041,6 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
     uint16 *activePalette = fullPalette[0];
     if (currentScreen->clipBound_X1 < currentScreen->clipBound_X2 && currentScreen->clipBound_Y1 < currentScreen->clipBound_Y2) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-        const int32 prepY = currentScreen->clipBound_Y1;
-        const auto* prepSurface = &gfxSurface[0];
-
         ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
 
         int32 ty = FROM_FIXED(scanline->position.y) >> 4;
@@ -1974,7 +2056,6 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
 
             for (int32 screenX = currentScreen->clipBound_X1 - offsetX; screenX < currentScreen->clipBound_X2; screenX += TILE_SIZE) {
                 if (*layout != 0xFFFF) {
-                    RenderDevice::PrepareTexturedQuadPT(prepY, prepSurface);
                     DrawByLayout(*layout, screenX, screenY);
                 }
 

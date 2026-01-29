@@ -1,6 +1,6 @@
-project(RetroEngine)
-
-add_executable(RetroEngine ${RETRO_FILES})
+add_executable(RetroEngine ${RETRO_FILES}
+    RSDKv5/RSDK/Graphics/KallistiOS/AniTileTracker.cpp
+)
 
 if(NOT GAME_STATIC)
     message(FATAL_ERROR "GAME_STATIC must be on")

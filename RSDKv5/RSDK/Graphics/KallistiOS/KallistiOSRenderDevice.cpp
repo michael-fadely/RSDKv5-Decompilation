@@ -883,6 +883,9 @@ void RenderDevice::DrawTexturedQuadPT(
     pvr_dr_commit(reinterpret_cast<uint8_t *>(spr2) + 32);
 }
 
+// DCFIXME: really bad place for this
+struct vec2f { float x; float y; };
+
 // static
 void RenderDevice::DrawTexturedQuadTR(
         int32 x, int32 y,
@@ -945,8 +948,6 @@ void RenderDevice::DrawTexturedQuadPTEx(
     }
 
     lastPrimitiveWasConsumed = true;
-
-    struct vec2f { float x; float y; };
 
     const vec2f upperLeftF {
         static_cast<float>(upperLeft.x) * pixelScaleX,
@@ -1211,6 +1212,96 @@ void RenderDevice::DrawTexturedPolyPT(
         rotate(verts[2]);
         rotate(verts[3]);
     }
+
+    /* This is the routine called by `pvr_prim()` under-the-hood when
+       the current list does not use DMA transfers and PVR DR mode is
+       enabled. We can call this directly to shave off a few cycles. */
+    sq_fast_cpy(SQ_MASK_DEST(PVR_TA_INPUT), verts, 4);
+}
+
+// static
+void RenderDevice::DrawTexturedPolyPTEx(
+    const Vector2& upperLeft, const Vector2& upperRight,
+    const Vector2& lowerLeft, const Vector2& lowerRight,
+    int32 sprX0, int32 sprX1,
+    int32 sprY0, int32 sprY1,
+    const GFXSurface* surface
+) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedPolyPT) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW TexturedPolyPT BEFORE PREPPING!\n");
+        return;
+    }
+
+    lastPrimitiveWasConsumed = true;
+
+    // Compute constants up-front
+    const vec2f upperLeftF {
+        static_cast<float>(upperLeft.x) * pixelScaleX,
+        static_cast<float>(upperLeft.y) * pixelScaleY,
+    };
+
+    const vec2f upperRightF {
+        static_cast<float>(upperRight.x) * pixelScaleX,
+        static_cast<float>(upperRight.y) * pixelScaleY,
+    };
+
+    const vec2f lowerLeftF {
+        static_cast<float>(lowerLeft.x) * pixelScaleX,
+        static_cast<float>(lowerLeft.y) * pixelScaleY,
+    };
+
+    const vec2f lowerRightF {
+        static_cast<float>(lowerRight.x) * pixelScaleX,
+        static_cast<float>(lowerRight.y) * pixelScaleY,
+    };
+
+    const float z  = GetDepth();
+    const float u0 = shz_div_posf(sprX0, surface->width);
+    const float v0 = shz_div_posf(sprY0, surface->height);
+    const float u1 = shz_div_posf(sprX1, surface->width);
+    const float v1 = shz_div_posf(sprY1, surface->height);
+
+    /* Since we have to potentially modify the vertex stream later on to apply
+       rotation to it, we're better off constructing it in RAM rather than
+       using the PVR DR API to write to the SQs directly. SQs are read-only! */
+    pvr_vertex_t verts[4] = {
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = upperLeftF.x,
+            .y = upperLeftF.y,
+            .z = z,
+            .u = u0,
+            .v = v0,
+            .argb = 0xFFFFFFFFu
+        },
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = upperRightF.x,
+            .y = upperRightF.y,
+            .z = z,
+            .u = u1,
+            .v = v0,
+            .argb = 0xFFFFFFFFu
+        },
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = lowerLeftF.x,
+            .y = lowerLeftF.y,
+            .z = z,
+            .u = u0,
+            .v = v1,
+            .argb = 0xFFFFFFFFu
+        },
+        {
+            .flags = PVR_CMD_VERTEX_EOL,
+            .x = lowerRightF.x,
+            .y = lowerRightF.y,
+            .z = z,
+            .u = u1,
+            .v = v1,
+            .argb = 0xFFFFFFFFu
+        }
+    };
 
     /* This is the routine called by `pvr_prim()` under-the-hood when
        the current list does not use DMA transfers and PVR DR mode is
