@@ -43,7 +43,6 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
         return (rv == 0);
     }
 
-
     static bool32 LoadUserFileFromVMU(const char *filename, void *outbuf, uint32 outsize) {
         mutex_lock_scoped(&io_lock);
         file_t vmu_file = FILEHND_INVALID;
