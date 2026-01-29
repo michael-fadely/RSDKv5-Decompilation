@@ -12,6 +12,8 @@ extern "C" {
     extern mutex_t io_lock;
 }
 
+static char icon_fn[256];
+static uint8 icondata[512];
 static char vmu_userfn[256];
 
 struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
@@ -227,12 +229,13 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
     strcpy(pkg.desc_short, "Sonic Mania");
     strcpy(pkg.app_id, "Sonic Mania");
     pkg.icon_cnt = 1;
-    // garbage icon data and palette
-    pkg.icon_data = (uint8*)0x8C010000;
-    for (int i=0;i<16;i++) {
-        pkg.icon_pal[i] = 0x8000 | (i << 11) | (i << 6) | (i << 1);
-    }
-    pkg.icon_anim_speed = 0;
+    pkg.icon_data = icondata;
+    pkg.icon_anim_speed = 5;
+    if (isSave)
+        sprintf(icon_fn, "%s/sonic.ico", KOS_USER_DIR);
+    else
+        sprintf(icon_fn, "%s/mighty.ico", KOS_USER_DIR);
+    vmu_pkg_load_icon(&pkg, icon_fn);
     if (needCompressed) {
         uint8 *saveOutbuf;
         unsigned int compressed_size = outsize + 32768;
