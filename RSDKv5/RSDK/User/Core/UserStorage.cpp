@@ -1161,7 +1161,6 @@ bool32 RSDK::SKU::SaveUserFile(const char *filename, void *buffer, uint32 bufSiz
     sprintf_s(fullFilePath, sizeof(fullFilePath), "%s%s", userFileDir, filename);
 #endif
 
-    // DCFIXME: SaveUserFile disabled
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
     PrintLog(PRINT_NORMAL, "Attempting to save user file: %s", fullFilePath);
 

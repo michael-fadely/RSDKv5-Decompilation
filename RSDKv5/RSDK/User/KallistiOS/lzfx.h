@@ -71,7 +71,7 @@ extern "C" {
     olen contains the compressed size in bytes.  On failure, a negative
     value is returned and olen is not modified.
 */
-int lzfx_compress(const void* ibuf, unsigned int ilen,
+static int lzfx_compress(const void* ibuf, unsigned int ilen,
                         void* obuf, unsigned int *olen);
 
 /*  Buffer-to-buffer decompression.
@@ -91,7 +91,7 @@ int lzfx_compress(const void* ibuf, unsigned int ilen,
     stream and is consequently very fast.  Argument obuf may be NULL in
     this case only.
 */
-int lzfx_decompress(const void* ibuf, unsigned int ilen,
+static int lzfx_decompress(const void* ibuf, unsigned int ilen,
                           void* obuf, unsigned int *olen);
 
 

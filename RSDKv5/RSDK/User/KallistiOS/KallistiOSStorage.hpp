@@ -8,13 +8,16 @@ using namespace RSDK;
 
 #define VMU_DEBUG 0
 
+#if 0
 extern "C" {
     extern mutex_t io_lock;
 }
+#endif
 
 static char icon_fn[256];
 static uint8 icondata[512];
 static char vmu_userfn[256];
+static file_t ach_file = FILEHND_INVALID;
 
 struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
     static char *GetVMUFilename(const char *filename) {
@@ -38,7 +41,9 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
     }
 
     static bool32 DeleteUserFileFromVMU(const char *filename) {
+#if 0
         mutex_lock_scoped(&io_lock);
+#endif
         char *fn = GetVMUFilename(filename);
 
         if ((!strstr(filename, "SaveData")) && (!strstr(filename, "Achieve"))) {
@@ -52,7 +57,9 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
     }
 
     static bool32 LoadUserFileFromVMU(const char *filename, void *outbuf, uint32 outsize) {
+#if 0
         mutex_lock_scoped(&io_lock);
+#endif
         file_t vmu_file = FILEHND_INVALID;
         char *fn = GetVMUFilename(filename);
         uint8 *saveOutbuf;
@@ -189,18 +196,20 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
     }
 
 static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsize) {
+#if 0
     mutex_lock_scoped(&io_lock);
+#endif
     char *fn = GetVMUFilename(filename);
     int exists = 0;
     int isSave = 0;
-    int isOther = 0;
+    int isAch = 0;
     int needCompressed = (outsize > 1024u);
     file_t vmu_file = FILEHND_INVALID;
 
     if (strstr(filename, "SaveData")) {
         isSave = 1;
-    } else if(!strstr(filename, "Achieve")) {
-        isOther = 1;
+    } else if(strstr(filename, "Achieve")) {
+        isAch = 1;
     }
 
 #if VMU_DEBUG
@@ -228,7 +237,7 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
     memset(&pkg, 0, sizeof(vmu_pkg_t));
     if (isSave)
         strcpy(pkg.desc_long, "Saved Games");
-    else if (!isOther)
+    else if (isAch)
         strcpy(pkg.desc_long, "Achievements");
     else
         strncpy(pkg.desc_long, filename, MIN(strlen(filename), 8));
@@ -311,6 +320,11 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
         return false;
     }
 
+
+#if VMU_DEBUG
+    vid_border_color(0xFF, 0x00, 0xFF);
+#endif
+
     int closerv = fs_close(vmu_file);
     if (closerv == -1) {
 #if VMU_DEBUG
@@ -320,9 +334,6 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
     }
 
     free(pkg_out);
-#if VMU_DEBUG
-    vid_border_color(0xFF, 0x00, 0xFF);
-#endif
     return true;
 }
 };
