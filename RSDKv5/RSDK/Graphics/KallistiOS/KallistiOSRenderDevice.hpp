@@ -3,7 +3,6 @@
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 #define DO_240 0
-#define DO_24BPP 0
 #endif
 
 using ShaderEntry = ShaderEntryBase; // DCFIXME
