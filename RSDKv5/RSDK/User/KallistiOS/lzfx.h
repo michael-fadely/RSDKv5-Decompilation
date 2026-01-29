@@ -321,7 +321,6 @@ int lzfx_decompress(const void* ibuf, unsigned int ilen,
                 goto guess;
             }
             if(fx_expect_false(ip + ctrl > in_end)) {
-                //printf("fx_expect_false(ip + ctrl > in_end)\n");
                 return LZFX_ECORRUPT;
             }
             do
@@ -353,13 +352,11 @@ int lzfx_decompress(const void* ibuf, unsigned int ilen,
                 goto guess;
             }
             if(fx_expect_false(ip >= in_end)) {
-                //printf("fx_expect_false(ip >= in_end)\n");
                 return LZFX_ECORRUPT;
             }
             ref -= *ip++;
 
             if(fx_expect_false(ref < (u8*)obuf)) {
-                //printf("fx_expect_false(ref < (u8*)obuf)\n");
                 return LZFX_ECORRUPT;
             }
             do
@@ -396,7 +393,6 @@ int lzfx_getsize(const void* ibuf, unsigned int ilen, unsigned int *olen){
             ctrl++;
 
             if(ip + ctrl > in_end) {
-                //printf("lzfx_getsize ip + ctrl > in_end %08x + %08x > %08x\n", ip, ctrl, in_end);
                 return LZFX_ECORRUPT;
             }
             tot_len += ctrl;
@@ -413,7 +409,6 @@ int lzfx_getsize(const void* ibuf, unsigned int ilen, unsigned int *olen){
             len += 2;    /* len is now #octets */
 
             if(ip >= in_end) {
-                //printf("lzfx_getsize ip >= in_end %08x >= %08x\n", ip, in_end);
                 return LZFX_ECORRUPT;
             }
             ip++; /* skip the ref byte */
