@@ -1185,7 +1185,7 @@ void RSDK::ProcessParallax(TileLayer *layer)
             int32 *deformationData = &layer->deformationData[(scrollPos + (uint16)layer->deformationOffset) & 0x1FF];
             for (int32 i = 0; i < currentScreen->waterDrawPos; ++i) {
                 scanline->position.x = layer->scrollInfo[*lineScrollPtr].tilePos;
-#if 1 || RETRO_PLATFORM != RETRO_KALLISTIOS || !defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || !defined(KOS_HARDWARE_RENDERER)
                 if (layer->scrollInfo[*lineScrollPtr].deform)
                     scanline->position.x += TO_FIXED(*deformationData);
 #else
@@ -1195,6 +1195,10 @@ void RSDK::ProcessParallax(TileLayer *layer)
                 } else {
                     scanline->deform.x = 0;
                 }
+#endif
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                scanline->deform.y = layer->scrollInfo[*lineScrollPtr].parallaxFactor;
 #endif
 
                 scanline->position.y = TO_FIXED(scrollPos++);
@@ -1214,7 +1218,7 @@ void RSDK::ProcessParallax(TileLayer *layer)
             deformationData = &layer->deformationDataW[(scrollPos + (uint16)layer->deformationOffsetW) & 0x1FF];
             for (int32 i = currentScreen->waterDrawPos; i < currentScreen->size.y; ++i) {
                 scanline->position.x = layer->scrollInfo[*lineScrollPtr].tilePos;
-#if 1 || RETRO_PLATFORM != RETRO_KALLISTIOS || !defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || !defined(KOS_HARDWARE_RENDERER)
                 if (layer->scrollInfo[*lineScrollPtr].deform)
                     scanline->position.x += TO_FIXED(*deformationData);
 #else
@@ -1224,6 +1228,10 @@ void RSDK::ProcessParallax(TileLayer *layer)
                 } else {
                     scanline->deform.x = 0;
                 }
+#endif
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                scanline->deform.y = layer->scrollInfo[*lineScrollPtr].parallaxFactor;
 #endif
 
                 scanline->position.y = TO_FIXED(scrollPos++);
@@ -1260,6 +1268,10 @@ void RSDK::ProcessParallax(TileLayer *layer)
             for (int32 i = 0; i < currentScreen->size.x; ++i) {
                 scanline->position.x = TO_FIXED(scrollPos++);
                 scanline->position.y = layer->scrollInfo[*lineScrollPtr].tilePos;
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                scanline->deform.y = layer->scrollInfo[*lineScrollPtr].parallaxFactor;
+#endif
 
                 if (scrollPos == pixelWidth) {
                     lineScrollPtr = layer->lineScroll;
@@ -1320,6 +1332,10 @@ void RSDK::ProcessParallax(TileLayer *layer)
                 scanline->position.x = layer->scrollInfo[*lineScrollPtr].tilePos;
                 scanline->position.y = TO_FIXED(scrollPos++);
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                scanline->deform.y = layer->scrollInfo[*lineScrollPtr].parallaxFactor;
+#endif
+
                 if (scrollPos == pixelHeight) {
                     lineScrollPtr = layer->lineScroll;
                     scrollPos     = 0;
@@ -1334,6 +1350,10 @@ void RSDK::ProcessParallax(TileLayer *layer)
             for (int32 i = currentScreen->waterDrawPos; i < currentScreen->size.y; ++i) {
                 scanline->position.x = layer->scrollInfo[*lineScrollPtr].tilePos;
                 scanline->position.y = TO_FIXED(scrollPos++);
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                scanline->deform.y = layer->scrollInfo[*lineScrollPtr].parallaxFactor;
+#endif
 
                 if (scrollPos == pixelHeight) {
                     lineScrollPtr = layer->lineScroll;
@@ -1640,35 +1660,35 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
         int32 sequentialRows = 1;
 
         {
-            const ScanlineInfo* prevScanline = nullptr;
+            // DCTODO: splitting by parallax factor is nice, but maybe it should still check offset?
+            int32 prevDeform = FROM_FIXED(upperScanline->deform.x);
+            int32 prevParallaxFactor = upperScanline->deform.y;
+            int32 sy = FROM_FIXED(upperScanline->position.y) + 1;
+
             const ScanlineInfo* currScanline = upperScanline + 1;
             const uint8* currActivePalette = upperActivePalette + 1;
 
-            int32 sy = FROM_FIXED(upperScanline->position.y) + 1;
-            int32 lastOffsetDelta = 0;
-            int32 offsetSum = 0;
-
             while (currScanline < maxScanline)
             {
-                const bool isFirst = prevScanline == nullptr;
-                prevScanline = currScanline - 1;
                 const uint8* prevActivePalette = currActivePalette - 1;
-
+                const int32 currParallaxFactor = currScanline->deform.y;
                 const int32 currTy = sy >> 4;
 
-                // WIP: maybe just check sign bit? bigger approximation, but maybe fewer draw calls
-                const int32 offsetDelta = FROM_FIXED(prevScanline->position.x - currScanline->position.x);
-                offsetSum += offsetDelta;
+                const int32 currDeform = FROM_FIXED(currScanline->deform.x);
 
-                if (currTy != ty ||
-                    offsetSum >= TILE_SIZE ||
+                if (
+                    prevParallaxFactor != currParallaxFactor ||
                     *prevActivePalette != *currActivePalette ||
-                    (!isFirst && offsetDelta != lastOffsetDelta)) {
+                    currTy != ty ||
+                    currDeform != prevDeform
+                    ) {
                     break;
                 }
 
+                prevParallaxFactor = currParallaxFactor;
+                prevDeform = currDeform;
+
                 ++sy;
-                lastOffsetDelta = offsetDelta;
                 ++sequentialRows;
                 ++currScanline;
                 ++currActivePalette;
@@ -1680,11 +1700,12 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
 
         int32 tilesToDraw = minTilesToDraw;
 
-        int32 upperFixedX = upperScanline->position.x;
+        int32 upperFixedX = upperScanline->position.x + upperScanline->deform.x;
+        int32 lowerFixedX = lowerScanline->position.x + lowerScanline->deform.x;
         int32 fromFixedUpperX = GetLayerWrappedFromFixedX(layer, upperFixedX);
 
         int32 upperScreenOffsetX = -(fromFixedUpperX & 0xF);
-        int32 lowerScreenOffsetX = upperScreenOffsetX + FROM_FIXED(upperFixedX - lowerScanline->position.x);
+        int32 lowerScreenOffsetX = upperScreenOffsetX + FROM_FIXED(upperFixedX - lowerFixedX);
 
         // DCFIXME: this sucks
         int32 extraTilesToDraw = abs(AlignUp(std::max<int32>(upperScreenOffsetX, lowerScreenOffsetX), TILE_SIZE));
