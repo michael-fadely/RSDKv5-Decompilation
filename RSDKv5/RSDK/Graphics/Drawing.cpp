@@ -6,6 +6,10 @@ using namespace RSDK;
 #include "Legacy/DrawingLegacy.cpp"
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+#include <RSDK/Graphics/KallistiOS/AniTileTracker.hpp>
+#endif
+
 // all render devices need to access the initial vertex buffer :skull:
 
 // clang-format off
@@ -4626,8 +4630,22 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         const int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
-                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
+                        int32 sheetID;
+                        int32 tilesetX;
+                        int32 tilesetY;
+
+                        const AniTileState* aniTileState = AniTileTracker::GetAniTile(tile);
+
+                        if (aniTileState != nullptr) {
+                            sheetID = aniTileState->sheetID;
+                            tilesetX = aniTileState->u;
+                            tilesetY = aniTileState->v;
+                        }
+                        else {
+                            sheetID = 0;
+                            tilesetX = TILE_SIZE * (static_cast<int32>(tile) % KOS_ATLAS_WIDTH_TILES);
+                            tilesetY = TILE_SIZE * (static_cast<int32>(tile) / KOS_ATLAS_WIDTH_TILES);
+                        }
 
                         const int32 screenX = (tx * TILE_SIZE) + pivotX;
 
@@ -4637,7 +4655,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                                           flip,
                                           sceneInfo.entity->inkEffect,
                                           sceneInfo.entity->alpha,
-                                          0);
+                                          sheetID);
                     }
                 }
 #else
@@ -4680,8 +4698,22 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
-                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
+                        int32 sheetID;
+                        int32 tilesetX;
+                        int32 tilesetY;
+
+                        const AniTileState* aniTileState = AniTileTracker::GetAniTile(tile);
+
+                        if (aniTileState != nullptr) {
+                            sheetID = aniTileState->sheetID;
+                            tilesetX = aniTileState->u;
+                            tilesetY = aniTileState->v;
+                        }
+                        else {
+                            sheetID = 0;
+                            tilesetX = TILE_SIZE * (static_cast<int32>(tile) % KOS_ATLAS_WIDTH_TILES);
+                            tilesetY = TILE_SIZE * (static_cast<int32>(tile) / KOS_ATLAS_WIDTH_TILES);
+                        }
 
                         const int32 screenX = x + (tx * TILE_SIZE);
 
@@ -4701,7 +4733,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                                            static_cast<int16>(rotation),
                                            sceneInfo.entity->inkEffect,
                                            sceneInfo.entity->alpha,
-                                           0);
+                                           sheetID);
                     }
                 }
 #else
@@ -4767,8 +4799,22 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
-                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
+                        int32 sheetID;
+                        int32 tilesetX;
+                        int32 tilesetY;
+
+                        const AniTileState* aniTileState = AniTileTracker::GetAniTile(tile);
+
+                        if (aniTileState != nullptr) {
+                            sheetID = aniTileState->sheetID;
+                            tilesetX = aniTileState->u;
+                            tilesetY = aniTileState->v;
+                        }
+                        else {
+                            sheetID = 0;
+                            tilesetX = TILE_SIZE * (static_cast<int32>(tile) % KOS_ATLAS_WIDTH_TILES);
+                            tilesetY = TILE_SIZE * (static_cast<int32>(tile) / KOS_ATLAS_WIDTH_TILES);
+                        }
 
                         const int32 screenX = x + (tx * TILE_SIZE);
                         int32 rotation;
@@ -4789,7 +4835,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                                            static_cast<int16>(rotation),
                                            sceneInfo.entity->inkEffect,
                                            sceneInfo.entity->alpha,
-                                           0);
+                                           sheetID);
                     }
                 }
 #else
@@ -4855,8 +4901,22 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
-                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
+                        int32 sheetID;
+                        int32 tilesetX;
+                        int32 tilesetY;
+
+                        const AniTileState* aniTileState = AniTileTracker::GetAniTile(tile);
+
+                        if (aniTileState != nullptr) {
+                            sheetID = aniTileState->sheetID;
+                            tilesetX = aniTileState->u;
+                            tilesetY = aniTileState->v;
+                        }
+                        else {
+                            sheetID = 0;
+                            tilesetX = TILE_SIZE * (static_cast<int32>(tile) % KOS_ATLAS_WIDTH_TILES);
+                            tilesetY = TILE_SIZE * (static_cast<int32>(tile) / KOS_ATLAS_WIDTH_TILES);
+                        }
 
                         const int32 screenX = x + (tx * TILE_SIZE);
                         int32 rotation = sceneInfo.entity->rotation;
@@ -4875,7 +4935,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                                            static_cast<int16>(rotation),
                                            sceneInfo.entity->inkEffect,
                                            sceneInfo.entity->alpha,
-                                           0);
+                                           sheetID);
                     }
                 }
 #else
@@ -4919,7 +4979,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
 void RSDK::DrawAniTile(uint16 sheetID, uint16 tileIndex, uint16 srcX, uint16 srcY, uint16 width, uint16 height)
 {
 #if defined(KOS_HARDWARE_RENDERER)
-    // DCTODO: DrawAniTile
+    AniTileTracker::UpdateAniTile(sheetID, tileIndex, srcX, srcY, width, height);
 #else
     if (sheetID < SURFACE_COUNT && tileIndex < TILE_COUNT) {
         GFXSurface *surface = &gfxSurface[sheetID];
