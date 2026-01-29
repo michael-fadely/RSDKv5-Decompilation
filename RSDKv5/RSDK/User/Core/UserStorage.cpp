@@ -1143,11 +1143,6 @@ bool32 RSDK::SKU::LoadUserFile(const char *filename, void *buffer, uint32 bufSiz
     if (!rv)
         PrintLog(PRINT_NORMAL, "Nope!");
 
-    if (bufSize == 65536) {
-    KallistiOSUserStorage::LoadUserFileFromVMU("progress", buffer + 0x900, 262);
-    }
-
-
     return rv;
 #endif
 }
@@ -1195,9 +1190,6 @@ bool32 RSDK::SKU::SaveUserFile(const char *filename, void *buffer, uint32 bufSiz
 
     if (!rv)
         PrintLog(PRINT_NORMAL, "Nope!");
-    if (bufSize == 65536) {
-    KallistiOSUserStorage::SaveUserFileToVMU("progress", buffer + 0x900, 262);
-    }
 
     return rv;
 #endif

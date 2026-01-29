@@ -81,6 +81,7 @@ int main(int argc, char *argv[]) { return RSDK_main(argc, argv, (void *)LinkGame
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 #include <kos.h>
 mutex_t io_lock;
+extern void vmu_fs_shutdown(void);
 #endif
 int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
 {
@@ -89,8 +90,10 @@ int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
     gdb_init();
 #endif
     cont_btn_callback(0, CONT_RESET_BUTTONS, [](uint8_t, uint32_t) {
-        //exit(EXIT_SUCCESS);
-        arch_abort();
+        usleep(5000);
+        exit(EXIT_SUCCESS);
+        //vmu_fs_shutdown();
+        //arch_abort();
     });
 
     // all filesystem accesses use this lock
@@ -104,6 +107,10 @@ int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
     int32 exitCode = RSDK::RunRetroEngine(argc, argv);
 
     RSDK::ReleaseCoreAPI();
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    usleep(5000);
+#endif
 
     return exitCode;
 }

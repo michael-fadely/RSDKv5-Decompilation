@@ -735,6 +735,7 @@ extern void (*globalVarsInitCB)(void *globals);
 inline void RegisterGlobalVariables(void **globals, int32 size, void (*initCB)(void *globals))
 {
     AllocateStorage(globals, size, DATASET_STG, true);
+    PinStorage(globals);
     globalVarsPtr    = (int32 *)*globals;
     globalVarsInitCB = initCB;
 }
@@ -742,6 +743,7 @@ inline void RegisterGlobalVariables(void **globals, int32 size, void (*initCB)(v
 inline void RegisterGlobalVariables(void **globals, int32 size)
 {
     AllocateStorage(globals, size, DATASET_STG, true);
+    PinStorage(globals);
     globalVarsPtr = (int32 *)*globals;
 }
 #endif

@@ -1,5 +1,7 @@
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+
 using namespace RSDK;
+
 #include <kos.h>
 #include <errno.h>
 #include "lzfx.h"
@@ -63,56 +65,57 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
         if (FILEHND_INVALID == vmu_file) {
 #if VMU_DEBUG
             vid_border_color(0xFF, 0x00, 0x00);
-            printf("LoadUserFileFromVMU: cannot open %s for rdonly (%s)\n", fn, strerror(errno));
+            printf("LoadUserFileFromVMU: cannot open %s for reading (%s)\n", fn, strerror(errno));
 #endif
             return false;
         } else {
+            off_t vmu_size = fs_seek(vmu_file, 0, SEEK_END);
+            fs_seek(vmu_file, 0, SEEK_SET);
+            ssize_t read1rv = fs_read(vmu_file, saveOutbuf, vmu_size);
+            if (read1rv != vmu_size) {
+#if VMU_DEBUG
+                vid_border_color(0xFF, 0x00, 0x00);
+                printf("LoadUserFileFromVMU: read %d requested %d\n", read1rv, vmu_size);
+#endif
+                fs_close(vmu_file);
+                return false;
+            }
+            fs_close(vmu_file);
+
+            vmu_pkg_t pkg;
+            memset(&pkg, 0, sizeof(pkg));
+            if(vmu_pkg_parse(saveOutbuf, vmu_size, &pkg) < 0) {
+#if VMU_DEBUG
+                vid_border_color(0xFF, 0x00, 0x00);
+                printf("LoadUserFileFromVMU: failed to parse vmu package\n");
+#endif
+                return false;
+            }
+
             if (compressed) {
 #if VMU_DEBUG
                 vid_border_color(0x00, 0xFF, 0x00);
 #endif
-                fs_seek(vmu_file, 512 + sizeof(vmu_hdr_t), SEEK_SET);
 
-                ssize_t readrv = fs_read(vmu_file, &actual_size, 4);
-                if (readrv != 4) {
-#if VMU_DEBUG
-                    vid_border_color(0xFF, 0x00, 0x00);
-                    printf("LoadUserFileFromVMU: expected 4 but read %d\n", rv);
-#endif
-                    fs_close(vmu_file);
-                    vmu_file = FILEHND_INVALID;
-
-                    return false;
-                }
+                actual_size = *(uint32_t *)pkg.data;
+                uint8_t *compData = (uint8_t *)(pkg.data + 4);
 
 #if VMU_DEBUG
                 printf("LoadUserFileFromVMU: got size of %d from size word\n", actual_size);
-#endif
 
-                readrv = fs_read(vmu_file, saveOutbuf, actual_size);
-                if (readrv != actual_size) {
-#if VMU_DEBUG
-                    vid_border_color(0xFF, 0x00, 0x00);
-                    printf("LoadUserFileFromVMU: expected %d but read %d\n", actual_size, rv);
-#endif
-                    return false;
-                }
-
-#if VMU_DEBUG
                 if (actual_size > 65536) {
                     vid_border_color(0xFF, 0x00, 0x00);
                     printf("clearly invalid actual_size %d\n", actual_size);
                     fs_close(vmu_file);
-                    vmu_file = FILEHND_INVALID;
                     return false;
                 }
 #endif
 
-                unsigned int uncompressed_save_size = actual_size;
+                unsigned int uncompressed_save_size = allocSize;
 #if VMU_DEBUG
                 vid_border_color(0x00, 0xFF, 0xFF);
 #endif
-                int derv = lzfx_decompress(saveOutbuf, actual_size, outbuf, &uncompressed_save_size);
+                int derv = lzfx_decompress(compData, actual_size, outbuf, &uncompressed_save_size);
 #if VMU_DEBUG
                 if (derv < 0 && derv != LZFX_ESIZE3) {
                     vid_border_color(0xFF, 0x00, 0x00);
@@ -123,6 +126,12 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
 #else
                 if (derv < 0) {
 #endif
+#if VMU_DEBUG
+                    vid_border_color(0xFF, 0x00, 0x00);
+                    printf("decompress failure %d\n", derv);
+#endif
+                    b32retval = false;
+                } else if (derv > 0) {
 #if VMU_DEBUG
                     vid_border_color(0xFF, 0x00, 0x00);
                     printf("decompress failure %d\n", derv);
@@ -157,30 +166,26 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
 #if VMU_DEBUG
                 vid_border_color(0x00, 0x00, 0xFF);
 #endif
-                fs_seek(vmu_file, 512+ sizeof(vmu_hdr_t), SEEK_SET);
-                ssize_t rv = fs_read(vmu_file, outbuf, outsize);
-                if (rv != (ssize_t)outsize) {
-#if VMU_DEBUG
-                    vid_border_color(0xFF, 0x00, 0x00);
-#endif
-                    fs_close(vmu_file);
-                    vmu_file = FILEHND_INVALID;
-                    return false;
-                }
+                memcpy(outbuf, pkg.data, outsize);
             }
         }
-
-        fs_close(vmu_file);
-        vmu_file = FILEHND_INVALID;
+#if 0
+        int closerv = fs_close(vmu_file);
+        if (closerv == -1) {
+            printf("LoadUserFileToVMU: close %s failed (%s)\n", fn, strerror(errno));
+            b32retval = false;
+        }
+#endif
         return b32retval;
     }
 
 static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsize) {
     mutex_lock_scoped(&io_lock);
     char *fn = GetVMUFilename(filename);
+    int exists = 0;
     int isSave = 0;
     int isOther = 0;
-    int needCompressed = outsize > 1024;
+    int needCompressed = (outsize > 1024u);
     file_t vmu_file = FILEHND_INVALID;
 
     if (strstr(filename, "SaveData")) {
@@ -192,12 +197,21 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
 #if VMU_DEBUG
     vid_border_color(0xFF, 0xFF, 0x00);
 #endif
+    vmu_file = fs_open(fn, O_RDONLY | O_META);
+    if (FILEHND_INVALID != vmu_file) {
+        exists = 1;
+        fs_close(vmu_file);
+    }
 
-    vmu_file = fs_open(fn, O_RDWR | O_CREAT | O_TRUNC | O_META);
+    if (!exists)
+        vmu_file = fs_open(fn, O_WRONLY | O_CREAT | O_META);
+    else
+        vmu_file = fs_open(fn, O_WRONLY | O_META);
+
     if (FILEHND_INVALID == vmu_file) {
 #if VMU_DEBUG
         vid_border_color(0xFF, 0x00, 0x00);
-        printf("SaveUserFileToVMU: cannot open %s for rdwr|creat|trunc (%s)\n", fn, strerror(errno));
+        printf("SaveUserFileToVMU: cannot open %s for writing (%s)\n", fn, strerror(errno));
 #endif
         return false;
     }
@@ -213,7 +227,8 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
     strcpy(pkg.desc_short, "Sonic Mania");
     strcpy(pkg.app_id, "Sonic Mania");
     pkg.icon_cnt = 1;
-    pkg.icon_data = (uint8*)0x8C010000;//outbuf;
+    // garbage icon data and palette
+    pkg.icon_data = (uint8*)0x8C010000;
     for (int i=0;i<16;i++) {
         pkg.icon_pal[i] = 0x8000 | (i << 11) | (i << 6) | (i << 1);
     }
@@ -258,6 +273,7 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
         pkg.data_len = outsize;
         pkg.data = (const uint8 *)outbuf;
     }
+
     uint8_t *pkg_out;
     ssize_t pkg_size;
     int pbrv = vmu_pkg_build(&pkg, &pkg_out, &pkg_size);
@@ -276,19 +292,29 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
 #endif
     fs_seek(vmu_file, 0, SEEK_SET);
     ssize_t writerv = fs_write(vmu_file, pkg_out, pkg_size);
-    fs_close(vmu_file);
-    free(pkg_out);
     if (writerv != pkg_size) {
 #if VMU_DEBUG
-        vid_border_color(0x00, 0xFF, 0x00);
+        vid_border_color(0xFF, 0x00, 0x00);
         printf("wrote %d but expected %d\n", writerv, pkg_size);
 #endif
+        fs_close(vmu_file);
         return false;
     }
+
+    int closerv = fs_close(vmu_file);
+    if (closerv == -1) {
+#if VMU_DEBUG
+        vid_border_color(0xFF, 0x00, 0x00);
+        printf("SaveUserFileToVMU: close %s failed (%s)\n", fn, strerror(errno));
+#endif
+    }
+
+    free(pkg_out);
 #if VMU_DEBUG
     vid_border_color(0xFF, 0x00, 0xFF);
 #endif
     return true;
 }
 };
+
 #endif
