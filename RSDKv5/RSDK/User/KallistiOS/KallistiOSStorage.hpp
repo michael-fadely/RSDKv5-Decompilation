@@ -18,14 +18,22 @@ static char vmu_userfn[256];
 
 struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
     static char *GetVMUFilename(const char *filename) {
-        // TODO logic to find *first* attached vmu and store *there*
-        if (strstr(filename, "SaveData")) {
-            sprintf(vmu_userfn, "/vmu/a1/maniasav.rec");
-        } else if(strstr(filename, "Achieve")) {
-            sprintf(vmu_userfn, "/vmu/a1/maniaach.rec");
-        } else {
-            sprintf(vmu_userfn, "/vmu/a1/%.8s.rec", filename);
+        // find *first* attached vmu and store *there*
+        maple_device_t *vmudev = maple_enum_type(0, MAPLE_FUNC_MEMCARD);
+        int port = 0;
+        int unit = 1;
+        if (vmudev) {
+            port = vmudev->port;
+            unit = vmudev->unit;
         }
+
+        if (strstr(filename, "SaveData"))
+		    sprintf(vmu_userfn, "/vmu/%c%d/mania.sav", 'a'+port, unit);
+        else if(strstr(filename, "Achieve"))
+		    sprintf(vmu_userfn, "/vmu/%c%d/mania.ach", 'a'+port, unit);
+        else
+            sprintf(vmu_userfn, "/vmu/%c%d/%.8s.man", 'a'+port, unit, filename);
+
         return vmu_userfn;
     }
 
