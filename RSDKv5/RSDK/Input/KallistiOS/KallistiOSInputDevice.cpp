@@ -33,7 +33,9 @@ maple_device_t* SKU::Vmu::Dev() const {
 }
 
 vmu_state_t* SKU::Vmu::State() const {
-    if(auto* d = Dev(); d)
+    auto* d = Dev();
+
+    if(d)
         return reinterpret_cast<vmu_state_t*>(maple_dev_status(d));
     return nullptr;
 }
@@ -59,21 +61,27 @@ bool SKU::Vmu::Beep(uint8_t tone, std::function<void(void)> task) const {
 }
 
 bool SKU::Vmu::Pressed(SKU::Vmu::Button button) const {
-    if(auto* s = State(); s)
+    const auto* s = State();
+
+    if(s)
         return (s->buttons.current.raw & static_cast<unsigned>(button));
 
     return false;
 }
 
 bool SKU::Vmu::Tapped(SKU::Vmu::Button button) const {
-    if(auto* s = State(); s)
+    const auto* s = State();
+
+    if(s)
         return (s->buttons.previous.raw & static_cast<unsigned>(button));
 
     return false;
 }
 
 bool SKU::Vmu::Update() const {
-    if(auto* d = Dev(); fb.changed && d) {
+    auto* d = Dev();
+
+    if(fb.changed && d) {
         vmufb_present(&fb, d);
         fb.changed = false;
         return true;
