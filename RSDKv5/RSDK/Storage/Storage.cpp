@@ -262,17 +262,8 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
         assert(header->VeryUnsafeNext() == poolEnd);
     }
 
-    const uint32 inputSize = size;
-
-    {
-        const uint32 size_aligned = size & -static_cast<int32>(sizeof(void *));
-
-        if (size_aligned < size)
-            size = size_aligned + sizeof(void *);
-    }
-
     static_assert(sizeof(StorageHeader) % sizeof(uint32) == 0, "nope");
-    const uint32 size_i = size / sizeof(uint32);
+    const uint32 size_i = AlignUp(size, sizeof(uint32)) / sizeof(uint32);
     bool ranGC = false;
 
     if (storage->entryCount >= STORAGE_ENTRY_COUNT ||
@@ -282,7 +273,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
         if (storage->entryCount >= STORAGE_ENTRY_COUNT ||
             sizeof(uint32) * (storage->usedStorage + size_i + StorageHeader::SizeInts()) >= storage->storageLimit) {
-            PrintAllocState(dataSet, storage, *dataPtr, inputSize, file, line);
+            PrintAllocState(dataSet, storage, *dataPtr, size, file, line);
             return; // :(
         }
     }
@@ -320,7 +311,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
         printf("%s failed to find big enough block for alloc size %u - running GC and retrying\n",
                DataSetToString(dataSet),
-               inputSize);
+               size);
 
         // would be nice if this function just reported whether or not anything got done...
         DefragmentAndGarbageCollectStorage(dataSet);
@@ -328,7 +319,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
     }
 
     if (fitHeader == nullptr) {
-        PrintAllocState(dataSet, storage, *dataPtr, inputSize, file, line);
+        PrintAllocState(dataSet, storage, *dataPtr, size, file, line);
         return; // :(
     }
 

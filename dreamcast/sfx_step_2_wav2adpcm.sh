@@ -1,23 +1,33 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
 
-orig_dir=$(pwd)
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
-cd "$1"/StagingSoundFX
+[[ $# -eq 1 ]] || die "Usage: ${0##*/} <stage_dir>"
+
+stage=$1
+[[ -d "$stage" ]] || die "not a directory: $stage"
+[[ -d "$stage/StagingSoundFX" ]] || die "missing directory: $stage/StagingSoundFX"
 
 # Ensure KOS_BASE is set
-if [ -z "$KOS_BASE" ]; then
-    echo "Error: KOS_BASE environment variable is not set."
-    exit 1
-fi
+: "${KOS_BASE:?KOS_BASE environment variable is not set}"
 
-find ./ -type f -iname "resample_*.wav" -print0 |
+wav2adpcm="$KOS_BASE/utils/wav2adpcm/wav2adpcm"
+[[ -x "$wav2adpcm" ]] || die "wav2adpcm not found or not executable: $wav2adpcm"
+
+orig_dir=$(pwd -P)
+restore_dir() { cd -- "$orig_dir" || true; }
+trap restore_dir EXIT
+
+cd -- "$stage/StagingSoundFX"
+
+find . -type f -iname 'resample_*.wav' -print0 |
 while IFS= read -r -d '' file; do
-    dir=$(dirname "$file")
-    base=$(basename "$file")
+  dir=$(dirname -- "$file")
+  base=$(basename -- "$file")
 
-    out="$dir/adpcm_$base"
-
-    "$KOS_BASE/utils/wav2adpcm/wav2adpcm" -t "$file" "$out"
+  out="$dir/adpcm_$base"
+  "$wav2adpcm" -t "$file" "$out"
 done
 
-cd "$orig_dir"

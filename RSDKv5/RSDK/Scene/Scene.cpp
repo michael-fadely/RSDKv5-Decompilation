@@ -1506,33 +1506,6 @@ int32 GetLayerWrappedFromFixedX(const TileLayer* layer, int32 fixed_x) {
 
     return FROM_FIXED(fixed_x);
 }
-
-// DCTODO: put somewhere more accessible. could be useful elsewhere.
-template <typename T>
-T constexpr AlignUp(T value, size_t alignment)
-{
-    if (!value || alignment < 2)
-    {
-        return value;
-    }
-
-    value += alignment - 1;
-    value -= value % alignment;
-    return value;
-}
-
-// DCTODO: put somewhere more accessible. could be useful elsewhere.
-template <typename T>
-T constexpr AlignDown(T value, size_t alignment)
-{
-    if (!value || alignment < 2)
-    {
-        return value;
-    }
-
-    value -= value % alignment;
-    return value;
-}
 #endif
 
 void RSDK::DrawLayerHScroll(TileLayer *layer)

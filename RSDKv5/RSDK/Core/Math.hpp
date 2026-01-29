@@ -153,6 +153,33 @@ inline int32 ACos256(int32 angle)
 // Get Arc Tan value
 uint8 ArcTanLookup(int32 x, int32 y);
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+template <typename T>
+T constexpr AlignUp(T value, size_t alignment)
+{
+    if (!value || alignment < 2)
+    {
+        return value;
+    }
+
+    value += alignment - 1;
+    value -= value % alignment;
+    return value;
+}
+
+template <typename T>
+T constexpr AlignDown(T value, size_t alignment)
+{
+    if (!value || alignment < 2)
+    {
+        return value;
+    }
+
+    value -= value % alignment;
+    return value;
+}
+#endif
+
 extern uint32 randSeed;
 
 inline void SetRandSeed(int32 key) { randSeed = key; }
