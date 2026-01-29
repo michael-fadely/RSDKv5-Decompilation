@@ -795,7 +795,7 @@ void RenderDevice::PrepareTexturedQuadPT(int32 y, const GFXSurface* surface) {
 void RenderDevice::PrepareTexturedQuadTR(int32 y, const GFXSurface* surface) {
     const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
     const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
-    
+
     if (PreparePrimitive(PrimitiveTypes_TexturedQuadTR,
                          gamePaletteBankIndex,
                          pvrPaletteBankIndex,
@@ -1074,7 +1074,7 @@ void RenderDevice::PrepareTexturedPolyTR(int32 y, int inkEffect, const GFXSurfac
         }
 
         pvr_poly_cxt_t context;
- 
+
         if (surface->isVq) {
             pvr_poly_cxt_txr(
                     &context,
@@ -1104,7 +1104,7 @@ void RenderDevice::PrepareTexturedPolyTR(int32 y, int inkEffect, const GFXSurfac
         context.blend.dst = lastDstBlend;
 
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        pvr_poly_compile(hdr_ptr, &context);   
+        pvr_poly_compile(hdr_ptr, &context);
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
 
         // this only gets used if we have a special effect to handle after making this header
@@ -1145,7 +1145,7 @@ void RenderDevice::DrawTexturedPolyPT(
     const uint32 argb = 0x00FFFFFFu | (alpha << 24);
 
     /* Since we have to potentially modify the vertex stream later on to apply
-       rotation to it, we're better off constructing it in RAM rather than 
+       rotation to it, we're better off constructing it in RAM rather than
        using the PVR DR API to write to the SQs directly. SQs are read-only! */
     pvr_vertex_t verts[4] = {
         {
@@ -1253,7 +1253,7 @@ void RenderDevice::DrawTexturedPolyTR(
     const uint32 argb = 0x00FFFFFFu | (alpha << 24);
 
     /* Since we have to potentially modify the vertex stream later on to apply
-       rotation to it, we're better off constructing it in RAM rather than 
+       rotation to it, we're better off constructing it in RAM rather than
        using the PVR DR API to write to the SQs directly. SQs are read-only! */
     pvr_vertex_t srcverts[4] = {
         {
@@ -1528,7 +1528,7 @@ void RenderDevice::PrepareColoredPolyTR(int32 y, int inkEffect) {
         context.gen.alpha = 1;
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
-        
+
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         pvr_poly_compile(hdr_ptr, &context);
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
@@ -1669,7 +1669,7 @@ void RenderDevice::DrawColoredPolyTR(
             context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = PVR_BLEND_INVDESTCOLOR;
         context.blend.dst = PVR_BLEND_ZERO;
-        
+
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         pvr_poly_compile(hdr_ptr, &context);
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
@@ -1762,7 +1762,7 @@ void RenderDevice::PrepareLinePolyTR(int inkEffect) {
         // always cull
         context.blend.src = lastLineSrcBlend;
         context.blend.dst = lastLineDstBlend;
-        
+
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         pvr_poly_compile(hdr_ptr, &context);
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
@@ -1875,7 +1875,7 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
             context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = PVR_BLEND_INVDESTCOLOR;
         context.blend.dst = PVR_BLEND_ZERO;
-        
+
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         pvr_poly_compile(hdr_ptr, &context);
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
@@ -1912,7 +1912,7 @@ void RenderDevice::PrepareFacePolyPT(int inkEffect) {
             context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastFaceSrcBlend;
         context.blend.dst = lastFaceDstBlend;
-                
+
         auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
         pvr_poly_compile(header, &context);
         pvr_dr_commit(header);
@@ -2066,7 +2066,7 @@ void RenderDevice::DrawFacePolyTR(
 
         context.blend.src = PVR_BLEND_INVDESTCOLOR;
         context.blend.dst = PVR_BLEND_ZERO;
-        
+
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         pvr_poly_compile(hdr_ptr, &context);
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
