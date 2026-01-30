@@ -1299,7 +1299,7 @@ bool32 RSDK::LoadVQImage(const char *filename, double displayLength, double fade
         fClose(vqTexFile);
         return false;
     }
-    if (vqTexWidth != 1024) {
+    if (vqTexWidth != 1024 && vqTexWidth != 512) {
         printf("invalid tex width %d\n", vqTexWidth);
         fClose(vqTexFile);
         return false;
@@ -1311,7 +1311,7 @@ bool32 RSDK::LoadVQImage(const char *filename, double displayLength, double fade
         fClose(vqTexFile);
         return false;
     }
-    if (vqTexHeight != 512) {
+    if (vqTexHeight != 512 && vqTexHeight != 256) {
         printf("invalid tex height %d\n", vqTexHeight);
         fClose(vqTexFile);
         return false;
