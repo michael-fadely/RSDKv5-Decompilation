@@ -430,7 +430,7 @@ plm_buffer_t *plm_buffer_create_with_filename(const char *filename);
 // Create a buffer instance with a file handle. Pass TRUE to close_when_done
 // to let plmpeg call fclose() on the handle when plm_destroy() is called.
 
-plm_buffer_t *plm_buffer_create_with_file(unsigned int fh, int close_when_done);
+plm_buffer_t *plm_buffer_create_with_file(FILE *fh, int close_when_done);
 
 
 // Create a buffer instance with a pointer to memory as source. This assumes
@@ -866,6 +866,7 @@ void * memmove_co (void *dest, const void *src, size_t len)
             ({ \
             void *tmpstore; \
             AllocateStorage((void **)&tmpstore, sz, DATASET_TMP, false); \
+            PinStorage(&tmpstore); \
             tmpstore; \
             })
 
@@ -875,7 +876,9 @@ void * memmove_co (void *dest, const void *src, size_t len)
             ({ \
             void *tmpstore; \
             AllocateStorage((void **)&tmpstore, sz, DATASET_TMP, false); \
+            PinStorage(&tmpstore); \
             memcpy(tmpstore, p, sz/2); \
+            UnPinStorage((void**)&p); \
             tmpstore; \
             })
 
@@ -931,7 +934,7 @@ plm_t *plm_create_with_filename(const char *filename) {
 	return plm_create_with_buffer(buffer, TRUE);
 }
 
-plm_t *plm_create_with_file(unsigned int fh, int close_when_done) {
+plm_t *plm_create_with_file(FILE *fh, int close_when_done) {
 	plm_buffer_t *buffer = plm_buffer_create_with_file(fh, close_when_done);
 	return plm_create_with_buffer(buffer, TRUE);
 }
@@ -1044,9 +1047,8 @@ void plm_set_audio_stream(plm_t *self, int stream_index) {
 		return;
 	}
 	self->audio_stream_index = stream_index;
-
-	// Set the correct audio_packet_type
-	plm_set_audio_enabled(self, 0);//self->audio_enabled);
+    // never enabled for Mania videos
+	plm_set_audio_enabled(self, 0);
 }
 
 int plm_get_video_enabled(plm_t *self) {
@@ -1408,7 +1410,7 @@ struct plm_buffer_t {
 	int has_ended;
 	int free_when_done;
 	int close_when_done;
-	unsigned int fh;
+	FILE *fh;
 	plm_buffer_load_callback load_callback;
 	void *load_callback_user_data;
 	uint8_t *bytes;
@@ -1442,24 +1444,24 @@ inline int16_t plm_buffer_read_vlc(plm_buffer_t *self, const plm_vlc_t *table);
 inline uint16_t plm_buffer_read_vlc_uint(plm_buffer_t *self, const plm_vlc_uint_t *table);
 
 plm_buffer_t *plm_buffer_create_with_filename(const char *filename) {
-	unsigned int fh = fs_open(filename, 0);
-	if (fh == -1) {
+	FILE *fh = fOpen(filename, "rb");
+	if (fh == NULL) {
 		fprintf(stderr, "Can not open file: %s\n", filename);
 		return NULL;
 	}
 	return plm_buffer_create_with_file(fh, TRUE);
 }
 
-plm_buffer_t *plm_buffer_create_with_file(unsigned int fh, int close_when_done) {
+plm_buffer_t *plm_buffer_create_with_file(FILE *fh, int close_when_done) {
 	plm_buffer_t *self = plm_buffer_create_with_capacity(PLM_BUFFER_DEFAULT_SIZE);
 	self->fh = fh;
 	self->close_when_done = close_when_done;
 	self->mode = PLM_BUFFER_MODE_FILE;
 	self->discard_read_bytes = TRUE;
 
-	fs_seek(self->fh, 0, SEEK_END);
-	self->total_size = fs_tell(self->fh);
-	fs_seek(self->fh, 0, SEEK_SET);
+	fSeek(self->fh, 0, SEEK_END);
+	self->total_size = fTell(self->fh);
+	fSeek(self->fh, 0, SEEK_SET);
 
 	plm_buffer_set_load_callback(self, plm_buffer_load_file_callback, NULL);
 	return self;
@@ -1498,7 +1500,7 @@ plm_buffer_t *plm_buffer_create_for_appending(size_t initial_capacity) {
 
 void plm_buffer_destroy(plm_buffer_t *self) {
 	if (self->fh && self->close_when_done) {
-		fs_close(self->fh);
+		fClose(self->fh);
 	}
 	if (self->free_when_done) {
 		PLM_FREE(self->bytes);
@@ -1566,7 +1568,7 @@ void plm_buffer_seek(plm_buffer_t *self, size_t pos) {
 	self->has_ended = FALSE;
 
 	if (self->mode == PLM_BUFFER_MODE_FILE) {
-		fs_seek(self->fh, pos, SEEK_SET);
+		fSeek(self->fh, pos, SEEK_SET);
 		self->bit_index = 0;
 		self->length = 0;
 	}
@@ -1586,7 +1588,7 @@ void plm_buffer_seek(plm_buffer_t *self, size_t pos) {
 
 size_t plm_buffer_tell(plm_buffer_t *self) {
 	return self->mode == PLM_BUFFER_MODE_FILE
-		? fs_tell(self->fh) + (self->bit_index >> 3) - self->length
+		? fTell(self->fh) + (self->bit_index >> 3) - self->length
 		: self->bit_index >> 3;
 }
 
@@ -1610,8 +1612,13 @@ void plm_buffer_load_file_callback(plm_buffer_t *self, void *user) {
 		plm_buffer_discard_read_bytes(self);
 	}
 
-	size_t bytes_available = self->capacity - self->length;
-	size_t bytes_read = fs_read(self->fh, self->bytes + self->length, bytes_available);
+	ssize_t bytes_available = self->capacity - self->length;
+    ssize_t bytes_read = fRead(self->bytes + self->length, 1, bytes_available, self->fh);
+    if (bytes_read == -1) {
+        printf("failed to read\n");
+        exit(-1);
+    }
+    //	size_t bytes_read = fs_read(self->fh, self->bytes + self->length, bytes_available);
 	self->length += bytes_read;
 
 	if (bytes_read == 0) {

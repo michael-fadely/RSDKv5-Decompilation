@@ -34,6 +34,8 @@ public:
     static void SetupVideoTexture_YUV422(int32 width, int32 height, uint8 *imagePixels);
     static void SetupVideoTexture_YUV424(int32 width, int32 height, uint8 *imagePixels);
 
+    static void ReleaseImageTexture(void);
+    static void DrawImageTexture(float dim);
     static bool ProcessEvents();
 
     static void InitFPSCap();

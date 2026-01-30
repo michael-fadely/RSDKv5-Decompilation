@@ -26,13 +26,13 @@ bool32 VideoManager::initializing    = false;
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 #include "KallistiOS/mpeg.h"
 #include "KallistiOS/mpeg.c"
-#endif
 
-//mpeg_player_t *mpeg_player_create(const char *filename)
 static char videoFilePath[256];
 static mpeg_player_t *mpegPlayer;
 static int mpegDone;
-static void *mpegStorage;
+#endif
+
+
 bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCallback)())
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
@@ -44,7 +44,11 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
 #endif
 
     sprintf_s(videoFilePath, sizeof(videoFilePath), "%sData/Video/%s", KOS_USER_DIR, filename);
-    printf("Playing Video %s\n", videoFilePath);
+
+    mpegPlayer = mpeg_player_create(videoFilePath);
+    if (!mpegPlayer)
+        return false;
+
     engine.skipCallback = NULL;
     engine.skipCallback = skipCallback;
     engine.storedShaderID     = videoSettings.shaderID;
@@ -63,13 +67,9 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
     else if (ENGINE_VERSION == 3)
         RSDK::Legacy::gameMode = RSDK::Legacy::v3::ENGINE_VIDEOWAIT;
 #endif
-    mpegDone = 0;
-    mpegPlayer = mpeg_player_create(videoFilePath);
-    if (!mpegPlayer)
-        return false;
-    else
-        return true;
 
+    mpegDone = 0;
+    return true;
 #else  // RETRO_PLATFORM == RETRO_KALLISTIOS
     if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)
         return false;
@@ -248,11 +248,10 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
 void RSDK::ProcessVideo()
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    printf("ProcessVideo\n");
-    //DC_STUB();
     if (engine.skipCallback && engine.skipCallback()) {
         goto processVideoDone;
     }
+
     mpeg_process(mpegPlayer, &mpegDone);
     if (mpegDone) {
 processVideoDone:

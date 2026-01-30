@@ -98,21 +98,17 @@ void mpeg_player_set_loop(mpeg_player_t *player, int loop);
 */
 void mpeg_player_destroy(mpeg_player_t *player);
 
-/** \brief   Play an MPEG video using an MPEG player.
+/** \brief   Run one frame of an MPEG video using an MPEG player.
     \ingroup mpeg_playback
 
-    This function starts the playback of an MPEG video using the specified 
-    MPEG player instance. It continuously decodes video frames and handles 
-    audio streaming while checking for cancellation inputs via controller buttons.
+    This function processes/plays one frame MPEG video using the specified 
+    MPEG player instance. If the video is finished, it is indicated through done param.
 
     \param  player          The MPEG player instance used for playback. Must be initialized.
-    \param  cancel_buttons  A bit mask of controller buttons that can cancel the playback.
-    \return                 An integer indicating the reason for playback termination. 
-                            Returns -1 if player or decoder is NULL. Returns a non-negative 
-                            value representing cancellation status otherwise.
+    \param  done            output parameter storing if playback is complete
+    \return                 n/a
 */
-int mpeg_play(mpeg_player_t *player, uint32_t cancel_buttons);
-
+void mpeg_process(mpeg_player_t *player, int *done);
 #ifdef __cplusplus
 }
 #endif

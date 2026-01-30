@@ -63,6 +63,11 @@ enum PrimitiveTypes {
 
 size_t vbPos = 0;
 float drawDepth = 1.0f;
+
+pvr_poly_hdr_t imageHeader;
+pvr_ptr_t imageTexture = nullptr;
+pvr_vertex_t imageVerts[4];
+
 pvr_ptr_t lastTexture = nullptr;
 pvr_dr_state_t drState = 0;
 
@@ -418,8 +423,16 @@ void RenderDevice::FlipScreen()
 #endif
 }
 // static
+void RenderDevice::ReleaseImageTexture(void) {
+    if (imageTexture != (pvr_ptr_t)nullptr) {
+        pvr_mem_free(imageTexture);
+        imageTexture = (pvr_ptr_t)nullptr;
+    }
+}
+// static
 void RenderDevice::Release(bool32 isRefresh)
 {
+    ReleaseImageTexture();
     DC_STUB();
 }
 // static
@@ -442,9 +455,96 @@ void RenderDevice::GetWindowSize(int32 *width, int32 *height)
 }
 
 // static
+void RenderDevice::DrawImageTexture(float dim) {
+    if (imageTexture == (pvr_ptr_t)nullptr) {
+        return;
+    }
+
+    if (dim > 1.0f) dim = 1.0f;
+    if (dim < 0.0f) dim = 0.0f;
+
+    uint8 cc = (uint8)(255.0f * dim);
+    uint32 color = 0xFF000000 | (cc << 16) | (cc << 8) | cc;
+    for (int i=0;i<4;i++) {
+        imageVerts[i].argb = color;
+    }
+
+    RenderDevice::BeginScene();
+    pvr_prim(&imageHeader, 32);
+    pvr_prim(imageVerts, 128);
+    RenderDevice::EndScene();
+}
+
+// static
 void RenderDevice::SetupImageTexture(int32 width, int32 height, uint8 *imagePixels)
 {
-    DC_STUB();
+    int32 vqTexCompressedSize = width;
+
+    if (imageTexture != (pvr_ptr_t)nullptr) {
+        pvr_mem_free(imageTexture);
+        imageTexture = (pvr_ptr_t)nullptr;
+    }
+
+    imageTexture = pvr_mem_malloc(vqTexCompressedSize);
+    if (imageTexture == (pvr_ptr_t)nullptr) {
+        return;
+    }
+
+    pvr_txr_load(
+        imagePixels,
+        imageTexture,
+        vqTexCompressedSize
+    );
+    pvr_poly_cxt_t cxt;
+    pvr_poly_cxt_txr(&cxt, PVR_LIST_PT_POLY,
+        PVR_TXRFMT_VQ_ENABLE | PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_TWIDDLED,
+        1024, 512,
+        imageTexture,
+        PVR_FILTER_BILINEAR);
+    pvr_poly_compile(&imageHeader, &cxt);
+
+    float vidLeft = 0.0f * pixelScaleX;
+    float vidRight = 320.0f * pixelScaleX;
+    float vidTop = 40.0f * pixelScaleY;
+    float vidBottom = 200.0f * pixelScaleY;
+
+    uint32_t color = 0xFF000000;
+
+    imageVerts[0].x = vidLeft;
+    imageVerts[0].y = vidTop;
+    imageVerts[0].z = 1.0f;
+    imageVerts[0].u = 0.0f;
+    imageVerts[0].v = 0.0f;
+    imageVerts[0].argb = color;
+    imageVerts[0].oargb = 0;
+    imageVerts[0].flags = PVR_CMD_VERTEX;
+
+    imageVerts[1].x = vidRight;
+    imageVerts[1].y = vidTop;
+    imageVerts[1].z = 1.0f;
+    imageVerts[1].u = 1.0f;
+    imageVerts[1].v = 0.0f;
+    imageVerts[1].argb = color;
+    imageVerts[1].oargb = 0;
+    imageVerts[1].flags = PVR_CMD_VERTEX;
+
+    imageVerts[2].x = vidLeft;
+    imageVerts[2].y = vidBottom;
+    imageVerts[2].z = 1.0f;
+    imageVerts[2].u = 0.0f;
+    imageVerts[2].v = 1.0f;
+    imageVerts[2].argb = color;
+    imageVerts[2].oargb = 0;
+    imageVerts[2].flags = PVR_CMD_VERTEX;
+
+    imageVerts[3].x = vidRight;
+    imageVerts[3].y = vidBottom;
+    imageVerts[3].z = 1.0f;
+    imageVerts[3].u = 1.0f;
+    imageVerts[3].v = 1.0f;
+    imageVerts[3].argb = color;
+    imageVerts[3].oargb = 0;
+    imageVerts[3].flags = PVR_CMD_VERTEX_EOL;
 }
 // static
 void RenderDevice::SetupVideoTexture_YUV420(int32 width, int32 height, uint8 *imagePixels)
