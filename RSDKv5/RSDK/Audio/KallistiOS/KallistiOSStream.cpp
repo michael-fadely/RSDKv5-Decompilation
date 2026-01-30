@@ -254,7 +254,7 @@ void stream_volume(int vol)
 
 int stream_is_playing(void)
 {
-    return stream.status == SNDDEC_STATUS_STREAMING;
+    return (stream.status == SNDDEC_STATUS_STREAMING) || (stream.status == SNDDEC_STATUS_RESUMING);
 }
 
 static void *sndstream_thread(void *param)

@@ -211,12 +211,23 @@ inline bool32 SfxPlaying(uint16 sfx)
     return false;
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+extern "C" {
+    int stream_is_playing(void);
+}
+#endif
+
 inline bool32 ChannelActive(uint32 channel)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // afaict only used to check if song still playing in credits scroll
+    return stream_is_playing();
+#else
     if (channel >= CHANNEL_COUNT)
         return false;
     else
         return (channels[channel].state & 0x3F) != CHANNEL_IDLE;
+#endif
 }
 
 uint32 GetChannelPos(uint32 channel);
