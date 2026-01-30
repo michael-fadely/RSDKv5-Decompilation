@@ -497,7 +497,7 @@ void RenderDevice::SetupImageTexture(int32 width, int32 height, uint8 *imagePixe
     );
     pvr_poly_cxt_t cxt;
     pvr_poly_cxt_txr(&cxt, PVR_LIST_PT_POLY,
-        PVR_TXRFMT_VQ_ENABLE | PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_TWIDDLED,
+        PVR_TXRFMT_VQ_ENABLE | PVR_TXRFMT_RGB565 | PVR_TXRFMT_TWIDDLED,
         1024, 512,
         imageTexture,
         PVR_FILTER_BILINEAR);
