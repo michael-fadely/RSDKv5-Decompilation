@@ -59,7 +59,7 @@ struct KallistiOSInputDevice : InputDevice
 {
     std::array<Vmu, 2> vmu;
 
-    KallistiOSInputDevice(int port):
+    KallistiOSInputDevice(uint8_t port):
         vmu({ Vmu{ port, 1 }, Vmu{ port, 2 }})
     {
         id = port + CONT_P1;
