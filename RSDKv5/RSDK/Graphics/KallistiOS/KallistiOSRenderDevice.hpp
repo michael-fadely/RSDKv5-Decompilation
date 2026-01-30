@@ -2,7 +2,7 @@
 #define KOS_HARDWARE_RENDERER
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-#define DO_240 0
+#define DO_240 1
 #endif
 
 using ShaderEntry = ShaderEntryBase; // DCFIXME

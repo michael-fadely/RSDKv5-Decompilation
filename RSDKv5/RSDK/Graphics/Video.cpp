@@ -23,11 +23,53 @@ ogg_int64_t VideoManager::granulePos = 0;
 bool32 VideoManager::initializing    = false;
 #endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include "KallistiOS/mpeg.h"
+#include "KallistiOS/mpeg.c"
+#endif
+
+//mpeg_player_t *mpeg_player_create(const char *filename)
+static char videoFilePath[256];
+static mpeg_player_t *mpegPlayer;
+static int mpegDone;
+static void *mpegStorage;
 bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCallback)())
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    DC_STUB();
-    return false;
+    if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)
+        return false;
+#if RETRO_REV0U
+    if (ENGINE_VERSION == 3 && RSDK::Legacy::gameMode == RSDK::Legacy::v3::ENGINE_VIDEOWAIT)
+        return false;
+#endif
+
+    sprintf_s(videoFilePath, sizeof(videoFilePath), "%sData/Video/%s", KOS_USER_DIR, filename);
+    printf("Playing Video %s\n", videoFilePath);
+    engine.skipCallback = NULL;
+    engine.skipCallback = skipCallback;
+    engine.storedShaderID     = videoSettings.shaderID;
+    videoSettings.screenCount = 0;
+
+    if (ENGINE_VERSION == 5)
+        engine.storedState = sceneInfo.state;
+#if RETRO_REV0U
+    else if (ENGINE_VERSION == 3)
+        engine.storedState = RSDK::Legacy::gameMode;
+#endif
+    changedVideoSettings = false;
+    if (ENGINE_VERSION == 5)
+        sceneInfo.state = ENGINESTATE_VIDEOPLAYBACK;
+#if RETRO_REV0U
+    else if (ENGINE_VERSION == 3)
+        RSDK::Legacy::gameMode = RSDK::Legacy::v3::ENGINE_VIDEOWAIT;
+#endif
+    mpegDone = 0;
+    mpegPlayer = mpeg_player_create(videoFilePath);
+    if (!mpegPlayer)
+        return false;
+    else
+        return true;
+
 #else  // RETRO_PLATFORM == RETRO_KALLISTIOS
     if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)
         return false;
@@ -206,7 +248,24 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
 void RSDK::ProcessVideo()
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    DC_STUB();
+    printf("ProcessVideo\n");
+    //DC_STUB();
+    if (engine.skipCallback && engine.skipCallback()) {
+        goto processVideoDone;
+    }
+    mpeg_process(mpegPlayer, &mpegDone);
+    if (mpegDone) {
+processVideoDone:
+        mpeg_player_destroy(mpegPlayer);
+        videoSettings.shaderID    = engine.storedShaderID;
+        videoSettings.screenCount = 1;
+        if (ENGINE_VERSION == 5)
+            sceneInfo.state = engine.storedState;
+#if RETRO_REV0U
+        else if (ENGINE_VERSION == 3)
+            RSDK::Legacy::gameMode = engine.storedState;
+#endif
+    }
 #else
     bool32 finished = false;
     double curTime  = 0;

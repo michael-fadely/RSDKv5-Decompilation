@@ -938,7 +938,7 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
 
     GFXSurface *surface = &gfxSurface[id];
 
-    sprintf_s(fullFilePath, sizeof(fullFilePath), "%s/Data/Sprites/%s", KOS_USER_DIR, filename);
+    sprintf_s(fullFilePath, sizeof(fullFilePath), "%sData/Sprites/%s", KOS_USER_DIR, filename);
 
     vqTexFile = fOpen(fullFilePath, "r");
 
