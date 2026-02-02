@@ -534,12 +534,12 @@ void RSDK::ProcessEngine()
 
         case ENGINESTATE_VIDEOPLAYBACK:
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-            RenderDevice::BeginScene();
+//            RenderDevice::BeginScene();
 #endif
             ProcessInput();
             ProcessVideo();
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-            RenderDevice::EndScene();
+//            RenderDevice::EndScene();
 #endif
             break;
 

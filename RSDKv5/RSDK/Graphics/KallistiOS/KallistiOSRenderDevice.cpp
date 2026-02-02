@@ -500,7 +500,7 @@ void RenderDevice::SetupImageTexture(int32 width, int32 height, uint8 *imagePixe
         PVR_TXRFMT_VQ_ENABLE | PVR_TXRFMT_RGB565 | PVR_TXRFMT_TWIDDLED,
         1024, 512,
         imageTexture,
-        PVR_FILTER_NONE);
+        PVR_FILTER_NEAREST);
     pvr_poly_compile(&imageHeader, &cxt);
 
     float vidLeft = 0.0f * pixelScaleX;

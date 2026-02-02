@@ -268,11 +268,42 @@ void RSDK::LoadStream(ChannelInfo *channel)
 #endif
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+extern "C" {
+int music_intro = 0;
+int intro_hp = 0;
+int intro_tee = 0;
+}
+#endif
+
 int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint32 loopPoint, bool32 loadASync)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    sprintf_s(streamFilePath, sizeof(streamFilePath), "%s/Data/Music/%s", KOS_USER_DIR, filename);
+    if ((strncmp("BadEnd", filename, 6) == 0) || (strncmp("GoodEnd", filename, 7) == 0) || (strncmp("Intro", filename, 5) == 0)) {
+        if (strncmp("IntroHP", filename, 7) == 0) {
+            music_intro = 1;
+            intro_hp = 1;
+            intro_tee = 0;
+        } else if (strncmp("IntroTee", filename, 8) == 0) {
+            music_intro = 1;
+            intro_tee = 1;
+            intro_hp = 0;
+        } else {
+            music_intro = 0;
+            intro_tee = 0;
+            intro_hp = 0;
+        }
 
+        stream_destroy();
+        return 0;
+    } else {
+        music_intro = 0;
+        intro_tee = 0;
+        intro_hp = 0;
+    }
+
+    sprintf_s(streamFilePath, sizeof(streamFilePath), "%s/Data/Music/%s", KOS_USER_DIR, filename);
+    printf("Playing Stream %s\n", streamFilePath);
     stream_destroy();
     stream_create(streamFilePath, loopPoint);
     stream_play();

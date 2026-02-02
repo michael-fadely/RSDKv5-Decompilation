@@ -1,3 +1,4 @@
+#if 1
 /*
 PL_MPEG - MPEG1 Video decoder, MP2 Audio decoder, MPEG-PS demuxer
 Dominic Szablewski - https://phoboslab.org
@@ -430,7 +431,7 @@ plm_buffer_t *plm_buffer_create_with_filename(const char *filename);
 // Create a buffer instance with a file handle. Pass TRUE to close_when_done
 // to let plmpeg call fclose() on the handle when plm_destroy() is called.
 
-plm_buffer_t *plm_buffer_create_with_file(FILE *fh, int close_when_done);
+plm_buffer_t *plm_buffer_create_with_file(FileIO *fh, int close_when_done);
 
 
 // Create a buffer instance with a pointer to memory as source. This assumes
@@ -861,26 +862,53 @@ void * memmove_co (void *dest, const void *src, size_t len)
 #define TRUE 1
 #define FALSE 0
 #endif
-
+#if 0
 #define PLM_MALLOC(sz) \
             ({ \
             void *tmpstore; \
             AllocateStorage((void **)&tmpstore, sz, DATASET_TMP, false); \
-            PinStorage(&tmpstore); \
             tmpstore; \
             })
 
-#define PLM_FREE(p) 
+#define PLM_FREE(p) \
+            ({ \
+            RemoveStorageEntry((void**)&p); \
+            })
 
 #define PLM_REALLOC(p, sz) \
             ({ \
             void *tmpstore; \
             AllocateStorage((void **)&tmpstore, sz, DATASET_TMP, false); \
-            PinStorage(&tmpstore); \
             memcpy(tmpstore, p, sz/2); \
-            UnPinStorage((void**)&p); \
+            RemoveStorageEntry((void**)&p); \
             tmpstore; \
             })
+#else
+#define PLM_MALLOC(sz) \
+            ({ \
+            void *tmpstore; \
+            AllocateStorage((void **)&tmpstore, sz, DATASET_STG, false); \
+            PinStorage(&tmpstore); \
+            tmpstore; \
+            })
+
+#define PLM_FREE(p) \
+            ({ \
+            UnPinStorage((void**)&p); \
+            RemoveStorageEntry((void**)&p); \
+            })
+
+#define PLM_REALLOC(p, sz) \
+            ({ \
+            void *tmpstore; \
+            AllocateStorage((void **)&tmpstore, sz, DATASET_STG, false); \
+            PinStorage(&tmpstore); \
+            memcpy(tmpstore, p, sz); \
+            UnPinStorage((void**)&p); \
+            RemoveStorageEntry((void**)&p); \
+            tmpstore; \
+            })
+#endif
 
 #ifndef PLM_MALLOC
 	#define PLM_MALLOC(sz) malloc(sz)
@@ -934,7 +962,7 @@ plm_t *plm_create_with_filename(const char *filename) {
 	return plm_create_with_buffer(buffer, TRUE);
 }
 
-plm_t *plm_create_with_file(FILE *fh, int close_when_done) {
+plm_t *plm_create_with_file(FileIO *fh, int close_when_done) {
 	plm_buffer_t *buffer = plm_buffer_create_with_file(fh, close_when_done);
 	return plm_create_with_buffer(buffer, TRUE);
 }
@@ -1047,8 +1075,9 @@ void plm_set_audio_stream(plm_t *self, int stream_index) {
 		return;
 	}
 	self->audio_stream_index = stream_index;
-    // never enabled for Mania videos
-	plm_set_audio_enabled(self, 0);
+
+	// Set the correct audio_packet_type
+	plm_set_audio_enabled(self, self->audio_enabled);
 }
 
 int plm_get_video_enabled(plm_t *self) {
@@ -1410,7 +1439,7 @@ struct plm_buffer_t {
 	int has_ended;
 	int free_when_done;
 	int close_when_done;
-	FILE *fh;
+	FileIO *fh;
 	plm_buffer_load_callback load_callback;
 	void *load_callback_user_data;
 	uint8_t *bytes;
@@ -1444,15 +1473,15 @@ inline int16_t plm_buffer_read_vlc(plm_buffer_t *self, const plm_vlc_t *table);
 inline uint16_t plm_buffer_read_vlc_uint(plm_buffer_t *self, const plm_vlc_uint_t *table);
 
 plm_buffer_t *plm_buffer_create_with_filename(const char *filename) {
-	FILE *fh = fOpen(filename, "rb");
+	FileIO *fh = fOpen(filename, "rb");
 	if (fh == NULL) {
-		fprintf(stderr, "Can not open file: %s\n", filename);
+		printf("Can not open file: %s\n", filename);
 		return NULL;
 	}
 	return plm_buffer_create_with_file(fh, TRUE);
 }
 
-plm_buffer_t *plm_buffer_create_with_file(FILE *fh, int close_when_done) {
+plm_buffer_t *plm_buffer_create_with_file(FileIO *fh, int close_when_done) {
 	plm_buffer_t *self = plm_buffer_create_with_capacity(PLM_BUFFER_DEFAULT_SIZE);
 	self->fh = fh;
 	self->close_when_done = close_when_done;
@@ -1461,6 +1490,7 @@ plm_buffer_t *plm_buffer_create_with_file(FILE *fh, int close_when_done) {
 
 	fSeek(self->fh, 0, SEEK_END);
 	self->total_size = fTell(self->fh);
+    printf("self->total_Size %d\n", self->total_size);
 	fSeek(self->fh, 0, SEEK_SET);
 
 	plm_buffer_set_load_callback(self, plm_buffer_load_file_callback, NULL);
@@ -1604,7 +1634,7 @@ void plm_buffer_discard_read_bytes(plm_buffer_t *self) {
 		self->length -= byte_pos;
 	}
 }
-
+#include <errno.h>
 void plm_buffer_load_file_callback(plm_buffer_t *self, void *user) {
 	PLM_UNUSED(user);
 
@@ -1615,10 +1645,9 @@ void plm_buffer_load_file_callback(plm_buffer_t *self, void *user) {
 	ssize_t bytes_available = self->capacity - self->length;
     ssize_t bytes_read = fRead(self->bytes + self->length, 1, bytes_available, self->fh);
     if (bytes_read == -1) {
-        printf("failed to read\n");
+        printf("failed to read (%s)\n", strerror(errno));
         exit(-1);
     }
-    //	size_t bytes_read = fs_read(self->fh, self->bytes + self->length, bytes_available);
 	self->length += bytes_read;
 
 	if (bytes_read == 0) {
@@ -4793,3 +4822,4 @@ void plm_audio_idct36(int s[32][3], int ss, float *d, int dp) {
 }
 
 #endif // PL_MPEG_IMPLEMENTATIONt
+#endif

@@ -157,6 +157,7 @@ void stream_destroy(void)
 
     if (stream.stream_file != NULL) {
         fClose(stream.stream_file);
+        stream.stream_file = NULL;
     }
 
     mutex_unlock(&stream_mutex);
