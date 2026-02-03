@@ -55,7 +55,7 @@ mkdir -p -- "$stagedir/Sprites"
 cp -R -- "$sourcedir/Sprites/Global" "$stagedir/Sprites/"
 cp -R -- "$sourcedir/Sprites/TMZ1"   "$stagedir/Sprites/"
 cp -R -- "$sourcedir/Sprites/UI"     "$stagedir/Sprites/"
-rm "$stagedir/Sprites/UI/Achievements.gif"
+rm -f -- "$stagedir/Sprites/UI/Achievements.gif"
 
 "$script_dir/sfx_step_1_downsample.sh"  "$stagedir"
 "$script_dir/sfx_step_2_wav2adpcm.sh"   "$stagedir"
