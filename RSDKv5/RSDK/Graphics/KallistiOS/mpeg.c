@@ -376,7 +376,7 @@ mpeg_decode_result_t mpeg_decode_step(mpeg_player_t *player) {
         /* Init sound stream. */
         sound_stream_reset(player);
         snd_stream_start(player->snd_hnd, player->sample_rate, 0);
-        snd_stream_volume(player->snd_hnd, 255);
+        snd_stream_volume(player->snd_hnd, 0);
 
         /* Prime the first frame */
         player->frame = plm_decode_video(player->decoder);
@@ -389,6 +389,7 @@ mpeg_decode_result_t mpeg_decode_step(mpeg_player_t *player) {
         /* Check if audio should be polled */
         if (player->audio_time == 0.0f || ((player->video_time > player->audio_time) && playback_time > player->audio_time)) {
             snd_stream_poll(player->snd_hnd);
+            snd_stream_volume(player->snd_hnd, 255);
         }
         return MPEG_DECODE_FRAME;
     }
@@ -399,6 +400,7 @@ mpeg_decode_result_t mpeg_decode_step(mpeg_player_t *player) {
     /* Check if audio should be polled */
     if (player->audio_time == 0.0f || ((player->video_time > player->audio_time) && playback_time > player->audio_time)) {
         snd_stream_poll(player->snd_hnd);
+        snd_stream_volume(player->snd_hnd, 255);
     }
 
     /* Check if it's time to decode the next frame */
