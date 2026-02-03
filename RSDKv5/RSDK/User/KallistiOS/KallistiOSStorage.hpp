@@ -8,16 +8,9 @@ using namespace RSDK;
 
 #define VMU_DEBUG 0
 
-#if 0
-extern "C" {
-    extern mutex_t io_lock;
-}
-#endif
-
 static char icon_fn[256];
 static uint8 icondata[512];
 static char vmu_userfn[256];
-static file_t ach_file = FILEHND_INVALID;
 
 struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
     static char *GetVMUFilename(const char *filename) {
