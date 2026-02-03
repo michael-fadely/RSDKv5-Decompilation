@@ -31,6 +31,8 @@ echo "file '$vid_dir/BadEnd.ogv' \ file '$vid_dir/BadTails.ogv'" > $orig_dir/vid
 
 cd -- "$vid_dir"
 
+mkdir -p Staged
+
 shopt -s nullglob
 
 ffmpeg -i Mania.ogv -i ../Music/IntroTee.ogg \
@@ -38,54 +40,57 @@ ffmpeg -i Mania.ogv -i ../Music/IntroTee.ogg \
   -map 0:v -map "[a]" \
   -c:v copy -c:a libvorbis -q:a 10 \
   -shortest \
-  ManiaTee.ogv
-ffmpeg -fflags "+genpts" -i ManiaTee.ogv -vf "scale=320:160,minterpolate=fps=23.98,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 ManiaTee.mpg
-rm ManiaTee.ogv
-mv ManiaTee.mpg ManiaTee.ogv
+  Staged/ManiaTee.ogv
+ffmpeg -fflags "+genpts" -i Staged/ManiaTee.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1,minterpolate=fps=30,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 Staged/ManiaTee.mpg
+#rm Staged/ManiaTee.ogv
 
-ffmpeg -i Mania.ogv -i ../Music/IntroHP.ogg -filter:v "trim=start=1.8,setpts=PTS-STARTPTS" -map 0:v:0 -map 1:a:0 -c:v libtheora -q:v 10 -c:a copy ManiaHP.ogv
-ffmpeg -fflags "+genpts" -i ManiaHP.ogv -vf "scale=320:160,minterpolate=fps=23.98,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 ManiaHP.mpg
-rm ManiaHP.ogv
-mv ManiaHP.mpg ManiaHP.ogv
+ffmpeg -i Mania.ogv -i ../Music/IntroHP.ogg -filter:v "trim=start=1.8,setpts=PTS-STARTPTS" -map 0:v:0 -map 1:a:0 -c:v libtheora -q:v 10 -c:a copy Staged/ManiaHP.ogv
+ffmpeg -fflags "+genpts" -i Staged/ManiaHP.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1,minterpolate=fps=30,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 Staged/ManiaHP.mpg
+#rm Staged/ManiaHP.ogv
 
-ffmpeg -safe 0 -f concat -i $orig_dir/vids_badknux.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest BadKnuxMux.ogv
-ffmpeg -fflags "+genpts" -i BadKnuxMux.ogv -vf "scale=320:160,minterpolate=fps=23.98,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 BadKnuxMux.mpg
-rm BadKnuxMux.ogv
-mv BadKnuxMux.mpg BadKnux.ogv
+ffmpeg -safe 0 -f concat -i $orig_dir/vids_badknux.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest Staged/BadKnuxMux.ogv
+ffmpeg -fflags "+genpts" -i Staged/BadKnuxMux.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1,minterpolate=fps=30,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 Staged/BadKnuxMux.mpg
+#rm Staged/BadKnuxMux.ogv
 
-ffmpeg -safe 0 -f concat -i $orig_dir/vids_badmighty.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest BadMightyMux.ogv
-ffmpeg -fflags "+genpts" -i BadMightyMux.ogv -vf "scale=320:160,minterpolate=fps=23.98,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 BadMightyMux.mpg
-rm BadMightyMux.ogv
-mv BadMightyMux.mpg BadMighty.ogv
+ffmpeg -safe 0 -f concat -i $orig_dir/vids_badmighty.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest Staged/BadMightyMux.ogv
+ffmpeg -fflags "+genpts" -i Staged/BadMightyMux.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1,minterpolate=fps=30,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 Staged/BadMightyMux.mpg
+#rm Staged/BadMightyMux.ogv
 
-ffmpeg -safe 0 -f concat -i $orig_dir/vids_badray.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest BadRayMux.ogv
-ffmpeg -fflags "+genpts" -i BadRayMux.ogv -vf "scale=320:160,minterpolate=fps=23.98,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 BadRayMux.mpg
-rm BadRayMux.ogv
-mv BadRayMux.mpg BadRay.ogv
+ffmpeg -safe 0 -f concat -i $orig_dir/vids_badray.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest Staged/BadRayMux.ogv
+ffmpeg -fflags "+genpts" -i Staged/BadRayMux.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1,minterpolate=fps=30,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 Staged/BadRayMux.mpg
+#rm Staged/BadRayMux.ogv
 
-ffmpeg -safe 0 -f concat -i $orig_dir/vids_badsonic.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest BadSonicMux.ogv
-ffmpeg -fflags "+genpts" -i BadSonicMux.ogv -vf "scale=320:160,minterpolate=fps=23.98,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 BadSonicMux.mpg
-rm BadSonicMux.ogv
-mv BadSonicMux.mpg BadSonic.ogv
+ffmpeg -safe 0 -f concat -i $orig_dir/vids_badsonic.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest Staged/BadSonicMux.ogv
+ffmpeg -fflags "+genpts" -i Staged/BadSonicMux.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1,minterpolate=fps=30,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 Staged/BadSonicMux.mpg
+#rm Staged/BadSonicMux.ogv
 
-ffmpeg -safe 0 -f concat -i $orig_dir/vids_badsonic2.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest BadSonic2Mux.ogv
-ffmpeg -fflags "+genpts" -i BadSonic2Mux.ogv -vf "scale=320:160,minterpolate=fps=23.98,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 BadSonic2Mux.mpg
-rm BadSonic2Mux.ogv
-mv BadSonic2Mux.mpg BadSonic2.ogv
+ffmpeg -safe 0 -f concat -i $orig_dir/vids_badsonic2.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest Staged/BadSonic2Mux.ogv
+ffmpeg -fflags "+genpts" -i Staged/BadSonic2Mux.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1,minterpolate=fps=30,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 Staged/BadSonic2Mux.mpg
+#rm Staged/BadSonic2Mux.ogv
 
-ffmpeg -safe 0 -f concat -i $orig_dir/vids_badtails.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest BadTailsMux.ogv
-ffmpeg -fflags "+genpts" -i BadTailsMux.ogv -vf "scale=320:160,minterpolate=fps=23.98,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 BadTailsMux.mpg
-rm BadTailsMux.ogv
-mv BadTailsMux.mpg BadTails.ogv
+ffmpeg -safe 0 -f concat -i $orig_dir/vids_badtails.txt -i ../Music/BadEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest Staged/BadTailsMux.ogv
+ffmpeg -fflags "+genpts" -i Staged/BadTailsMux.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1,minterpolate=fps=30,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 Staged/BadTailsMux.mpg
+#rm Staged/BadTailsMux.ogv
 
-ffmpeg -i GoodEnd.ogv -i ../Music/GoodEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest GoodEndMux.ogv
-ffmpeg -fflags "+genpts" -i GoodEndMux.ogv -vf "scale=320:160,minterpolate=fps=23.98,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 GoodEndMux.mpg
-rm GoodEndMux.ogv
-mv GoodEndMux.mpg GoodEnd.ogv
+ffmpeg -i GoodEnd.ogv -i ../Music/GoodEnd.ogg -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -af "apad=pad_dur=36000" -shortest Staged/GoodEndMux.ogv
+ffmpeg -fflags "+genpts" -i Staged/GoodEndMux.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1,minterpolate=fps=30,format=yuv420p" -b:v 400k -minrate 400k -maxrate 400k -bufsize 300k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg -packet_size 2048 Staged/GoodEndMux.mpg
+#rm Staged/GoodEndMux.ogv
 
-rm "$orig_dir/vids_badknux.txt"
-rm "$orig_dir/vids_badmighty.txt"
-rm "$orig_dir/vids_badray.txt"
-rm "$orig_dir/vids_badsonic.txt"
-rm "$orig_dir/vids_badsonic2.txt"
-rm "$orig_dir/vids_badtails.txt"
+cp Staged/ManiaTee.mpg ManiaTee.ogv
+cp Staged/ManiaHP.mpg ManiaHP.ogv
+cp Staged/BadKnuxMux.mpg BadKnux.ogv
+cp Staged/BadMightyMux.mpg BadMighty.ogv
+cp Staged/BadRayMux.mpg BadRay.ogv
+cp Staged/BadSonicMux.mpg BadSonic.ogv
+cp Staged/BadSonic2Mux.mpg BadSonic2.ogv
+cp Staged/BadTailsMux.mpg BadTails.ogv
+cp Staged/GoodEndMux.mpg GoodEnd.ogv
+
+#rm "$orig_dir/vids_badknux.txt"
+#rm "$orig_dir/vids_badmighty.txt"
+#rm "$orig_dir/vids_badray.txt"
+#rm "$orig_dir/vids_badsonic.txt"
+#rm "$orig_dir/vids_badsonic2.txt"
+#rm "$orig_dir/vids_badtails.txt"
+exit 0
+

@@ -1,3 +1,4 @@
+
 #if 1
 /*
 PL_MPEG - MPEG1 Video decoder, MP2 Audio decoder, MPEG-PS demuxer
@@ -1629,7 +1630,7 @@ void plm_buffer_discard_read_bytes(plm_buffer_t *self) {
 		self->length = 0;
 	}
 	else if (byte_pos > 0) {
-		memmove_co(self->bytes, self->bytes + byte_pos, self->length - byte_pos);
+		memmove/* _co */(self->bytes, self->bytes + byte_pos, self->length - byte_pos);
 		self->bit_index -= byte_pos << 3;
 		self->length -= byte_pos;
 	}
@@ -1641,13 +1642,14 @@ void plm_buffer_load_file_callback(plm_buffer_t *self, void *user) {
 	if (self->discard_read_bytes) {
 		plm_buffer_discard_read_bytes(self);
 	}
-
+    
 	ssize_t bytes_available = self->capacity - self->length;
     ssize_t bytes_read = fRead(self->bytes + self->length, 1, bytes_available, self->fh);
     if (bytes_read == -1) {
         printf("failed to read (%s)\n", strerror(errno));
         exit(-1);
     }
+    //	size_t bytes_read = fs_read(self->fh, self->bytes + self->length, bytes_available);
 	self->length += bytes_read;
 
 	if (bytes_read == 0) {

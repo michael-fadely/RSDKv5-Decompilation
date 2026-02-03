@@ -352,7 +352,7 @@ static int setup_graphics(mpeg_player_t *player) {
     v = (float)player->height / mpeg_texture_height;
 
     player->vert[0].x = 0.0f;
-    player->vert[0].y = 40.0f;
+    player->vert[0].y = 0.0f;
     player->vert[0].z = 1.0f;
     player->vert[0].u = 0.0f;
     player->vert[0].v = 0.0f;
@@ -361,7 +361,7 @@ static int setup_graphics(mpeg_player_t *player) {
     player->vert[0].flags = PVR_CMD_VERTEX;
 
     player->vert[1].x = 320.0f;
-    player->vert[1].y = 40.0f;
+    player->vert[1].y = 0.0f;
     player->vert[1].z = 1.0f;
     player->vert[1].u = u;
     player->vert[1].v = 0.0f;
@@ -370,7 +370,7 @@ static int setup_graphics(mpeg_player_t *player) {
     player->vert[1].flags = PVR_CMD_VERTEX;
 
     player->vert[2].x = 0.0f;
-    player->vert[2].y = 200.0f;
+    player->vert[2].y = 240.0f;
     player->vert[2].z = 1.0f;
     player->vert[2].u = 0.0f;
     player->vert[2].v = v;
@@ -379,7 +379,7 @@ static int setup_graphics(mpeg_player_t *player) {
     player->vert[2].flags = PVR_CMD_VERTEX;
 
     player->vert[3].x = 320.0f;
-    player->vert[3].y = 200.0f;
+    player->vert[3].y = 240.0f;
     player->vert[3].z = 1.0f;
     player->vert[3].u = u;
     player->vert[3].v = v;
@@ -397,7 +397,7 @@ static void *sound_callback(snd_stream_hnd_t hnd, int size, int *size_out) {
     int out = player->snd_mod_size;
 
     if(out > 0)
-        fast_memcpy(dest, player->snd_buf + player->snd_mod_start / 4, out);
+        /* fast_ */memcpy(dest, player->snd_buf + player->snd_mod_start / 4, out);
 
     while(size > out) {
         sample = plm_decode_audio(player->decoder);
@@ -405,7 +405,7 @@ static void *sound_callback(snd_stream_hnd_t hnd, int size, int *size_out) {
             break;
 
         player->audio_time = sample->time;
-        fast_memcpy(dest + out / 4, sample->pcm, 1152 * 2);
+        /* fast_ */memcpy(dest + out / 4, sample->pcm, 1152 * 2);
         out += 1152 * 2;
     }
 
