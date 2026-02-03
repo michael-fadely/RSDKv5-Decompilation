@@ -4,7 +4,6 @@
 
 using namespace RSDK;
 
-// DCFIXME: fixes build for now
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
 FileInfo VideoManager::file;
 
@@ -44,10 +43,14 @@ bool32 VideoManager::initializing    = false;
 //MALLOC 700
 //MALLOC 691231
 //MALLOC 12448
-//REALLOC 8c8b172c 65536
+//REALLOC 65536
+
+// provide storage for 12 pointers so they don't go out of scope and cause the RSDK pool allocator any grief
 static void *mpegAllocs[12] = {0};
 static int mpegAllocIndex = 0;
 
+// provide wrappers around the RSDK pool allocator for plmpeg,
+// otherwise we do not have enough RAM to play a video :-)
 #define PLM_MALLOC(sz) \
             ({ \
             AllocateStorage((void **)&mpegAllocs[mpegAllocIndex], sz, DATASET_STG, false); \
@@ -78,17 +81,19 @@ static int mpegAllocIndex = 0;
 static char videoFilePath[256];
 static mpeg_player_t *mpegPlayer;
 static int mpegDone;
-static int vidSkip = 0;
+
+// these are flags set in `PlayStream`
+// they let us know which pre-muxed variation of the intro video to play
 extern "C" {
 extern int music_intro;
 extern int intro_hp;
 extern int intro_tee;
 }
 
-//ffmpeg -i ./BadEndKnux.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1" -b:v 742k -minrate 742k -maxrate 742k -bufsize 742k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg ./BadEndKnux.mpg
+// Dreamcast-specific options for plmpeg playback
 static const mpeg_player_options_t mania_opts = {
     .player_list_type   = PVR_LIST_PT_POLY,
-    .player_filter_mode = PVR_FILTER_BILINEAR,
+    .player_filter_mode = PVR_FILTER_NONE,
     .player_volume      = 255,
     .player_loop        = false
 };
@@ -97,16 +102,30 @@ static const mpeg_player_options_t mania_opts = {
 bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCallback)())
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // do not play BadEnd.ogv, MREnd.ogv as a standalone video;
+    // ending videos are combined and muxed with music tracks during asset generation
+    int vidSkip = 0;
+
+    // reset plmpeg alloc pointer storage index
     mpegAllocIndex = 0;
 
-    vidSkip = 0;
+    // do not play BadEnd.ogv, MREnd.ogv as a standalone video
+    // ending videos are combined and muxed with music tracks during asset generation
+    // Mania is a special case, there are two possible variations; that has a specific check within
+    // GoodEnd is muxed with music but is not combined with any other videos; it is not checked for here
     if ((strncmp("BadEnd", filename, 6) == 0) || (strncmp("MREnd", filename, 5) == 0) || (strncmp("Mania", filename, 5) == 0)) {
+        // specifically for Mania, check which song was set to play over the video
+        // and choose one of the two pre-muxed versions for playback
         if ((strncmp("Mania", filename, 5) == 0) && music_intro) {
             if (intro_hp)
                 filename = "ManiaHP.mpg"; // the "first"
             else 
                 filename = "ManiaTee.mpg"; // the "alternate"
         } else {
+            // either BadEnd or MRend were set to play
+            // return without starting it
+            // the next video that gets played will be a combined and muxed verison of:
+            // BadKnux, BadMighty, BadRay, BadSonic, BadSonic2 or BadTails
             music_intro = 0;
             intro_hp = 0;
             intro_tee = 0;
@@ -117,14 +136,19 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
     if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)
         return false;
 
-    sprintf_s(videoFilePath, sizeof(videoFilePath), "%sData/Video/%s", KOS_USER_DIR, filename);
+    // if we are actually going to play a video
     if(!vidSkip) {
+        // generate KOS_USER_DIR-oriented path to video file
+        sprintf_s(videoFilePath, sizeof(videoFilePath), "%sData/Video/%s", KOS_USER_DIR, filename);
+        // create an mpeg_player_t with the path and custom player options
         mpegPlayer = mpeg_player_create_ex(videoFilePath, &mania_opts);
+        // give up if it fails
         if (!mpegPlayer) {
             return false;
         }
     }
 
+    // set up the engine state for video playback like the original code does
     engine.skipCallback = skipCallback;
     engine.storedShaderID     = videoSettings.shaderID;
     videoSettings.screenCount = 0;
@@ -140,6 +164,7 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
     cfg |= PM_DITHER_BIT;
     PVR_SET(PVR_FB_CFG_2, cfg);
 
+    // success
     return true;
 #else  // RETRO_PLATFORM == RETRO_KALLISTIOS
     if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)
@@ -319,13 +344,20 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
 void RSDK::ProcessVideo()
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // always attempt to run a decode step if the player exists
+    // it should exist if this gets called, but we have error handling *just in case*
     mpeg_decode_result_t res = mpegPlayer ? mpeg_decode_step(mpegPlayer) : MPEG_DECODE_ERROR;
 
+    // the various conditions where playback should end
     if ((!mpegPlayer) || (engine.skipCallback && engine.skipCallback()) || ((res == MPEG_DECODE_EOF) || (res == MPEG_DECODE_ERROR))) {
+        // safety first
         if (mpegPlayer) {
+            // clean up the player, frees all resources
             mpeg_player_destroy(mpegPlayer);
             mpegPlayer = NULL;
         }
+
+        // restore engine settings like the original code would do
         videoSettings.shaderID    = engine.storedShaderID;
         videoSettings.screenCount = 1;
         if (ENGINE_VERSION == 5)
@@ -334,15 +366,20 @@ void RSDK::ProcessVideo()
         else if (ENGINE_VERSION == 3)
             RSDK::Legacy::gameMode = engine.storedState;
 #endif
+
         // disable dither when done playing videos
         uint32_t cfg = PVR_GET(PVR_FB_CFG_2);
         cfg &= ~PM_DITHER_BIT;
         PVR_SET(PVR_FB_CFG_2, cfg);
         return;
     } else {
+        // playback should not end
+
+        // if the last step produced a frame, upload it
         if (res == MPEG_DECODE_FRAME) {
             mpeg_upload_frame(mpegPlayer);
         }
+        // and always render the last produced frame
         mpeg_draw_frame(mpegPlayer);
     }
 #else

@@ -376,7 +376,7 @@ mpeg_decode_result_t mpeg_decode_step(mpeg_player_t *player) {
         /* Init sound stream. */
         sound_stream_reset(player);
         snd_stream_start(player->snd_hnd, player->sample_rate, 0);
-        snd_stream_volume(player->snd_hnd, 0);
+        snd_stream_volume(player->snd_hnd, 255);
 
         /* Prime the first frame */
         player->frame = plm_decode_video(player->decoder);
@@ -386,9 +386,9 @@ mpeg_decode_result_t mpeg_decode_step(mpeg_player_t *player) {
         player->start_time = timer_ns_gettime64();
 
         double playback_time = (timer_ns_gettime64() - player->start_time) * 1e-9f;
+        /* Check if audio should be polled */
         if (player->audio_time == 0.0f || ((player->video_time > player->audio_time) && playback_time > player->audio_time)) {
             snd_stream_poll(player->snd_hnd);
-            snd_stream_volume(player->snd_hnd, 255);
         }
         return MPEG_DECODE_FRAME;
     }
@@ -396,13 +396,10 @@ mpeg_decode_result_t mpeg_decode_step(mpeg_player_t *player) {
     /* Get elapsed playback time */
     double playback_time = (timer_ns_gettime64() - player->start_time) * 1e-9f;
 
+    /* Check if audio should be polled */
     if (player->audio_time == 0.0f || ((player->video_time > player->audio_time) && playback_time > player->audio_time)) {
         snd_stream_poll(player->snd_hnd);
-        snd_stream_volume(player->snd_hnd, 255);
     }
-
-    /* Poll audio regardless */
-//    snd_stream_poll(player->snd_hnd);
 
     /* Check if it's time to decode the next frame */
     if(playback_time >= player->frame->time) {
@@ -492,9 +489,19 @@ void mpeg_draw_frame(mpeg_player_t *player) {
 }
 
 static int setup_graphics(mpeg_player_t *player, pvr_filter_mode_t filter_mode) {
+    const uint32_t color = 0xffffffff;
+    const float leftX = 0.0f;
+    const float topY = 0.0f;
+#if DO_240
+    const float rightX = 320.0f;
+    const float bottomY = 240.0f;
+#else
+    const float rightX = 640.0f;
+    const float bottomY = 480.0f;
+#endif
+
     pvr_poly_cxt_t cxt;
     float u, v;
-    int color = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
 
     player->width = plm_get_width(player->decoder);
     player->height = plm_get_height(player->decoder);
@@ -529,8 +536,8 @@ static int setup_graphics(mpeg_player_t *player, pvr_filter_mode_t filter_mode) 
     u = (float)player->width / mpeg_texture_width;
     v = (float)player->height / mpeg_texture_height;
 
-    player->vert[0].x = 0.0f;
-    player->vert[0].y = 0.0f;
+    player->vert[0].x = leftX;
+    player->vert[0].y = topY;
     player->vert[0].z = 1.0f;
     player->vert[0].u = 0.0f;
     player->vert[0].v = 0.0f;
@@ -538,8 +545,8 @@ static int setup_graphics(mpeg_player_t *player, pvr_filter_mode_t filter_mode) 
     player->vert[0].oargb = 0;
     player->vert[0].flags = PVR_CMD_VERTEX;
 
-    player->vert[1].x = 320.0f;
-    player->vert[1].y = 0.0f;
+    player->vert[1].x = rightX;
+    player->vert[1].y = topY;
     player->vert[1].z = 1.0f;
     player->vert[1].u = u;
     player->vert[1].v = 0.0f;
@@ -547,8 +554,8 @@ static int setup_graphics(mpeg_player_t *player, pvr_filter_mode_t filter_mode) 
     player->vert[1].oargb = 0;
     player->vert[1].flags = PVR_CMD_VERTEX;
 
-    player->vert[2].x = 0.0f;
-    player->vert[2].y = 240.0f;
+    player->vert[2].x = leftX;
+    player->vert[2].y = bottomY;
     player->vert[2].z = 1.0f;
     player->vert[2].u = 0.0f;
     player->vert[2].v = v;
@@ -556,8 +563,8 @@ static int setup_graphics(mpeg_player_t *player, pvr_filter_mode_t filter_mode) 
     player->vert[2].oargb = 0;
     player->vert[2].flags = PVR_CMD_VERTEX;
 
-    player->vert[3].x = 320.0f;
-    player->vert[3].y = 240.0f;
+    player->vert[3].x = rightX;
+    player->vert[3].y = bottomY;
     player->vert[3].z = 1.0f;
     player->vert[3].u = u;
     player->vert[3].v = v;
