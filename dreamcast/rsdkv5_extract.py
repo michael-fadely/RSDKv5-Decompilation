@@ -27,6 +27,7 @@ if __name__ == "__main__":
     for filename in filenames:
         f = rsdk.get_file(filename)
         path = filename
+        path = path.replace("Data/", "", 1)
         if output_path is not None:
             path = os.path.join(output_path, path)
         if f is not None:
