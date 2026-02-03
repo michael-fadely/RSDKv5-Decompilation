@@ -1375,7 +1375,6 @@ bool32 RSDK::LoadImage(const char *filename, double displayLength, double fadeSp
     char fullFilePath[0x100];
     sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Images/%s", filename);
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-    printf("filename %s\n", filename);
     if ((strncmp("True", filename, 4) == 0)) {
         return LoadVQImage(filename, displayLength, fadeSpeed, skipCallback);
     }
