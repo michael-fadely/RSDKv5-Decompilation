@@ -23,6 +23,8 @@ bool32 VideoManager::initializing    = false;
 #endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+// provider wrappers around RSDK filesystem access for plmpeg
+// we already have it customized for thread safety, might as well use it
 #define PLM_FILE_TYPE                FileIO*
 #define PLM_FILE_INVALID_HANDLE      NULL
 #define PLM_FILE_OPEN(fn)            fOpen((fn), "rb")
@@ -31,20 +33,9 @@ bool32 VideoManager::initializing    = false;
 #define PLM_FILE_READ(fh, buf, size) fRead((buf), 1, (size), (fh))
 #define PLM_FILE_TELL(fh)            fTell((fh))
 
-// these are the 12 allocations that occur internally to PLMPEG on each video playback
-//MALLOC 52
-//MALLOC 32768
-//MALLOC 76
-//MALLOC 84
-//MALLOC 52
-//MALLOC 32768
-//MALLOC 52
-//MALLOC 32768
-//MALLOC 700
-//MALLOC 691231
-//MALLOC 12448
-//REALLOC 65536
-
+// there are 12 allocations that occur internally to PLMPEG on each video playback
+// 11 mallocs and 1 realloc
+// I verified this for every video we can possibly play as part of Sonic Mania
 // provide storage for 12 pointers so they don't go out of scope and cause the RSDK pool allocator any grief
 static void *mpegAllocs[12] = {0};
 static int mpegAllocIndex = 0;
