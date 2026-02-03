@@ -1,5 +1,3 @@
-
-#if 1
 /*
 PL_MPEG - MPEG1 Video decoder, MP2 Audio decoder, MPEG-PS demuxer
 Dominic Szablewski - https://phoboslab.org
@@ -48,9 +46,9 @@ plm_destroy(plm);
 This library provides several interfaces to load, demux and decode MPEG video
 and audio data. A high-level API combines the demuxer, video & audio decoders
 in an easy to use wrapper.
-Lower-level APIs for accessing the demuxer, video decoder and audio decoder, 
+Lower-level APIs for accessing the demuxer, video decoder and audio decoder,
 as well as providing different data sources are also available.
-Interfaces are written in an object oriented style, meaning you create object 
+Interfaces are written in an object oriented style, meaning you create object
 instances via various different constructor functions (plm_*create()),
 do some work on them and later dispose them via plm_*destroy().
 plm_* ......... the high-level interface, combining demuxer and decoders
@@ -63,7 +61,7 @@ With the high-level interface you have two options to decode video & audio:
     It will decode everything needed and call your callbacks (specified through
     plm_set_{video|audio}_decode_callback()) any number of times.
  2. Use plm_decode_video() and plm_decode_audio() to decode exactly one
-    frame of video or audio data at a time. How you handle the synchronization 
+    frame of video or audio data at a time. How you handle the synchronization
     of both streams is up to you.
 If you only want to decode video *or* audio through these functions, you should
 disable the other stream (plm_set_{video|audio}_enabled(FALSE))
@@ -78,37 +76,37 @@ mat4 bt601 = mat4(
 );
 gl_FragColor = vec4(y, cb, cr, 1.0) * bt601;
 Audio data is decoded into a struct with either one single float array with the
-samples for the left and right channel interleaved, or if the 
+samples for the left and right channel interleaved, or if the
 PLM_AUDIO_SEPARATE_CHANNELS is defined *before* including this library, into
 two separate float arrays - one for each channel.
 Data can be supplied to the high level interface, the demuxer and the decoders
 in three different ways:
- 1. Using plm_create_from_filename() or with a file handle with 
+ 1. Using plm_create_from_filename() or with a file handle with
     plm_create_from_file().
  2. Using plm_create_with_memory() and supplying a pointer to memory that
     contains the whole file.
  3. Using plm_create_with_buffer(), supplying your own plm_buffer_t instance and
     periodically writing to this buffer.
-When using your own plm_buffer_t instance, you can fill this buffer using 
-plm_buffer_write(). You can either monitor plm_buffer_get_remaining() and push 
-data when appropriate, or install a callback on the buffer with 
-plm_buffer_set_load_callback() that gets called whenever the buffer needs more 
+When using your own plm_buffer_t instance, you can fill this buffer using
+plm_buffer_write(). You can either monitor plm_buffer_get_remaining() and push
+data when appropriate, or install a callback on the buffer with
+plm_buffer_set_load_callback() that gets called whenever the buffer needs more
 data.
 A buffer created with plm_buffer_create_with_capacity() is treated as a ring
 buffer, meaning that data that has already been read, will be discarded. In
 contrast, a buffer created with plm_buffer_create_for_appending() will keep all
 data written to it in memory. This enables seeking in the already loaded data.
-There should be no need to use the lower level plm_demux_*, plm_video_* and 
+There should be no need to use the lower level plm_demux_*, plm_video_* and
 plm_audio_* functions, if all you want to do is read/decode an MPEG-PS file.
 However, if you get raw mpeg1video data or raw mp2 audio data from a different
-source, these functions can be used to decode the raw data directly. Similarly, 
+source, these functions can be used to decode the raw data directly. Similarly,
 if you only want to analyze an MPEG-PS file or extract raw video or audio
 packets from it, you can use the plm_demux_* functions.
-This library uses malloc(), realloc() and free() to manage memory. Typically 
+This library uses malloc(), realloc() and free() to manage memory. Typically
 all allocation happens up-front when creating the interface. However, the
 default buffer size may be too small for certain inputs. In these cases plmpeg
 will realloc() the buffer with a larger size whenever needed. You can configure
-the default buffer size by defining PLM_BUFFER_DEFAULT_SIZE *before* 
+the default buffer size by defining PLM_BUFFER_DEFAULT_SIZE *before*
 including this library.
 
 You can also define PLM_MALLOC, PLM_REALLOC and PLM_FREE to provide your own
@@ -128,6 +126,30 @@ See below for detailed the API documentation.
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#ifndef TRUE
+#define TRUE 1
+#define FALSE 0
+#endif
+
+#ifndef PLM_FILE_OPEN
+    #define PLM_FILE_TYPE                file_t
+    #define PLM_FILE_INVALID_HANDLE      FILEHND_INVALID
+    #define PLM_FILE_OPEN(fn)            fs_open((fn), O_RDONLY)
+    #define PLM_FILE_CLOSE(fh)           fs_close((fh))
+    #define PLM_FILE_SEEK(fh, off, st)   fs_seek((fh), (off), (st))
+    #define PLM_FILE_READ(fh, buf, size) fs_read((fh), (buf), (size))
+    #define PLM_FILE_TELL(fh)            fs_tell((fh))
+#endif
+
+#ifndef PLM_MALLOC
+	#define PLM_MALLOC(sz) MPEG_MALLOC(sz)
+	#define PLM_FREE(p) MPEG_FREE(p)
+	#define PLM_REALLOC(p, sz) MPEG_REALLOC((p), (sz))
+#endif
+
+#define PLM_UNUSED(expr) (void)(expr)
+
 
 // -----------------------------------------------------------------------------
 // Public Data Types
@@ -157,11 +179,11 @@ typedef struct {
 } plm_packet_t;
 
 
-// Decoded Video Plane 
+// Decoded Video Plane
 // The byte length of the data is width * height. Note that different planes
-// have different sizes: the Luma plane (Y) is double the size of each of 
+// have different sizes: the Luma plane (Y) is double the size of each of
 // the two Chroma planes (Cr, Cb) - i.e. 4 times the byte length.
-// Also note that the size of the plane does *not* denote the size of the 
+// Also note that the size of the plane does *not* denote the size of the
 // displayed frame. The sizes of planes are always rounded up to the nearest
 // macroblock (16px).
 
@@ -240,8 +262,8 @@ plm_t *plm_create_with_file(unsigned int fh, int close_when_done);
 
 
 // Create a plmpeg instance with a pointer to memory as source. This assumes the
-// whole file is in memory. The memory is not copied. Pass TRUE to 
-// free_when_done to let plmpeg call free() on the pointer when plm_destroy() 
+// whole file is in memory. The memory is not copied. Pass TRUE to
+// free_when_done to let plmpeg call free() on the pointer when plm_destroy()
 // is called.
 
 plm_t *plm_create_with_memory(uint8_t *bytes, size_t length, int free_when_done);
@@ -347,14 +369,14 @@ void plm_set_loop(plm_t *self, int loop);
 int plm_has_ended(plm_t *self);
 
 
-// Set the callback for decoded video frames used with plm_decode(). If no 
+// Set the callback for decoded video frames used with plm_decode(). If no
 // callback is set, video data will be ignored and not be decoded. The *user
 // Parameter will be passed to your callback.
 
 void plm_set_video_decode_callback(plm_t *self, plm_video_decode_callback fp, void *user);
 
 
-// Set the callback for decoded audio samples used with plm_decode(). If no 
+// Set the callback for decoded audio samples used with plm_decode(). If no
 // callback is set, audio data will be ignored and not be decoded. The *user
 // Parameter will be passed to your callback.
 
@@ -370,16 +392,16 @@ void plm_decode(plm_t *self, float seconds);
 
 
 // Decode and return one video frame. Returns NULL if no frame could be decoded
-// (either because the source ended or data is corrupt). If you only want to 
+// (either because the source ended or data is corrupt). If you only want to
 // decode video, you should disable audio via plm_set_audio_enabled().
-// The returned plm_frame_t is valid until the next call to plm_decode_video() 
+// The returned plm_frame_t is valid until the next call to plm_decode_video()
 // or until plm_destroy() is called.
 
 plm_frame_t *plm_decode_video(plm_t *self);
 
 
 // Decode and return one audio frame. Returns NULL if no frame could be decoded
-// (either because the source ended or data is corrupt). If you only want to 
+// (either because the source ended or data is corrupt). If you only want to
 // decode audio, you should disable video via plm_set_video_enabled().
 // The returned plm_samples_t is valid until the next call to plm_decode_audio()
 // or until plm_destroy() is called.
@@ -387,14 +409,14 @@ plm_frame_t *plm_decode_video(plm_t *self);
 plm_samples_t *plm_decode_audio(plm_t *self);
 
 
-// Seek to the specified time, clamped between 0 -- duration. This can only be 
-// used when the underlying plm_buffer is seekable, i.e. for files, fixed 
-// memory buffers or _for_appending buffers. 
-// If seek_exact is TRUE this will seek to the exact time, otherwise it will 
-// seek to the last intra frame just before the desired time. Exact seeking can 
+// Seek to the specified time, clamped between 0 -- duration. This can only be
+// used when the underlying plm_buffer is seekable, i.e. for files, fixed
+// memory buffers or _for_appending buffers.
+// If seek_exact is TRUE this will seek to the exact time, otherwise it will
+// seek to the last intra frame just before the desired time. Exact seeking can
 // be slow, because all frames up to the seeked one have to be decoded on top of
 // the previous intra frame.
-// If seeking succeeds, this function will call the video_decode_callback 
+// If seeking succeeds, this function will call the video_decode_callback
 // exactly once with the target frame. If audio is enabled, it will also call
 // the audio_decode_callback any number of times, until the audio_lead_time is
 // satisfied.
@@ -432,12 +454,12 @@ plm_buffer_t *plm_buffer_create_with_filename(const char *filename);
 // Create a buffer instance with a file handle. Pass TRUE to close_when_done
 // to let plmpeg call fclose() on the handle when plm_destroy() is called.
 
-plm_buffer_t *plm_buffer_create_with_file(FileIO *fh, int close_when_done);
+plm_buffer_t *plm_buffer_create_with_file(PLM_FILE_TYPE fh, int close_when_done);
 
 
 // Create a buffer instance with a pointer to memory as source. This assumes
-// the whole file is in memory. The bytes are not copied. Pass 1 to 
-// free_when_done to let plmpeg call free() on the pointer when plm_destroy() 
+// the whole file is in memory. The bytes are not copied. Pass 1 to
+// free_when_done to let plmpeg call free() on the pointer when plm_destroy()
 // is called.
 
 plm_buffer_t *plm_buffer_create_with_memory(uint8_t *bytes, size_t length, int free_when_done);
@@ -451,7 +473,7 @@ plm_buffer_t *plm_buffer_create_with_capacity(size_t capacity);
 
 // Create an empty buffer with an initial capacity. The buffer will grow
 // as needed. Decoded data will *not* be discarded. This can be used when
-// loading a file over the network, without needing to throttle the download. 
+// loading a file over the network, without needing to throttle the download.
 // It also allows for seeking in the already loaded data.
 
 plm_buffer_t *plm_buffer_create_for_appending(size_t initial_capacity);
@@ -462,8 +484,8 @@ plm_buffer_t *plm_buffer_create_for_appending(size_t initial_capacity);
 void plm_buffer_destroy(plm_buffer_t *self);
 
 
-// Copy data into the buffer. If the data to be written is larger than the 
-// available space, the buffer will realloc() with a larger capacity. 
+// Copy data into the buffer. If the data to be written is larger than the
+// available space, the buffer will realloc() with a larger capacity.
 // Returns the number of bytes written. This will always be the same as the
 // passed in length, except when the buffer was created _with_memory() for
 // which _write() is forbidden.
@@ -471,7 +493,7 @@ void plm_buffer_destroy(plm_buffer_t *self);
 size_t plm_buffer_write(plm_buffer_t *self, uint8_t *bytes, size_t length);
 
 
-// Mark the current byte length as the end of this buffer and signal that no 
+// Mark the current byte length as the end of this buffer and signal that no
 // more data is expected to be written to it. This function should be called
 // just after the last plm_buffer_write().
 // For _with_capacity buffers, this is cleared on a plm_buffer_rewind().
@@ -490,7 +512,7 @@ void plm_buffer_set_load_callback(plm_buffer_t *self, plm_buffer_load_callback f
 void plm_buffer_rewind(plm_buffer_t *self);
 
 
-// Get the total size. For files, this returns the file size. For all other 
+// Get the total size. For files, this returns the file size. For all other
 // types it returns the number of bytes currently in the buffer.
 
 size_t plm_buffer_get_size(plm_buffer_t *self);
@@ -502,7 +524,7 @@ size_t plm_buffer_get_size(plm_buffer_t *self);
 size_t plm_buffer_get_remaining(plm_buffer_t *self);
 
 
-// Get whether the read position of the buffer is at the end and no more data 
+// Get whether the read position of the buffer is at the end and no more data
 // is expected.
 
 int plm_buffer_has_ended(plm_buffer_t *self);
@@ -564,9 +586,9 @@ int plm_demux_has_ended(plm_demux_t *self);
 
 
 // Seek to a packet of the specified type with a PTS just before specified time.
-// If force_intra is TRUE, only packets containing an intra frame will be 
+// If force_intra is TRUE, only packets containing an intra frame will be
 // considered - this only makes sense when the type is PLM_DEMUX_PACKET_VIDEO_1.
-// Note that the specified time is considered 0-based, regardless of the first 
+// Note that the specified time is considered 0-based, regardless of the first
 // PTS in the data source.
 
 plm_packet_t *plm_demux_seek(plm_demux_t *self, float time, int type, int force_intra);
@@ -653,7 +675,7 @@ void plm_video_rewind(plm_video_t *self);
 int plm_video_has_ended(plm_video_t *self);
 
 
-// Decode and return one frame of video and advance the internal time by 
+// Decode and return one frame of video and advance the internal time by
 // 1/framerate seconds. The returned frame_t is valid until the next call of
 // plm_video_decode() or until the video decoder is destroyed.
 
@@ -662,7 +684,7 @@ plm_frame_t *plm_video_decode(plm_video_t *self);
 
 // Convert the YCrCb data of a frame into interleaved R G B data. The stride
 // specifies the width in bytes of the destination buffer. I.e. the number of
-// bytes from one line to the next. The stride must be at least 
+// bytes from one line to the next. The stride must be at least
 // (frame->width * bytes_per_pixel). The buffer pointed to by *dest must have a
 // size of at least (stride * frame->height).
 // Note that the alpha component of the dest buffer is always left untouched.
@@ -723,8 +745,8 @@ void plm_audio_rewind(plm_audio_t *self);
 int plm_audio_has_ended(plm_audio_t *self);
 
 
-// Decode and return one "frame" of audio and advance the internal time by 
-// (PLM_AUDIO_SAMPLES_PER_FRAME/samplerate) seconds. The returned samples_t 
+// Decode and return one "frame" of audio and advance the internal time by
+// (PLM_AUDIO_SAMPLES_PER_FRAME/samplerate) seconds. The returned samples_t
 // is valid until the next call of plm_audio_decode() or until the audio
 // decoder is destroyed.
 
@@ -859,66 +881,6 @@ void * memmove_co (void *dest, const void *src, size_t len)
   return dest;
 }
 
-#ifndef TRUE
-#define TRUE 1
-#define FALSE 0
-#endif
-#if 0
-#define PLM_MALLOC(sz) \
-            ({ \
-            void *tmpstore; \
-            AllocateStorage((void **)&tmpstore, sz, DATASET_TMP, false); \
-            tmpstore; \
-            })
-
-#define PLM_FREE(p) \
-            ({ \
-            RemoveStorageEntry((void**)&p); \
-            })
-
-#define PLM_REALLOC(p, sz) \
-            ({ \
-            void *tmpstore; \
-            AllocateStorage((void **)&tmpstore, sz, DATASET_TMP, false); \
-            memcpy(tmpstore, p, sz/2); \
-            RemoveStorageEntry((void**)&p); \
-            tmpstore; \
-            })
-#else
-#define PLM_MALLOC(sz) \
-            ({ \
-            void *tmpstore; \
-            AllocateStorage((void **)&tmpstore, sz, DATASET_STG, false); \
-            PinStorage(&tmpstore); \
-            tmpstore; \
-            })
-
-#define PLM_FREE(p) \
-            ({ \
-            UnPinStorage((void**)&p); \
-            RemoveStorageEntry((void**)&p); \
-            })
-
-#define PLM_REALLOC(p, sz) \
-            ({ \
-            void *tmpstore; \
-            AllocateStorage((void **)&tmpstore, sz, DATASET_STG, false); \
-            PinStorage(&tmpstore); \
-            memcpy(tmpstore, p, sz); \
-            UnPinStorage((void**)&p); \
-            RemoveStorageEntry((void**)&p); \
-            tmpstore; \
-            })
-#endif
-
-#ifndef PLM_MALLOC
-	#define PLM_MALLOC(sz) malloc(sz)
-	#define PLM_FREE(p) free(p)
-	#define PLM_REALLOC(p, sz) realloc(p, sz)
-#endif
-
-#define PLM_UNUSED(expr) (void)(expr)
-
 
 // -----------------------------------------------------------------------------
 // plm (high-level interface) implementation
@@ -963,7 +925,7 @@ plm_t *plm_create_with_filename(const char *filename) {
 	return plm_create_with_buffer(buffer, TRUE);
 }
 
-plm_t *plm_create_with_file(FileIO *fh, int close_when_done) {
+plm_t *plm_create_with_file(PLM_FILE_TYPE fh, int close_when_done) {
 	plm_buffer_t *buffer = plm_buffer_create_with_file(fh, close_when_done);
 	return plm_create_with_buffer(buffer, TRUE);
 }
@@ -975,6 +937,10 @@ plm_t *plm_create_with_memory(uint8_t *bytes, size_t length, int free_when_done)
 
 plm_t *plm_create_with_buffer(plm_buffer_t *buffer, int destroy_when_done) {
 	plm_t *self = (plm_t *)PLM_MALLOC(sizeof(plm_t));
+	if(!self) {
+		fprintf(stderr, "Out of memory for self. [plm_create_with_buffer]\n");
+		return NULL;
+	}
 	memset(self, 0, sizeof(plm_t));
 
 
@@ -1033,6 +999,7 @@ void plm_destroy(plm_t *self) {
 
 	plm_demux_destroy(self->demux);
 	PLM_FREE(self);
+	self = NULL;
 }
 
 int plm_get_audio_enabled(plm_t *self) {
@@ -1440,7 +1407,7 @@ struct plm_buffer_t {
 	int has_ended;
 	int free_when_done;
 	int close_when_done;
-	FileIO *fh;
+	PLM_FILE_TYPE fh;
 	plm_buffer_load_callback load_callback;
 	void *load_callback_user_data;
 	uint8_t *bytes;
@@ -1474,25 +1441,24 @@ inline int16_t plm_buffer_read_vlc(plm_buffer_t *self, const plm_vlc_t *table);
 inline uint16_t plm_buffer_read_vlc_uint(plm_buffer_t *self, const plm_vlc_uint_t *table);
 
 plm_buffer_t *plm_buffer_create_with_filename(const char *filename) {
-	FileIO *fh = fOpen(filename, "rb");
-	if (fh == NULL) {
-		printf("Can not open file: %s\n", filename);
+	PLM_FILE_TYPE fh = PLM_FILE_OPEN(filename);
+	if (fh == PLM_FILE_INVALID_HANDLE) {
+		fprintf(stderr, "Can not open file: %s\n", filename);
 		return NULL;
 	}
 	return plm_buffer_create_with_file(fh, TRUE);
 }
 
-plm_buffer_t *plm_buffer_create_with_file(FileIO *fh, int close_when_done) {
+plm_buffer_t *plm_buffer_create_with_file(PLM_FILE_TYPE fh, int close_when_done) {
 	plm_buffer_t *self = plm_buffer_create_with_capacity(PLM_BUFFER_DEFAULT_SIZE);
 	self->fh = fh;
 	self->close_when_done = close_when_done;
 	self->mode = PLM_BUFFER_MODE_FILE;
 	self->discard_read_bytes = TRUE;
 
-	fSeek(self->fh, 0, SEEK_END);
-	self->total_size = fTell(self->fh);
-    printf("self->total_Size %d\n", self->total_size);
-	fSeek(self->fh, 0, SEEK_SET);
+	PLM_FILE_SEEK(self->fh, 0, SEEK_END);
+	self->total_size = PLM_FILE_TELL(self->fh);
+	PLM_FILE_SEEK(self->fh, 0, SEEK_SET);
 
 	plm_buffer_set_load_callback(self, plm_buffer_load_file_callback, NULL);
 	return self;
@@ -1500,6 +1466,11 @@ plm_buffer_t *plm_buffer_create_with_file(FileIO *fh, int close_when_done) {
 
 plm_buffer_t *plm_buffer_create_with_memory(uint8_t *bytes, size_t length, int free_when_done) {
 	plm_buffer_t *self = (plm_buffer_t *)PLM_MALLOC(sizeof(plm_buffer_t));
+	if(!self) {
+		fprintf(stderr, "Out of memory for self. [plm_buffer_create_with_memory]\n");
+		return NULL;
+	}
+
 	memset(self, 0, sizeof(plm_buffer_t));
 	self->capacity = length;
 	self->length = length;
@@ -1513,10 +1484,19 @@ plm_buffer_t *plm_buffer_create_with_memory(uint8_t *bytes, size_t length, int f
 
 plm_buffer_t *plm_buffer_create_with_capacity(size_t capacity) {
 	plm_buffer_t *self = (plm_buffer_t *)PLM_MALLOC(sizeof(plm_buffer_t));
+	if(!self) {
+		fprintf(stderr, "Out of memory for self. [plm_buffer_create_with_capacity]\n");
+		return NULL;
+	}
+
 	memset(self, 0, sizeof(plm_buffer_t));
 	self->capacity = capacity;
 	self->free_when_done = TRUE;
 	self->bytes = (uint8_t *)PLM_MALLOC(capacity);
+	if(!self->bytes) {
+		fprintf(stderr, "Out of memory for bytes. [plm_buffer_create_with_capacity]\n");
+		return NULL;
+	}
 	self->mode = PLM_BUFFER_MODE_RING;
 	self->discard_read_bytes = TRUE;
 	return self;
@@ -1530,11 +1510,12 @@ plm_buffer_t *plm_buffer_create_for_appending(size_t initial_capacity) {
 }
 
 void plm_buffer_destroy(plm_buffer_t *self) {
-	if (self->fh && self->close_when_done) {
-		fClose(self->fh);
+	if ((self->fh != PLM_FILE_INVALID_HANDLE) && self->close_when_done) {
+		PLM_FILE_CLOSE(self->fh);
 	}
 	if (self->free_when_done) {
 		PLM_FREE(self->bytes);
+		self->bytes = NULL;
 	}
 	PLM_FREE(self);
 }
@@ -1572,7 +1553,13 @@ size_t plm_buffer_write(plm_buffer_t *self, uint8_t *bytes, size_t length) {
 		do {
 			new_size *= 2;
 		} while (new_size - self->length < length);
-		self->bytes = (uint8_t *)PLM_REALLOC(self->bytes, new_size);
+		uint8_t *new_bytes = (uint8_t *)PLM_REALLOC(self->bytes, new_size);
+		if (!new_bytes) {
+			// Handle failure: keep self->bytes as-is, or clean up
+			fprintf(stderr, "PLM_REALLOC failed when trying to resize to %zu bytes [plm_buffer_write]\n", new_size);
+			return -1;
+		}
+		self->bytes = new_bytes;
 		self->capacity = new_size;
 	}
 
@@ -1599,7 +1586,7 @@ void plm_buffer_seek(plm_buffer_t *self, size_t pos) {
 	self->has_ended = FALSE;
 
 	if (self->mode == PLM_BUFFER_MODE_FILE) {
-		fSeek(self->fh, pos, SEEK_SET);
+		PLM_FILE_SEEK(self->fh, pos, SEEK_SET);
 		self->bit_index = 0;
 		self->length = 0;
 	}
@@ -1619,7 +1606,7 @@ void plm_buffer_seek(plm_buffer_t *self, size_t pos) {
 
 size_t plm_buffer_tell(plm_buffer_t *self) {
 	return self->mode == PLM_BUFFER_MODE_FILE
-		? fTell(self->fh) + (self->bit_index >> 3) - self->length
+		? PLM_FILE_TELL(self->fh) + (self->bit_index >> 3) - self->length
 		: self->bit_index >> 3;
 }
 
@@ -1630,26 +1617,21 @@ void plm_buffer_discard_read_bytes(plm_buffer_t *self) {
 		self->length = 0;
 	}
 	else if (byte_pos > 0) {
-		memmove/* _co */(self->bytes, self->bytes + byte_pos, self->length - byte_pos);
+		memmove_co(self->bytes, self->bytes + byte_pos, self->length - byte_pos);
 		self->bit_index -= byte_pos << 3;
 		self->length -= byte_pos;
 	}
 }
-#include <errno.h>
+
 void plm_buffer_load_file_callback(plm_buffer_t *self, void *user) {
 	PLM_UNUSED(user);
 
 	if (self->discard_read_bytes) {
 		plm_buffer_discard_read_bytes(self);
 	}
-    
-	ssize_t bytes_available = self->capacity - self->length;
-    ssize_t bytes_read = fRead(self->bytes + self->length, 1, bytes_available, self->fh);
-    if (bytes_read == -1) {
-        printf("failed to read (%s)\n", strerror(errno));
-        exit(-1);
-    }
-    //	size_t bytes_read = fs_read(self->fh, self->bytes + self->length, bytes_available);
+
+	size_t bytes_available = self->capacity - self->length;
+	size_t bytes_read = PLM_FILE_READ(self->fh, self->bytes + self->length, bytes_available);
 	self->length += bytes_read;
 
 	if (bytes_read == 0) {
@@ -1824,6 +1806,10 @@ plm_packet_t *plm_demux_get_packet(plm_demux_t *self);
 
 plm_demux_t *plm_demux_create(plm_buffer_t *buffer, int destroy_when_done) {
 	plm_demux_t *self = (plm_demux_t *)PLM_MALLOC(sizeof(plm_demux_t));
+	if(!self) {
+		fprintf(stderr, "Out of memory for self. [plm_demux_create]\n");
+		return NULL;
+	}
 	memset(self, 0, sizeof(plm_demux_t));
 
 	self->buffer = buffer;
@@ -1842,6 +1828,7 @@ void plm_demux_destroy(plm_demux_t *self) {
 		plm_buffer_destroy(self->buffer);
 	}
 	PLM_FREE(self);
+	self = NULL;
 }
 
 int plm_demux_has_headers(plm_demux_t *self) {
@@ -2742,6 +2729,10 @@ void plm_video_idct(int *block);
 
 plm_video_t * plm_video_create_with_buffer(plm_buffer_t *buffer, int destroy_when_done) {
 	plm_video_t *self = (plm_video_t *)PLM_MALLOC(sizeof(plm_video_t));
+	if(!self) {
+		fprintf(stderr, "Out of memory for self. [plm_video_create_with_buffer]\n");
+		return NULL;
+	}
 	memset(self, 0, sizeof(plm_video_t));
 
 	self->buffer = buffer;
@@ -2762,9 +2753,11 @@ void plm_video_destroy(plm_video_t *self) {
 
 	if (self->has_sequence_header) {
 		PLM_FREE(self->frames_data);
+		self->frames_data = NULL;
 	}
 
 	PLM_FREE(self);
+	self = NULL;
 }
 
 float plm_video_get_framerate(plm_video_t *self) {
@@ -2955,6 +2948,10 @@ int plm_video_decode_sequence_header(plm_video_t *self) {
 
 	// 32byte align
 	self->frames_data = (uint8_t*)PLM_MALLOC(frame_data_size * 3 * 2 + 31);
+	if(!self->frames_data) {
+		fprintf(stderr, "Out of memory for self->frames_data. [plm_video_decode_sequence_header]\n");
+		return FALSE;
+	}
 	uint8_t *frames_data = (uint8_t*)(((unsigned int)self->frames_data + 31) & 0xffffffe0);
 	plm_video_init_frame(self, &self->frame_current, frames_data + frame_data_size * 0);
 	plm_video_init_frame(self, &self->frame_forward, frames_data + frame_data_size * 2);
@@ -3096,7 +3093,7 @@ void plm_video_decode_picture(plm_video_t *self) {
 					d_y += scan;
 					s += 2;
 				}
-	
+
 				s += 16;
 
 				__asm__("pref @%0" : : "r"(s + 16));
@@ -3116,13 +3113,13 @@ void plm_video_decode_picture(plm_video_t *self) {
 
 				__asm__("pref @%0" : : "r"(s + 16));
 			}
-			
+
 			d_cb += scan_half * 7;
 			d_cr += scan_half * 7;
 			d_y += scan * 15;
 		}
 	}
-	
+
 
 	// If this is a reference picture rotate the prediction pointers
 	if (
@@ -3265,7 +3262,7 @@ void plm_video_decode_macroblock(plm_video_t *self) {
 	int cbp = ((self->macroblock_type & 0x02) != 0)
 		? plm_buffer_read_vlc(self->buffer, PLM_VIDEO_CODE_BLOCK_PATTERN)
 		: (self->macroblock_intra ? 0x3f : 0);
-     
+
 	for (int block = 0, mask = 0x20; block < 6; block++) {
 		if ((cbp & mask) != 0) {
 			plm_video_decode_block(self, block);
@@ -3373,7 +3370,7 @@ void plm_video_copy_macroblock(
 	/* Y block */
 	dest += 32;
 	__asm__("pref @%0" : : "r"(dest));
-	
+
 	if (odd_h && odd_v)
 	{
 		uint8_t *d = (uint8_t *)dest;
@@ -4242,7 +4239,7 @@ typedef struct plm_quantizer_spec_t {
 	{ 65535, 0, 16 }   // 17
 };
 
-struct plm_audio_t {	
+struct plm_audio_t {
 	float time;
 	int samples_decoded;
 	int samplerate_index;
@@ -4277,6 +4274,10 @@ void plm_audio_idct36(int s[32][3], int ss, float *d, int dp);
 
 plm_audio_t *plm_audio_create_with_buffer(plm_buffer_t *buffer, int destroy_when_done) {
 	plm_audio_t *self = (plm_audio_t *)PLM_MALLOC(sizeof(plm_audio_t));
+	if(!self) {
+		fprintf(stderr, "Out of memory for self. [plm_audio_create_with_buffer]\n");
+		return NULL;
+	}
 	memset(self, 0, sizeof(plm_audio_t));
 
 	self->samples.count = PLM_AUDIO_SAMPLES_PER_FRAME;
@@ -4324,6 +4325,7 @@ void plm_audio_destroy(plm_audio_t *self) {
 		plm_buffer_destroy(self->buffer);
 	}
 	PLM_FREE(self);
+	self = NULL;
 }
 
 int plm_audio_has_header(plm_audio_t *self) {
@@ -4621,7 +4623,7 @@ void plm_audio_decode_frame(plm_audio_t *self) {
 
 		} // Decoding of the granule finished
 	}
-	
+
 	plm_buffer_align(self->buffer);
 }
 
@@ -4823,5 +4825,4 @@ void plm_audio_idct36(int s[32][3], int ss, float *d, int dp) {
 	d[dp + 15] = t02; d[dp + 16] = 0.0;
 }
 
-#endif // PL_MPEG_IMPLEMENTATIONt
-#endif
+#endif // PL_MPEG_IMPLEMENTATION

@@ -51,14 +51,15 @@ done
 cp -R -- "$sourcedir/Images"                "$stagedir/"
 cp -R -- "$sourcedir/Music"                 "$stagedir/"
 cp -R -- "$sourcedir/SoundFX"               "$stagedir/"
-#cp -R -- "$sourcedir/Video"                 "$stagedir/"
+cp -R -- "$sourcedir/Video"                 "$stagedir/"
 
 mkdir -p -- "$stagedir/Sprites"
 cp -R -- "$sourcedir/Sprites/Global"        "$stagedir/Sprites/"
 cp -R -- "$sourcedir/Sprites/TMZ1"          "$stagedir/Sprites/"
 cp -R -- "$sourcedir/Sprites/UI"            "$stagedir/Sprites/"
 
-#"$script_dir/video_script.sh"               "$stagedir"
+"$script_dir/video_script.sh"               "$sourcedir" "$stagedir"
+
 "$script_dir/sfx_step_1_downsample.sh"      "$stagedir"
 "$script_dir/sfx_step_2_wav2adpcm.sh"       "$stagedir"
 "$script_dir/sfx_step_3_cleanup.sh"         "$stagedir"

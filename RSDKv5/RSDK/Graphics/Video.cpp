@@ -24,6 +24,39 @@ bool32 VideoManager::initializing    = false;
 #endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define PLM_FILE_TYPE                FileIO*
+#define PLM_FILE_INVALID_HANDLE      NULL
+#define PLM_FILE_OPEN(fn)            fOpen((fn), "rb")
+#define PLM_FILE_CLOSE(fh)           fClose((fh))
+#define PLM_FILE_SEEK(fh, off, st)   fSeek((fh), (off), (st))
+#define PLM_FILE_READ(fh, buf, size) fRead((buf), 1, (size), (fh))
+#define PLM_FILE_TELL(fh)            fTell((fh))
+
+#define PLM_MALLOC(sz) \
+            ({ \
+            void *tmpstore; \
+            AllocateStorage((void **)&tmpstore, sz, DATASET_STG, false); \
+            PinStorage(&tmpstore); \
+            tmpstore; \
+            })
+
+#define PLM_FREE(p) \
+            ({ \
+            UnPinStorage((void**)&p); \
+            RemoveStorageEntry((void**)&p); \
+            })
+
+#define PLM_REALLOC(p, sz) \
+            ({ \
+            void *tmpstore; \
+            AllocateStorage((void **)&tmpstore, sz, DATASET_STG, false); \
+            PinStorage(&tmpstore); \
+            memcpy(tmpstore, p, sz); \
+            UnPinStorage((void**)&p); \
+            RemoveStorageEntry((void**)&p); \
+            tmpstore; \
+            })
+
 #include "KallistiOS/mpeg.h"
 #include "KallistiOS/mpeg.c"
 
@@ -37,20 +70,25 @@ extern int intro_hp;
 extern int intro_tee;
 }
 
-#endif
-
 //ffmpeg -i ./BadEndKnux.ogv -vf "scale=320:240:force_original_aspect_ratio=decrease:flags=lanczos,pad=320:240:-1:-1" -b:v 742k -minrate 742k -maxrate 742k -bufsize 742k -c:a mp2 -b:a 64k -ar 32000 -ac 1 -f mpeg ./BadEndKnux.mpg
-
+static const mpeg_player_options_t mania_opts = {
+    .player_list_type   = PVR_LIST_PT_POLY,
+    .player_filter_mode = PVR_FILTER_BILINEAR,
+    .player_volume      = 255,
+    .player_loop        = false
+};
+#endif
 
 bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCallback)())
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
     vidSkip = 0;
     if ((strncmp("BadEnd", filename, 6) == 0) || (strncmp("MREnd", filename, 5) == 0) || (strncmp("Mania", filename, 5) == 0)) {
         if ((strncmp("Mania", filename, 5) == 0) && music_intro) {
             if (intro_hp)
-                filename = "ManiaHP.ogv"; // the "first"
+                filename = "ManiaHP.mpg"; // the "first"
             else 
-                filename = "ManiaTee.ogv"; // the "alternate"
+                filename = "ManiaTee.mpg"; // the "alternate"
         } else {
             music_intro = 0;
             intro_hp = 0;
@@ -59,53 +97,31 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
         }
     }
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
     if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)
         return false;
-#if RETRO_REV0U
-    if (ENGINE_VERSION == 3 && RSDK::Legacy::gameMode == RSDK::Legacy::v3::ENGINE_VIDEOWAIT)
-        return false;
-#endif
 
     sprintf_s(videoFilePath, sizeof(videoFilePath), "%sData/Video/%s", KOS_USER_DIR, filename);
     if(!vidSkip) {
-        mpegPlayer = mpeg_player_create(videoFilePath);
+        mpegPlayer = mpeg_player_create_ex(videoFilePath, &mania_opts);
         if (!mpegPlayer) {
             return false;
         }
-
-    
-        printf("play video %s\n", videoFilePath);
     }
-    // ?
-    engine.skipCallback = NULL;
+
     engine.skipCallback = skipCallback;
     engine.storedShaderID     = videoSettings.shaderID;
     videoSettings.screenCount = 0;
-
-
-    if (ENGINE_VERSION == 5)
-        engine.storedState = sceneInfo.state;
-#if RETRO_REV0U
-    else if (ENGINE_VERSION == 3)
-        engine.storedState = RSDK::Legacy::gameMode;
-#endif
     changedVideoSettings = false;
     if (ENGINE_VERSION == 5)
+        engine.storedState = sceneInfo.state;
+    if (ENGINE_VERSION == 5)
         sceneInfo.state = ENGINESTATE_VIDEOPLAYBACK;
-#if RETRO_REV0U
-    else if (ENGINE_VERSION == 3)
-        RSDK::Legacy::gameMode = RSDK::Legacy::v3::ENGINE_VIDEOWAIT;
-#endif
 
-    if (!vidSkip) {
-        printf("\tdoing actual playback?\n");
-        mpeg_play(mpegPlayer, CONT_A | CONT_X);
-
-        printf("it done\n");
-    }
-    
-    mpegDone = 1;
+    // enable dither when playing videos
+#define PM_DITHER_BIT 8
+    uint32_t cfg = PVR_GET(PVR_FB_CFG_2);
+    cfg |= PM_DITHER_BIT;
+    PVR_SET(PVR_FB_CFG_2, cfg);
 
     return true;
 #else  // RETRO_PLATFORM == RETRO_KALLISTIOS
@@ -286,15 +302,10 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
 void RSDK::ProcessVideo()
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    if (engine.skipCallback && engine.skipCallback()) {
-        goto processVideoDone;
-    }
+    mpeg_decode_result_t res = mpegPlayer ? mpeg_decode_step(mpegPlayer) : MPEG_DECODE_ERROR;
 
-    mpegDone = 1;
-
-    if (mpegDone) {
-processVideoDone:
-        if(mpegPlayer) {
+    if ((!mpegPlayer) || (engine.skipCallback && engine.skipCallback()) || ((res == MPEG_DECODE_EOF) || (res == MPEG_DECODE_ERROR))) {
+        if (mpegPlayer) {
             mpeg_player_destroy(mpegPlayer);
             mpegPlayer = NULL;
         }
@@ -306,6 +317,16 @@ processVideoDone:
         else if (ENGINE_VERSION == 3)
             RSDK::Legacy::gameMode = engine.storedState;
 #endif
+        // disable dither when done playing videos
+        uint32_t cfg = PVR_GET(PVR_FB_CFG_2);
+        cfg &= ~PM_DITHER_BIT;
+        PVR_SET(PVR_FB_CFG_2, cfg);
+        return;
+    } else {
+        if (res == MPEG_DECODE_FRAME) {
+            mpeg_upload_frame(mpegPlayer);
+        }
+        mpeg_draw_frame(mpegPlayer);
     }
 #else
     bool32 finished = false;
