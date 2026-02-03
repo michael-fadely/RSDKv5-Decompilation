@@ -2,6 +2,7 @@
 
 #include <RSDK/Core/Stub.hpp>
 
+
 using namespace RSDK;
 
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
@@ -23,6 +24,11 @@ bool32 VideoManager::initializing    = false;
 #endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+// these are flags set in `PlayStream`
+// they let us know which pre-muxed variation of the intro video to play
+extern int introHp;
+extern int introTee;
+
 // provider wrappers around RSDK filesystem access for plmpeg
 // we already have it customized for thread safety, might as well use it
 #define PLM_FILE_TYPE                FileIO*
@@ -73,14 +79,6 @@ static char videoFilePath[256];
 static mpeg_player_t *mpegPlayer;
 static int mpegDone;
 
-// these are flags set in `PlayStream`
-// they let us know which pre-muxed variation of the intro video to play
-extern "C" {
-extern int music_intro;
-extern int intro_hp;
-extern int intro_tee;
-}
-
 // Dreamcast-specific options for plmpeg playback
 static const mpeg_player_options_t mania_opts = {
     .player_list_type   = PVR_LIST_PT_POLY,
@@ -107,8 +105,8 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
     if ((strncmp("BadEnd", filename, 6) == 0) || (strncmp("MREnd", filename, 5) == 0) || (strncmp("Mania", filename, 5) == 0)) {
         // specifically for Mania, check which song was set to play over the video
         // and choose one of the two pre-muxed versions for playback
-        if ((strncmp("Mania", filename, 5) == 0) && music_intro) {
-            if (intro_hp)
+        if (strncmp("Mania", filename, 5) == 0) {
+            if (introHp)
                 filename = "ManiaHP.mpg"; // the "first"
             else 
                 filename = "ManiaTee.mpg"; // the "alternate"
@@ -117,9 +115,8 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
             // return without starting it
             // the next video that gets played will be a combined and muxed verison of:
             // BadKnux, BadMighty, BadRay, BadSonic, BadSonic2 or BadTails
-            music_intro = 0;
-            intro_hp = 0;
-            intro_tee = 0;
+            introHp = 0;
+            introTee = 0;
             vidSkip = 1;
         }
     }
