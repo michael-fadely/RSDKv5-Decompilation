@@ -4,6 +4,7 @@ using namespace RSDK;
 
 #include <kos.h>
 #include <errno.h>
+// utilizing LZFX codec for save data compression
 #include "lzfx.h"
 
 #define VMU_DEBUG 0
@@ -13,8 +14,10 @@ static uint8 icondata[512];
 static char vmu_userfn[256];
 
 struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
+    // gives a filename oriented to the first attached VMU, regardless of the controller it is in
+    // gives default /vmu/a1/ path if VMU not found
+    // that ends up getting caught as "file not found" in other functions
     static char *GetVMUFilename(const char *filename) {
-        // find *first* attached vmu and store *there*
         maple_device_t *vmudev = maple_enum_type(0, MAPLE_FUNC_MEMCARD);
         int port = 0;
         int unit = 1;
@@ -23,22 +26,21 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
             unit = vmudev->unit;
         }
 
-        if (strstr(filename, "SaveData"))
+        if (strstr(filename, "SaveData")) // SaveData.bin -> mania.sav
 		    sprintf(vmu_userfn, "/vmu/%c%d/mania.sav", 'a'+port, unit);
-        else if(strstr(filename, "Achieve"))
+        else if(strstr(filename, "Achieve")) // Achievements.bin -> mania.ach
 		    sprintf(vmu_userfn, "/vmu/%c%d/mania.ach", 'a'+port, unit);
-        else
+        else // anything else -> first 8 chars suffixed with .man - this shouldn't happen but handle it anyway
             sprintf(vmu_userfn, "/vmu/%c%d/%.8s.man", 'a'+port, unit, filename);
 
         return vmu_userfn;
     }
 
+    // delete a file from the VMU filesystem
     static bool32 DeleteUserFileFromVMU(const char *filename) {
-#if 0
-        mutex_lock_scoped(&io_lock);
-#endif
         char *fn = GetVMUFilename(filename);
 
+        // do not perform unlink except for SaveData.bin or Achievements.bin
         if ((!strstr(filename, "SaveData")) && (!strstr(filename, "Achieve"))) {
 #if VMU_DEBUG
             printf("Was directed to remove %s, will not comply.\n", filename);
@@ -49,16 +51,17 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
         return (rv == 0);
     }
 
+    // load SaveData or Achievements from VMU
     static bool32 LoadUserFileFromVMU(const char *filename, void *outbuf, uint32 outsize) {
-#if 0
-        mutex_lock_scoped(&io_lock);
-#endif
+        bool32 retval = true;
         file_t vmu_file = FILEHND_INVALID;
         char *fn = GetVMUFilename(filename);
-        uint8 *saveOutbuf;
-        uint32 allocSize;
         int compressed = outsize > 1024;
-        allocSize = outsize + 32768;
+        uint32 allocSize = outsize + 32768;
+
+        // need some temporary storage for the VMU data
+        // leave it to be reclaimed by RSDK 😬
+        uint8 *saveOutbuf;
         AllocateStorage((void **)&saveOutbuf, allocSize, DATASET_TMP, false);
         if (saveOutbuf == nullptr) {
 #if VMU_DEBUG
@@ -68,7 +71,6 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
             return false;
         }
         memset(saveOutbuf, 0, allocSize);
-        bool32 b32retval = true;
         uint32 actual_size = 0;
         vmu_file = fs_open(fn, O_RDONLY | O_META);
         if (FILEHND_INVALID == vmu_file) {
@@ -89,8 +91,17 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
                 fs_close(vmu_file);
                 return false;
             }
-            fs_close(vmu_file);
 
+            int closerv = fs_close(vmu_file);
+            if (closerv == -1) {
+        #if VMU_DEBUG
+                vid_border_color(0xFF, 0x00, 0x00);
+                printf("LoadUserFileFromVMU: close %s failed (%s)\n", fn, strerror(errno));
+        #endif
+            }
+
+            // data was stored through use of a `vmu_pkg`
+            // load it the same way
             vmu_pkg_t pkg;
             memset(&pkg, 0, sizeof(pkg));
             if(vmu_pkg_parse(saveOutbuf, vmu_size, &pkg) < 0) {
@@ -101,12 +112,14 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
                 return false;
             }
 
+            // SaveData.bin is 128 blocks uncompressed, it goes through the decompression path
             if (compressed) {
 #if VMU_DEBUG
                 vid_border_color(0x00, 0xFF, 0x00);
 #endif
-
+                // first 4 bytes of package data are the actual size of the compressed data
                 actual_size = *(uint32_t *)pkg.data;
+                // immediately followed by the compressed data
                 uint8_t *compData = (uint8_t *)(pkg.data + 4);
 
 #if VMU_DEBUG
@@ -125,11 +138,12 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
                 vid_border_color(0x00, 0xFF, 0xFF);
 #endif
                 int derv = lzfx_decompress(compData, actual_size, outbuf, &uncompressed_save_size);
+                // error handling paths follow
 #if VMU_DEBUG
                 if (derv < 0 && derv != LZFX_ESIZE3) {
                     vid_border_color(0xFF, 0x00, 0x00);
                     printf("decompress get size failure %d\n", derv);
-                    b32retval = false;
+                    retval = false;
                 }
                 else if (derv < 0) {
 #else
@@ -139,13 +153,13 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
                     vid_border_color(0xFF, 0x00, 0x00);
                     printf("decompress failure %d\n", derv);
 #endif
-                    b32retval = false;
+                    retval = false;
                 } else if (derv > 0) {
 #if VMU_DEBUG
                     vid_border_color(0xFF, 0x00, 0x00);
                     printf("decompress failure %d\n", derv);
 #endif
-                    b32retval = false;
+                    retval = false;
                 }
 
                 if (0 == uncompressed_save_size) {
@@ -153,7 +167,7 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
                     vid_border_color(0xFF, 0x00, 0x00);
                     printf("failed to decompress save data\n");
 #endif
-                    b32retval = false;
+                    retval = false;
                 }
 
                 if (allocSize < uncompressed_save_size) {
@@ -161,7 +175,7 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
                     vid_border_color(0xFF, 0x00, 0x00);
                     printf("uncompressed save too large %d < %d\n", allocSize, uncompressed_save_size);
 #endif
-                    b32retval = false;
+                    retval = false;
                 }
 
                 if ((uncompressed_save_size) != outsize) {
@@ -169,36 +183,29 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
                     vid_border_color(0xFF, 0x00, 0x00);
                     printf("wrong decompress size (unc %d out %d)\n", uncompressed_save_size, outsize);
 #endif
-                    b32retval = false;
+                    retval = false;
                 }
             } else {
+                // Achievements.bin is only 2 blocks uncompressed so we store and load it without compression
 #if VMU_DEBUG
                 vid_border_color(0x00, 0x00, 0xFF);
 #endif
                 memcpy(outbuf, pkg.data, outsize);
             }
         }
-#if 0
-        int closerv = fs_close(vmu_file);
-        if (closerv == -1) {
-            printf("LoadUserFileToVMU: close %s failed (%s)\n", fn, strerror(errno));
-            b32retval = false;
-        }
-#endif
-        return b32retval;
+        return retval;
     }
 
 static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsize) {
-#if 0
-    mutex_lock_scoped(&io_lock);
-#endif
     char *fn = GetVMUFilename(filename);
     int exists = 0;
     int isSave = 0;
     int isAch = 0;
+    // large files would be compressed
     int needCompressed = (outsize > 1024u);
     file_t vmu_file = FILEHND_INVALID;
 
+    // obvious, I hope
     if (strstr(filename, "SaveData")) {
         isSave = 1;
     } else if(strstr(filename, "Achieve")) {
@@ -245,13 +252,16 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
     else
         sprintf(icon_fn, "%s/mighty.ico", KOS_USER_DIR);
     vmu_pkg_load_icon(&pkg, icon_fn);
-    if (needCompressed) {
-        uint8 *saveOutbuf;
-        unsigned int compressed_size = outsize + 32768;
 
+    if (needCompressed) {
         // save data is 64k uncompressed
-        // hopefully 64k is enough for compressed plus a wasted to hold the compressed size -_-
-        AllocateStorage((void **)&saveOutbuf, outsize + 32768, DATASET_TMP, false);
+        // hopefully 64k is enough for compressed plus a wasted int to hold the compressed size -_-
+        // we need a bit of extra space to keep the codec from failing for reasons
+        unsigned int compressed_size = outsize + 32768;
+        // need some temporary storage for the VMU data
+        // leave it to be reclaimed by RSDK 😬
+        uint8 *saveOutbuf;
+        AllocateStorage((void **)&saveOutbuf, compressed_size, DATASET_TMP, false);
         if (saveOutbuf == nullptr) {
 #if VMU_DEBUG
             vid_border_color(0xFF, 0x00, 0x00);
@@ -260,7 +270,12 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
             return false;
         }
         memset(saveOutbuf, 0, outsize);
+        // do the compression before generating `vmu_pkg`
+        // necessary to know the amount of data to be written
+        // note that the output buffer given for the compressed data is 4 bytes after the start of our temp allocation
+        // leaves the first int worth of space for the actual compressed data size
         int rv = lzfx_compress(outbuf, outsize, saveOutbuf + 4, &compressed_size);
+        // error handling paths
         if (0 > rv) {
 #if VMU_DEBUG
             vid_border_color(0xFF, 0x00, 0x00);
@@ -276,16 +291,19 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
 #endif
             return false;
         }
-
+        // first 4 bytes of output data are an int storing the actual compressed data size
         *(uint32*)saveOutbuf = compressed_size;
-
+        // set the payload-related fields in the package
         pkg.data_len = compressed_size + 4;
         pkg.data = (const uint8 *)saveOutbuf;
     } else {
+        // set the payload-related fields in the package
         pkg.data_len = outsize;
         pkg.data = (const uint8 *)outbuf;
     }
 
+    // now actually generate the vmu_pkg
+    // and hope it doesn't fail due to a lack of free memory
     uint8_t *pkg_out;
     ssize_t pkg_size;
     int pbrv = vmu_pkg_build(&pkg, &pkg_out, &pkg_size);
@@ -312,7 +330,6 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
         fs_close(vmu_file);
         return false;
     }
-
 
 #if VMU_DEBUG
     vid_border_color(0xFF, 0x00, 0xFF);
