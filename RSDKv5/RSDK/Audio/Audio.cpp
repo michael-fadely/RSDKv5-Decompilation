@@ -303,7 +303,6 @@ int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint3
     }
 
     sprintf_s(streamFilePath, sizeof(streamFilePath), "%s/Data/Music/%s", KOS_USER_DIR, filename);
-    printf("Playing Stream %s\n", streamFilePath);
     stream_destroy();
     stream_create(streamFilePath, loopPoint);
     stream_play();
