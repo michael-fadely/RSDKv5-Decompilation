@@ -32,12 +32,27 @@ bool32 VideoManager::initializing    = false;
 #define PLM_FILE_READ(fh, buf, size) fRead((buf), 1, (size), (fh))
 #define PLM_FILE_TELL(fh)            fTell((fh))
 
+// these are the 12 allocations that occur internally to PLMPEG on each video playback
+//MALLOC 52
+//MALLOC 32768
+//MALLOC 76
+//MALLOC 84
+//MALLOC 52
+//MALLOC 32768
+//MALLOC 52
+//MALLOC 32768
+//MALLOC 700
+//MALLOC 691231
+//MALLOC 12448
+//REALLOC 8c8b172c 65536
+static void *mpegAllocs[12] = {0};
+static int mpegAllocIndex = 0;
+
 #define PLM_MALLOC(sz) \
             ({ \
-            void *tmpstore; \
-            AllocateStorage((void **)&tmpstore, sz, DATASET_STG, false); \
-            PinStorage(&tmpstore); \
-            tmpstore; \
+            AllocateStorage((void **)&mpegAllocs[mpegAllocIndex], sz, DATASET_STG, false); \
+            PinStorage(&mpegAllocs[mpegAllocIndex]); \
+            mpegAllocs[mpegAllocIndex++]; \
             })
 
 #define PLM_FREE(p) \
@@ -49,12 +64,12 @@ bool32 VideoManager::initializing    = false;
 #define PLM_REALLOC(p, sz) \
             ({ \
             void *tmpstore; \
-            AllocateStorage((void **)&tmpstore, sz, DATASET_STG, false); \
-            PinStorage(&tmpstore); \
-            memcpy(tmpstore, p, sz); \
+            AllocateStorage((void **)&mpegAllocs[mpegAllocIndex], sz, DATASET_STG, false); \
+            PinStorage(&mpegAllocs[mpegAllocIndex]); \
+            memcpy(mpegAllocs[mpegAllocIndex], p, sz); \
             UnPinStorage((void**)&p); \
             RemoveStorageEntry((void**)&p); \
-            tmpstore; \
+            mpegAllocs[mpegAllocIndex++]; \
             })
 
 #include "KallistiOS/mpeg.h"
@@ -82,6 +97,8 @@ static const mpeg_player_options_t mania_opts = {
 bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCallback)())
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+    mpegAllocIndex = 0;
+
     vidSkip = 0;
     if ((strncmp("BadEnd", filename, 6) == 0) || (strncmp("MREnd", filename, 5) == 0) || (strncmp("Mania", filename, 5) == 0)) {
         if ((strncmp("Mania", filename, 5) == 0) && music_intro) {
