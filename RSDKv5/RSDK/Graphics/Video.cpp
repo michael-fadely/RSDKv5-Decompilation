@@ -79,11 +79,12 @@ static mpeg_player_t *mpegPlayer;
 static int mpegDone;
 
 // Dreamcast-specific options for plmpeg playback
-static const mpeg_player_options_t mania_opts = {
+static mpeg_player_options_t mania_opts = {
     .player_list_type   = PVR_LIST_PT_POLY,
     .player_filter_mode = PVR_FILTER_NONE,
     .player_volume      = 255,
-    .player_loop        = false
+    .player_loop        = false,
+    .extra_letterbox    = false
 };
 #endif
 
@@ -118,6 +119,12 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
             introTee = 0;
             vidSkip = 1;
         }
+    }
+
+    if ((strstr(filename, "Bad") || strstr(filename, "Good"))) {
+        mania_opts.extra_letterbox = true;
+    } else {
+        mania_opts.extra_letterbox = false;
     }
 
     if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)

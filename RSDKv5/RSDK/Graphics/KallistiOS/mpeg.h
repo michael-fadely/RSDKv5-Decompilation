@@ -149,6 +149,7 @@ typedef struct mpeg_player_options_t {
 
     uint8_t player_volume;
     bool    player_loop;
+    bool    extra_letterbox;
 } mpeg_player_options_t;
 
 /** \brief   Create an MPEG player instance with custom options.

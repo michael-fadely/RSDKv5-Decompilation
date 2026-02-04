@@ -43,18 +43,20 @@ struct mpeg_player_t {
     /* Polygon header for rendering */
     pvr_poly_hdr_t hdr;
 
+    /* Polygon header for letterboxing */
+    pvr_poly_hdr_t lbhdr;
+
     /* Vertices for rendering the video frame */
     pvr_vertex_t vert[4];
 
+    /* Vertices for letterboxing */
+    pvr_vertex_t lbvert[8];
+
     /* Start time for a/v sync */
     uint64_t start_time;
-
-    /* Current video playback time */
-    double video_time;
-
-    /* Current audio playback time */
-    double audio_time;
 };
+
+static int extra_letterbox = 0;
 
 /* Output texture width and height initial values
    You can choose from 32, 64, 128, 256, 512, 1024 */
@@ -138,12 +140,19 @@ static const mpeg_player_options_t default_options = {
     .player_list_type   = PVR_LIST_OP_POLY,
     .player_filter_mode = PVR_FILTER_BILINEAR,
     .player_volume      = 255,
-    .player_loop        = false
+    .player_loop        = false,
+    .extra_letterbox    = false,
 };
 
 mpeg_player_t *mpeg_player_create_ex(const char *filename, const mpeg_player_options_t *options) {
     mpeg_player_t *player = NULL;
     const mpeg_player_options_t *opts = options ? options : &default_options;
+
+    if (opts->extra_letterbox == true) {
+        extra_letterbox = 1;
+    } else {
+        extra_letterbox = 0;
+    }
 
     if(!filename) {
         fprintf(stderr, "filename is NULL\n");
@@ -301,7 +310,7 @@ mpeg_play_result_t mpeg_play_ex(mpeg_player_t *player, const mpeg_cancel_options
 
         return result;
     }
-    player->video_time = player->frame->time;
+
     uint64_t start = timer_ns_gettime64();
 
     while(true) {
@@ -381,7 +390,7 @@ mpeg_decode_result_t mpeg_decode_step(mpeg_player_t *player) {
         player->frame = plm_decode_video(player->decoder);
         if(!player->frame)
             return MPEG_DECODE_EOF;
-        player->video_time = player->frame->time;
+
         player->start_time = timer_ns_gettime64();
 
         /* Need to poll audio at the start */
@@ -399,7 +408,6 @@ mpeg_decode_result_t mpeg_decode_step(mpeg_player_t *player) {
     if(playback_time >= player->frame->time) {
         player->frame = plm_decode_video(player->decoder);
         if(player->frame) {
-            player->video_time = player->frame->time;
             return MPEG_DECODE_FRAME;
         }
         /* Are we looping? */
@@ -419,8 +427,6 @@ mpeg_decode_result_t mpeg_decode_step(mpeg_player_t *player) {
         }
 
         player->start_time = timer_ns_gettime64();
-        player->video_time = player->frame->time;
-        player->audio_time = 0.0;
 
         return MPEG_DECODE_FRAME;
     }
@@ -476,22 +482,30 @@ void mpeg_draw_frame(mpeg_player_t *player) {
 
     pvr_prim(&player->hdr, sizeof(pvr_poly_hdr_t));
 
-    pvr_prim(&player->vert[0], sizeof(pvr_vertex_t));
-    pvr_prim(&player->vert[1], sizeof(pvr_vertex_t));
-    pvr_prim(&player->vert[2], sizeof(pvr_vertex_t));
-    pvr_prim(&player->vert[3], sizeof(pvr_vertex_t));
+    pvr_prim(player->vert, sizeof(pvr_vertex_t) * 4);
+
+    if (extra_letterbox) {
+        pvr_prim(&player->lbhdr, sizeof(pvr_poly_hdr_t));
+
+        pvr_prim(player->lbvert, sizeof(pvr_vertex_t) * 8);
+    }
 }
 
 static int setup_graphics(mpeg_player_t *player, pvr_filter_mode_t filter_mode) {
     const uint32_t color = 0xffffffff;
     const float leftX = 0.0f;
-    const float topY = 0.0f;
 #if DO_240
+    const float topY = 40.0f;
+    const float lbTopBottomY = 58.0f;
     const float rightX = 320.0f;
-    const float bottomY = 240.0f;
+    const float bottomY = 200.0f;
+    const float lbBottomTopY = 182.0f;
 #else
+    const float topY = 80.0f;
+    const float lbTopBottomY = 116.0f;
     const float rightX = 640.0f;
-    const float bottomY = 480.0f;
+    const float bottomY = 400.0f;
+    const float lbBottomTopY = 364.0f;
 #endif
 
     pvr_poly_cxt_t cxt;
@@ -520,6 +534,9 @@ static int setup_graphics(mpeg_player_t *player, pvr_filter_mode_t filter_mode) 
     /* Clear texture to black */
     sq_set(player->texture, 0, mpeg_texture_width * mpeg_texture_height * 2);
 
+    pvr_poly_cxt_col(&cxt, player->list_type);
+    pvr_poly_compile(&player->lbhdr, &cxt);
+
     pvr_poly_cxt_txr(&cxt, player->list_type,
                      PVR_TXRFMT_YUV422 | PVR_TXRFMT_NONTWIDDLED,
                      mpeg_texture_width, mpeg_texture_height,
@@ -529,6 +546,54 @@ static int setup_graphics(mpeg_player_t *player, pvr_filter_mode_t filter_mode) 
 
     u = (float)player->width / mpeg_texture_width;
     v = (float)player->height / mpeg_texture_height;
+
+    player->lbvert[0].flags = PVR_CMD_VERTEX;
+    player->lbvert[0].x = leftX;
+    player->lbvert[0].y = topY;
+    player->lbvert[0].z = 2.0f;
+    player->lbvert[0].argb = 0xff000000;
+
+    player->lbvert[1].flags = PVR_CMD_VERTEX;
+    player->lbvert[1].x = rightX;
+    player->lbvert[1].y = topY;
+    player->lbvert[1].z = 2.0f;
+    player->lbvert[1].argb = 0xff000000;
+
+    player->lbvert[2].flags = PVR_CMD_VERTEX;
+    player->lbvert[2].x = leftX;
+    player->lbvert[2].y = lbTopBottomY;
+    player->lbvert[2].z = 2.0f;
+    player->lbvert[2].argb = 0xff000000;
+
+    player->lbvert[3].flags = PVR_CMD_VERTEX_EOL;
+    player->lbvert[3].x = rightX;
+    player->lbvert[3].y = lbTopBottomY;
+    player->lbvert[3].z = 2.0f;
+    player->lbvert[3].argb = 0xff000000;
+
+    player->lbvert[4].flags = PVR_CMD_VERTEX;
+    player->lbvert[4].x = leftX;
+    player->lbvert[4].y = lbBottomTopY;
+    player->lbvert[4].z = 2.0f;
+    player->lbvert[4].argb = 0xff000000;
+
+    player->lbvert[5].flags = PVR_CMD_VERTEX;
+    player->lbvert[5].x = rightX;
+    player->lbvert[5].y = lbBottomTopY;
+    player->lbvert[5].z = 2.0f;
+    player->lbvert[5].argb = 0xff000000;
+
+    player->lbvert[6].flags = PVR_CMD_VERTEX;
+    player->lbvert[6].x = leftX;
+    player->lbvert[6].y = bottomY;
+    player->lbvert[6].z = 2.0f;
+    player->lbvert[6].argb = 0xff000000;
+
+    player->lbvert[7].flags = PVR_CMD_VERTEX_EOL;
+    player->lbvert[7].x = rightX;
+    player->lbvert[7].y = bottomY;
+    player->lbvert[7].z = 2.0f;
+    player->lbvert[7].argb = 0xff000000;
 
     player->vert[0].x = leftX;
     player->vert[0].y = topY;
@@ -582,7 +647,6 @@ static void *sound_callback(snd_stream_hnd_t hnd, int size, int *size_out) {
         sample = plm_decode_audio(player->decoder);
         if(!sample)
             break;
-        player->audio_time = sample->time;
         fast_memcpy(dest + out / 4, sample->pcm, 1152 * 2);
         out += 1152 * 2;
     }
