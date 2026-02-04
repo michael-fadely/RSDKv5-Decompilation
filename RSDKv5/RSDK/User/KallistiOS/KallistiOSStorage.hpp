@@ -27,9 +27,9 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
         }
 
         if (strstr(filename, "SaveData")) // SaveData.bin -> mania.sav
-		    sprintf(vmu_userfn, "/vmu/%c%d/mania.sav", 'a'+port, unit);
+            sprintf(vmu_userfn, "/vmu/%c%d/mania.sav", 'a'+port, unit);
         else if(strstr(filename, "Achieve")) // Achievements.bin -> mania.ach
-		    sprintf(vmu_userfn, "/vmu/%c%d/mania.ach", 'a'+port, unit);
+            sprintf(vmu_userfn, "/vmu/%c%d/mania.ach", 'a'+port, unit);
         else // anything else -> first 8 chars suffixed with .man - this shouldn't happen but handle it anyway
             sprintf(vmu_userfn, "/vmu/%c%d/%.8s.man", 'a'+port, unit, filename);
 
