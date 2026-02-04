@@ -38,7 +38,7 @@ cp "$orig_dir"/*.txt "$vid_dir"
 
 shopt -s nullglob
 
-ffmpeg -i Mania.ogv -i "$mus_dir/IntroTee.ogg" -filter_complex "[1:a]adelay=5150:all=1[a]" -map 0:v -map "[a]" -c:v copy -c:a libvorbis -q:a 10 -shortest ManiaTeeMux.ogv
+ffmpeg -i Mania.ogv -i "$mus_dir/IntroTee.ogg" -filter_complex "[1:a]adelay=5125:all=1[a]" -map 0:v -map "[a]" -c:v copy -c:a libvorbis -q:a 10 -shortest ManiaTeeMux.ogv
 ffmpeg -i Mania.ogv -i "$mus_dir/IntroHP.ogg" -filter:v "trim=start=1.8,setpts=PTS-STARTPTS" -map 0:v:0 -map 1:a:0 -c:v libtheora -q:v 10 -c:a copy ManiaHPMux.ogv
 
 ffmpeg -safe 0 -f concat -i vids_badknux.txt -i "$mus_dir/BadEnd.ogg" -map 0:v:0 -map 1:a:0 -c:v copy -c:a libvorbis -q:a 10 -af "apad=pad_dur=36000" -shortest BadKnuxMux.ogv
