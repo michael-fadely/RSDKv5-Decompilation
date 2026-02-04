@@ -63,7 +63,6 @@ static int mpegAllocIndex = 0;
 
 #define PLM_REALLOC(p, sz) \
             ({ \
-            void *tmpstore; \
             AllocateStorage((void **)&mpegAllocs[mpegAllocIndex], sz, DATASET_STG, false); \
             PinStorage(&mpegAllocs[mpegAllocIndex]); \
             memcpy(mpegAllocs[mpegAllocIndex], p, sz); \
