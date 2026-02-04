@@ -62,7 +62,7 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
         // need some temporary storage for the VMU data
         // leave it to be reclaimed by RSDK 😬
         uint8 *saveOutbuf;
-        AllocateStorage((void **)&saveOutbuf, allocSize, DATASET_TMP, false);
+        AllocateStorage((void **)&saveOutbuf, allocSize, DATASET_TMP, true);
         if (saveOutbuf == nullptr) {
 #if VMU_DEBUG
             vid_border_color(0xFF, 0x00, 0x00);
@@ -70,7 +70,6 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
 #endif
             return false;
         }
-        memset(saveOutbuf, 0, allocSize);
         uint32 actual_size = 0;
         vmu_file = fs_open(fn, O_RDONLY | O_META);
         if (FILEHND_INVALID == vmu_file) {
@@ -261,7 +260,7 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
         // need some temporary storage for the VMU data
         // leave it to be reclaimed by RSDK 😬
         uint8 *saveOutbuf;
-        AllocateStorage((void **)&saveOutbuf, compressed_size, DATASET_TMP, false);
+        AllocateStorage((void **)&saveOutbuf, compressed_size, DATASET_TMP, true);
         if (saveOutbuf == nullptr) {
 #if VMU_DEBUG
             vid_border_color(0xFF, 0x00, 0x00);
@@ -269,7 +268,6 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
 #endif
             return false;
         }
-        memset(saveOutbuf, 0, outsize);
         // do the compression before generating `vmu_pkg`
         // necessary to know the amount of data to be written
         // note that the output buffer given for the compressed data is 4 bytes after the start of our temp allocation
