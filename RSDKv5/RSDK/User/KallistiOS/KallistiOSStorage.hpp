@@ -116,9 +116,9 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
                 vid_border_color(0x00, 0xFF, 0x00);
 #endif
                 // first 4 bytes of package data are the actual size of the compressed data
-                actual_size = *(uint32_t *)pkg.data;
+                actual_size = *(const uint32_t *)pkg.data;
                 // immediately followed by the compressed data
-                uint8_t *compData = (uint8_t *)(pkg.data + 4);
+                const uint8_t *compData = &pkg.data[4];
 
 #if VMU_DEBUG
                 printf("LoadUserFileFromVMU: got size of %d from size word\n", actual_size);
