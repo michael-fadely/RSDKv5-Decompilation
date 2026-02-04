@@ -101,8 +101,7 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
 
             // data was stored through use of a `vmu_pkg`
             // load it the same way
-            vmu_pkg_t pkg;
-            memset(&pkg, 0, sizeof(pkg));
+            vmu_pkg_t pkg {};
             if(vmu_pkg_parse(saveOutbuf, vmu_size, &pkg) < 0) {
 #if VMU_DEBUG
                 vid_border_color(0xFF, 0x00, 0x00);
@@ -232,8 +231,7 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
 #endif
         return false;
     }
-    vmu_pkg_t pkg;
-    memset(&pkg, 0, sizeof(vmu_pkg_t));
+    vmu_pkg_t pkg {};
     if (isSave)
         strcpy(pkg.desc_long, "Saved Games");
     else if (isAch)
