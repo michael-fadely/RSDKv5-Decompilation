@@ -785,45 +785,20 @@ plm_samples_t *plm_audio_decode(plm_audio_t *self);
 //                      |  y3  |
 //                      |_ y4 _|
 //
-// SH4 calling convention states we get 8 float arguments. Perfect!
-static inline __attribute__((always_inline)) float pl_fipr(float x1, float x2, float x3, float x4, float y1, float y2, float y3, float y4)
-{
-  // FR4-FR11 are the regs that are passed in, aka vectors FV4 and FV8.
-  // Just need to make sure GCC doesn't modify anything, and these register vars do that job.
+// sh4zam version
+static inline __attribute__((always_inline)) float pl_fipr(float x1, float y1, float z1, float w1, float x2, float y2, float z2, float w2) {
+    register float rx1 asm("fr8") = x1;
+    register float ry1 asm("fr9") = y1;
+    register float rz1 asm("fr10") = z1;
+    register float rw1 asm("fr11") = w1;
+    register float rx2 asm("fr12") = x2;
+    register float ry2 asm("fr13") = y2;
+    register float rz2 asm("fr14") = z2;
+    register float rw2 asm("fr15") = w2;
 
-  // Temporary variables are necessary per GCC to avoid clobbering:
-  // https://gcc.gnu.org/onlinedocs/gcc/Local-Register-Variables.html#Local-Register-Variables
+    asm("fipr fv8, fv12" : "+f"(rw2) : "f"(rx1), "f"(ry1), "f"(rz1), "f"(rw1), "f"(rx2), "f"(ry2), "f"(rz2));
 
-  float tx1 = x1;
-  float tx2 = x2;
-  float tx3 = x3;
-  float tx4 = x4;
-
-  float ty1 = y1;
-  float ty2 = y2;
-  float ty3 = y3;
-  float ty4 = y4;
-
-  // vector FV4
-  register float __x1 __asm__("fr4") = tx1;
-  register float __x2 __asm__("fr5") = tx2;
-  register float __x3 __asm__("fr6") = tx3;
-  register float __x4 __asm__("fr7") = tx4;
-
-  // vector FV8
-  register float __y1 __asm__("fr8") = ty1;
-  register float __y2 __asm__("fr9") = ty2;
-  register float __y3 __asm__("fr10") = ty3;
-  register float __y4 __asm__("fr11") = ty4;
-
-  // take care of all the floats in one fell swoop
-  __asm__ __volatile__ ("fipr FV4, FV8\n"
-  : "+f" (__y4) // output (gets written to FR11)
-  : "f" (__x1), "f" (__x2), "f" (__x3), "f" (__x4), "f" (__y1), "f" (__y2), "f" (__y3) // inputs
-  : // clobbers
-  );
-
-  return __y4;
+    return rw2;
 }
 
 // Default (8-bit, 1 byte at a time) DH`moop
@@ -4255,14 +4230,14 @@ struct plm_audio_t {
 	plm_buffer_t *buffer;
 	int destroy_buffer_when_done;
 
-	const plm_quantizer_spec_t *allocation[2][32];
-	uint8_t scale_factor_info[2][32];
-	int scale_factor[2][32][3];
-	int sample[2][32][3];
+	const plm_quantizer_spec_t __attribute__((aligned(32))) *allocation[2][32];
+	uint8_t __attribute__((aligned(32))) scale_factor_info[2][32];
+	int __attribute__((aligned(32))) scale_factor[2][32][3];
+	int __attribute__((aligned(32))) sample[2][32][3];
 
 	plm_samples_t samples;
-	float D[1024];
-	float V[1024];
+	float __attribute__((aligned(32))) D[1024];
+	float __attribute__((aligned(32))) V[1024];
 };
 
 int plm_audio_find_frame_sync(plm_audio_t *self);
