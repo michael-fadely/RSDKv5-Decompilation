@@ -5,6 +5,8 @@
 
 #include <RSDK/Core/Stub.hpp>
 
+#include "sonicmania.xbm"
+
 void SKU::Vmu::FrameBuffer::Print(std::string str, unsigned lineSpacing, Rect rect) {
     vmufb_print_string_into(this, nullptr, rect.x, rect.y,
                             rect.w, rect.h, lineSpacing, str.c_str());
@@ -23,6 +25,11 @@ void SKU::Vmu::FrameBuffer::Fill(bool value, Rect rect) {
             else data[x] &= ~(1 << y);
         }
     }
+    changed = true;
+}
+
+void SKU::Vmu::FrameBuffer::DrawXBM(const uint8_t* data, int h) {
+    vmufb_paint_xbm(this, 0, h, 48, 32-h, data);
     changed = true;
 }
 
@@ -207,9 +214,6 @@ void SKU::InitKallistiOSInputAPI() {
         inputDeviceList[c] = &inputDevices[c];
         inputSlotDevices[c] = &inputDevices[c];
 
-        inputDevices[c].vmu[0].fb.Print("***********\n"
-                                        "SONIC MANIA\n"
-                                        "***********\n"
-                                        "Fuck da PS2!");
+        inputDevices[c].vmu[0].fb.DrawXBM(manialogo_bits, 0);
     }
 }

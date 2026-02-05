@@ -3,7 +3,6 @@
 using namespace RSDK;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-extern RetroEngine RSDK::engine;
 #include <RSDK/Core/Stub.hpp>
 int introHp = 0;
 int introTee = 0;
@@ -13,11 +12,11 @@ int introTee = 0;
 #include "Legacy/AudioLegacy.cpp"
 #endif
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 #define STB_VORBIS_NO_PUSHDATA_API
 #define STB_VORBIS_NO_STDIO
 #define STB_VORBIS_NO_INTEGER_CONVERSION
 
-#if RETRO_PLATFORM != RETRO_KALLISTIOS
 #include "stb_vorbis/stb_vorbis.c"
 
 stb_vorbis *vorbisInfo = NULL;

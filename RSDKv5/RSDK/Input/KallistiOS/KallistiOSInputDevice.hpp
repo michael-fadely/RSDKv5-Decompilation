@@ -28,6 +28,7 @@ public:
         void Print(std::string str, unsigned lineSpacing=2, Rect rect=Rect());
         void Blit(const uint8_t* data, Rect rect=Rect());
         void Fill(bool value=true, Rect rect=Rect());
+        void DrawXBM(const uint8_t* data, int h);
     } fb;
 
     enum Button: uint8_t {
