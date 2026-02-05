@@ -22,7 +22,11 @@ struct EntityDevOutput : Entity {
     int32 state;
     int32 timer;
     int32 ySize;
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    char message[256];
+#else
     char message[1012];
+#endif
 };
 
 // Object Entity

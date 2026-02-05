@@ -137,7 +137,11 @@ struct Entity {
 };
 
 struct EntityBase : Entity {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    void *data[0xF2];
+#else
     void *data[0x100];
+#endif
 #if RETRO_REV0U
     void *unknown;
 #endif
