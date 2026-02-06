@@ -1,5 +1,6 @@
 #include <dc/sound/sound.h>
 
+#include "KallistiOSSfxUpdate.cpp"
 #include "KallistiOSStream.cpp"
 
 static bool deviceInited;

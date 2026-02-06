@@ -36,21 +36,28 @@ struct SFXInfo {
 };
 
 struct ChannelInfo {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     float *samplePtr;
+#endif
     float pan;
     float volume;
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    float speed;
+#else
     int32 speed;
+#endif
     size_t sampleLength;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     int32 bufferPos;
+#endif
     int32 playIndex;
     uint32 loop;
     int16 soundID;
     uint8 priority;
     uint8 state;
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    uint64_t startNs;
+    uint64_t startTimeNs;
     int aicaChannel;
-    int zeroPosCount;
 #endif
 };
 
@@ -135,18 +142,22 @@ inline void StopSfx(uint16 sfx)
     LockAudioDevice();
 #endif
 
-    for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
+    for (int32 i = 0; i < CHANNEL_COUNT - 1; ++i) {
         if (channels[i].soundID == sfx) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            // get the hardware playback channel number before MEM_ZERO call
             int aicaChannel = channels[i].aicaChannel;
+#endif
             MEM_ZERO(channels[i]);
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-            printf("!!! STOPPING SFX %d\n", sfx);
+            // if this is not -1, a hardware playback channel was assigned to this RSDK ChannelInfo
+            // release it
             if (aicaChannel != -1) {
                 snd_sfx_stop(aicaChannel);
                 snd_sfx_chn_free(aicaChannel);
             }
             channels[i].aicaChannel = -1;
-            channels[i].zeroPosCount = -1;
+            channels[i].startTimeNs = 0xFFFFFFFFFFFFFFFFL;
 #endif
             channels[i].soundID = -1;
             channels[i].state   = CHANNEL_IDLE;
@@ -164,12 +175,24 @@ inline void StopAllSfx()
 #if !RETRO_USE_ORIGINAL_CODE
     LockAudioDevice();
 #endif
+
+    for (int32 i = 0; i < CHANNEL_COUNT - 1; ++i) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    stream_destroy();
+        // get the hardware playback channel number before MEM_ZERO call
+        int aicaChannel = channels[i].aicaChannel;
 #endif
-    for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
         if (channels[i].state == CHANNEL_SFX) {
             MEM_ZERO(channels[i]);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            // if this is not -1, a hardware playback channel was assigned to this RSDK ChannelInfo
+            // release it
+            if (aicaChannel != -1) {
+                snd_sfx_stop(aicaChannel);
+                snd_sfx_chn_free(aicaChannel);
+            }
+            channels[i].aicaChannel = -1;
+            channels[i].startTimeNs = 0xFFFFFFFFFFFFFFFFL;
+#endif
             channels[i].soundID = -1;
             channels[i].state   = CHANNEL_IDLE;
         }
