@@ -121,7 +121,7 @@ int stream_init(void)
     stream.status = SNDDEC_STATUS_NULL;
     stream.callback = NULL;
     audio_attr.create_detached = 0;
-    audio_attr.stack_size = 65536;
+    audio_attr.stack_size = 32768;
     audio_attr.stack_ptr = NULL;
     audio_attr.prio = PRIO_DEFAULT;
     audio_attr.label = "MusicPlayer";
@@ -157,6 +157,7 @@ void stream_destroy(void)
 
     if (stream.stream_file != NULL) {
         fClose(stream.stream_file);
+        stream.stream_file = NULL;
     }
 
     mutex_unlock(&stream_mutex);
