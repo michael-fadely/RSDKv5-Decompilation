@@ -345,6 +345,9 @@ int32 RSDK::RunRetroEngine(int32 argc, char *argv[])
 
 void RSDK::ProcessEngine()
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    AudioDeviceBase::ProcessAudioMixing(nullptr, -1);
+#endif
     switch (sceneInfo.state) {
         default: break;
 
