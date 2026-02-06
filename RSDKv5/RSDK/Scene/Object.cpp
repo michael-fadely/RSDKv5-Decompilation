@@ -924,8 +924,13 @@ void RSDK::ProcessObjectDrawLists()
 
                             if (entity->visible || (engine.showEntityInfo & 2)) {
                                 char buffer[0x100];
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                                 sprintf_s(buffer, sizeof(buffer), "%s\nx: %g\ny: %g", objectClassList[stageObjectIDs[entity->classID]].name,
                                           entity->position.x / 65536.0f, entity->position.y / 65536.0f);
+#else
+                                sprintf_s(buffer, sizeof(buffer), "x: %g\ny: %g",
+                                          entity->position.x / 65536.0f, entity->position.y / 65536.0f);
+#endif
 
                                 DrawDevString(buffer, FROM_FIXED(entity->position.x) - currentScreen->position.x,
                                               FROM_FIXED(entity->position.y) - currentScreen->position.y, ALIGN_LEFT, 0xF0F0F0);
