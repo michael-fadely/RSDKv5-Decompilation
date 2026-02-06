@@ -68,6 +68,11 @@ void AudioDeviceBase::Release()
 void AudioDeviceBase::ProcessAudioMixing(void *stream, int32 length)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+    static float lastStreamVolume = -1.0f;
+    if (engine.streamVolume != lastStreamVolume) {
+        lastStreamVolume = engine.streamVolume;
+        stream_volume(224 * channels[CHANNEL_COUNT - 1].volume * engine.streamVolume);
+    }
     // we check every channel except the last
     // we reserve the last channel for music stream
     for (int32 c = 0; c < CHANNEL_COUNT - 1; ++c) {
@@ -235,6 +240,9 @@ void AudioDeviceBase::InitAudioChannels()
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     // reserve the last channel for music stream
     channels[CHANNEL_COUNT - 1].state = CHANNEL_STREAM;
+    // and set initial volume to 1.0f
+    // need this for options menu volume setting
+    channels[CHANNEL_COUNT - 1].volume = 1.0f;
 #endif
 
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
