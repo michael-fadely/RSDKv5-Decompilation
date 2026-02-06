@@ -47,6 +47,11 @@ struct ChannelInfo {
     int16 soundID;
     uint8 priority;
     uint8 state;
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    uint64_t startNs;
+    int aicaChannel;
+    int zeroPosCount;
+#endif
 };
 
 enum ChannelStates { CHANNEL_IDLE, CHANNEL_SFX, CHANNEL_STREAM, CHANNEL_LOADING_STREAM, CHANNEL_PAUSED = 0x40 };
@@ -132,7 +137,17 @@ inline void StopSfx(uint16 sfx)
 
     for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
         if (channels[i].soundID == sfx) {
+            int aicaChannel = channels[i].aicaChannel;
             MEM_ZERO(channels[i]);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            printf("!!! STOPPING SFX %d\n", sfx);
+            if (aicaChannel != -1) {
+                snd_sfx_stop(aicaChannel);
+                snd_sfx_chn_free(aicaChannel);
+            }
+            channels[i].aicaChannel = -1;
+            channels[i].zeroPosCount = -1;
+#endif
             channels[i].soundID = -1;
             channels[i].state   = CHANNEL_IDLE;
         }
