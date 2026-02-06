@@ -576,7 +576,6 @@ void RSDK::ProcessEngine()
                     videoSettings.dimMax  = 1.0;
                 }
             }
-
             break;
 
 #if RETRO_REV02

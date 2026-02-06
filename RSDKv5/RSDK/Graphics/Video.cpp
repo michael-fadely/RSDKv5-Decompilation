@@ -2,7 +2,6 @@
 
 #include <RSDK/Core/Stub.hpp>
 
-
 using namespace RSDK;
 
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
