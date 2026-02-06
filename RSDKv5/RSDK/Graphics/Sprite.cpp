@@ -1067,7 +1067,7 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
             printf("[pvr] [OK] [Data/Sprites/%s] pvr_mem_malloc(%ld) succeeded.\n",
                    filename, vqTexCompressedSize);
             printPvrMem(pvrMemBefore, pvrMemAfter);
-                pvr_txr_load(
+            pvr_txr_load(
                 surface->pixels,
                 surface->texture,
                 vqTexCompressedSize
@@ -1265,10 +1265,120 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
     }
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+bool32 RSDK::LoadVQImage(const char *filename, double displayLength, double fadeSpeed, bool32 (*skipCallback)()) {
+    size_t vqTexCompressedSize;
+    // filename of the sprite sheet, converted to texconv format with VQ compression, ARGB1555
+    FileIO *vqTexFile;
+    // width and height of sprite sheet, from texconv file header
+    uint16 vqTexWidth;
+    uint16 vqTexHeight;
+
+    char fullFilePath[0x100];
+    sprintf_s(fullFilePath, sizeof(fullFilePath), "%s/Data/Images/%s", KOS_USER_DIR, filename);
+    vqTexFile = fOpen(fullFilePath, "r");
+
+    if (vqTexFile == NULL) {
+        printf("couldnt open %s\n", filename);
+        return false;
+    }
+
+    int seekRv;
+    size_t readRv;
+
+    // skip magic value at start of header
+    seekRv = fSeek(vqTexFile, SKIP_SEEK_TO_TEXTURE_WIDTH, SEEK_SET);
+    if (seekRv != 0) {
+        fClose(vqTexFile);
+        return false;
+    }
+
+    // read texture width from header
+    readRv = fRead(&vqTexWidth, 1, sizeof(uint16), vqTexFile);
+    if (readRv < sizeof(uint16)) {
+        fClose(vqTexFile);
+        return false;
+    }
+    if (vqTexWidth != 1024 && vqTexWidth != 512) {
+        printf("invalid tex width %d\n", vqTexWidth);
+        fClose(vqTexFile);
+        return false;
+    }
+
+    // read texture height from header
+    readRv = fRead(&vqTexHeight, 1, sizeof(uint16), vqTexFile);
+    if (readRv < sizeof(uint16)) {
+        fClose(vqTexFile);
+        return false;
+    }
+    if (vqTexHeight != 512 && vqTexHeight != 256) {
+        printf("invalid tex height %d\n", vqTexHeight);
+        fClose(vqTexFile);
+        return false;
+    }
+
+    // skip other header bytes until we get to compressed texture size
+    seekRv = fSeek(vqTexFile, SKIP_SEEK_TO_TEXTURE_SIZE, SEEK_SET);
+    if (seekRv != 0) {
+        fClose(vqTexFile);
+        return false;
+    }
+
+    // read compressed texture data size from header
+    readRv = fRead(&vqTexCompressedSize, 1, sizeof(size_t), vqTexFile);
+    if (readRv < sizeof(size_t)) {
+        fClose(vqTexFile);
+        return false;
+    }
+
+    // skip remainder of header
+    seekRv = fSeek(vqTexFile, SKIP_SEEK_TO_TEXTURE_DATA, SEEK_SET);
+    if (seekRv != 0) {
+        fClose(vqTexFile);
+        return false;
+    }
+    void *pixels;
+    AllocateStorage((void **)&pixels, vqTexCompressedSize, DATASET_TMP, false);
+
+    if (pixels == NULL) {
+        printf("[pvr] [NG] [Data/Sprites/%s] AllocateStorage failed!!!\n", filename);
+        fClose(vqTexFile);
+        return false;
+    } else {
+        // get the compressed texture data from the file
+        readRv = fRead(pixels, 1, vqTexCompressedSize, vqTexFile);
+        if (readRv < vqTexCompressedSize) {
+            fClose(vqTexFile);
+            return false;
+        }
+        engine.displayTime        = displayLength;
+        engine.storedShaderID     = videoSettings.shaderID;
+        engine.storedState        = sceneInfo.state;
+        videoSettings.dimMax      = 0.0;
+        videoSettings.shaderID    = SHADER_RGB_IMAGE;
+        videoSettings.screenCount = 0; // "Image Display Mode"
+        engine.skipCallback       = skipCallback;
+        sceneInfo.state           = ENGINESTATE_SHOWIMAGE;
+        engine.imageFadeSpeed     = fadeSpeed / 60.0;
+        RenderDevice::SetupImageTexture(vqTexCompressedSize, 512, (uint8*)pixels);
+    }
+
+//    RemoveStorageEntry((void **)&pixels);
+
+    fClose(vqTexFile);
+    return true;
+}
+#endif
+
 bool32 RSDK::LoadImage(const char *filename, double displayLength, double fadeSpeed, bool32 (*skipCallback)())
 {
     char fullFilePath[0x100];
     sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Images/%s", filename);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    if ((strncmp("True", filename, 4) == 0)) {
+        return LoadVQImage(filename, displayLength, fadeSpeed, skipCallback);
+    }
+#endif
 
 #if RETRO_REV02
     ImagePNG image;

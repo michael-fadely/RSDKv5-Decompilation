@@ -4,6 +4,8 @@ using namespace RSDK;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 #include <RSDK/Core/Stub.hpp>
+int introHp = 0;
+int introTee = 0;
 #endif
 
 #if RETRO_REV0U
@@ -270,8 +272,26 @@ void RSDK::LoadStream(ChannelInfo *channel)
 int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint32 loopPoint, bool32 loadASync)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    sprintf_s(streamFilePath, sizeof(streamFilePath), "%s/Data/Music/%s", KOS_USER_DIR, filename);
+    if ((strncmp("BadEnd", filename, 6) == 0) || (strncmp("GoodEnd", filename, 7) == 0) || (strncmp("Intro", filename, 5) == 0)) {
+        if (strncmp("IntroHP", filename, 7) == 0) {
+            introHp = 1;
+            introTee = 0;
+        } else if (strncmp("IntroTee", filename, 8) == 0) {
+            introTee = 1;
+            introHp = 0;
+        } else {
+            introTee = 0;
+            introHp = 0;
+        }
 
+        stream_destroy();
+        return 0;
+    } else {
+        introTee = 0;
+        introHp = 0;
+    }
+
+    sprintf_s(streamFilePath, sizeof(streamFilePath), "%s/Data/Music/%s", KOS_USER_DIR, filename);
     stream_destroy();
     stream_create(streamFilePath, loopPoint);
     stream_play();

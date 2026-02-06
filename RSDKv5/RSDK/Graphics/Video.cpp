@@ -4,7 +4,6 @@
 
 using namespace RSDK;
 
-// DCFIXME: fixes build for now
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
 FileInfo VideoManager::file;
 
@@ -23,11 +22,143 @@ ogg_int64_t VideoManager::granulePos = 0;
 bool32 VideoManager::initializing    = false;
 #endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+// these are flags set in `PlayStream`
+// they let us know which pre-muxed variation of the intro video to play
+extern int introHp;
+extern int introTee;
+
+// provider wrappers around RSDK filesystem access for plmpeg
+// we already have it customized for thread safety, might as well use it
+#define PLM_FILE_TYPE                FileIO*
+#define PLM_FILE_INVALID_HANDLE      NULL
+#define PLM_FILE_OPEN(fn)            fOpen((fn), "rb")
+#define PLM_FILE_CLOSE(fh)           fClose((fh))
+#define PLM_FILE_SEEK(fh, off, st)   fSeek((fh), (off), (st))
+#define PLM_FILE_READ(fh, buf, size) fRead((buf), 1, (size), (fh))
+#define PLM_FILE_TELL(fh)            fTell((fh))
+
+// there are 12 allocations that occur internally to PLMPEG on each video playback
+// 11 mallocs and 1 realloc
+// I verified this for every video we can possibly play as part of Sonic Mania
+// provide storage for 12 pointers so they don't go out of scope and cause the RSDK pool allocator any grief
+static void *mpegAllocs[12] = {0};
+static int mpegAllocIndex = 0;
+
+// provide wrappers around the RSDK pool allocator for plmpeg,
+// otherwise we do not have enough RAM to play a video :-)
+#define PLM_MALLOC(sz) \
+            ({ \
+            AllocateStorage((void **)&mpegAllocs[mpegAllocIndex], sz, DATASET_STG, false); \
+            PinStorage(&mpegAllocs[mpegAllocIndex]); \
+            mpegAllocs[mpegAllocIndex++]; \
+            })
+
+#define PLM_FREE(p) \
+            ({ \
+            UnPinStorage((void**)&p); \
+            RemoveStorageEntry((void**)&p); \
+            })
+
+#define PLM_REALLOC(p, sz) \
+            ({ \
+            AllocateStorage((void **)&mpegAllocs[mpegAllocIndex], sz, DATASET_STG, false); \
+            PinStorage(&mpegAllocs[mpegAllocIndex]); \
+            memcpy(mpegAllocs[mpegAllocIndex], p, sz); \
+            UnPinStorage((void**)&p); \
+            RemoveStorageEntry((void**)&p); \
+            mpegAllocs[mpegAllocIndex++]; \
+            })
+
+#include "KallistiOS/mpeg.h"
+#include "KallistiOS/mpeg.c"
+
+static char videoFilePath[256];
+static mpeg_player_t *mpegPlayer;
+static int mpegDone;
+
+// Dreamcast-specific options for plmpeg playback
+static mpeg_player_options_t mania_opts = {
+    .player_list_type   = PVR_LIST_PT_POLY,
+    .player_filter_mode = PVR_FILTER_NONE,
+    .player_volume      = 255,
+    .player_loop        = false,
+    .extra_letterbox    = false
+};
+#endif
+
 bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCallback)())
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    DC_STUB();
-    return false;
+    // do not play BadEnd.ogv, MREnd.ogv as a standalone video;
+    // ending videos are combined and muxed with music tracks during asset generation
+    int vidSkip = 0;
+
+    // reset plmpeg alloc pointer storage index
+    mpegAllocIndex = 0;
+
+    // do not play BadEnd.ogv, MREnd.ogv as a standalone video
+    // ending videos are combined and muxed with music tracks during asset generation
+    // Mania is a special case, there are two possible variations; that has a specific check within
+    // GoodEnd is muxed with music but is not combined with any other videos; it is not checked for here
+    if ((strncmp("BadEnd", filename, 6) == 0) || (strncmp("MREnd", filename, 5) == 0) || (strncmp("Mania", filename, 5) == 0)) {
+        // specifically for Mania, check which song was set to play over the video
+        // and choose one of the two pre-muxed versions for playback
+        if (strncmp("Mania", filename, 5) == 0) {
+            if (introHp)
+                filename = "ManiaHP.mpg"; // the "first"
+            else 
+                filename = "ManiaTee.mpg"; // the "alternate"
+        } else {
+            // either BadEnd or MRend were set to play
+            // return without starting it
+            // the next video that gets played will be a combined and muxed verison of:
+            // BadKnux, BadMighty, BadRay, BadSonic, BadSonic2 or BadTails
+            introHp = 0;
+            introTee = 0;
+            vidSkip = 1;
+        }
+    }
+
+    if ((strstr(filename, "Bad") || strstr(filename, "Good"))) {
+        mania_opts.extra_letterbox = true;
+    } else {
+        mania_opts.extra_letterbox = false;
+    }
+
+    if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)
+        return false;
+
+    // if we are actually going to play a video
+    if(!vidSkip) {
+        // generate KOS_USER_DIR-oriented path to video file
+        sprintf_s(videoFilePath, sizeof(videoFilePath), "%sData/Video/%s", KOS_USER_DIR, filename);
+        // create an mpeg_player_t with the path and custom player options
+        mpegPlayer = mpeg_player_create_ex(videoFilePath, &mania_opts);
+        // give up if it fails
+        if (!mpegPlayer) {
+            return false;
+        }
+    }
+
+    // set up the engine state for video playback like the original code does
+    engine.skipCallback = skipCallback;
+    engine.storedShaderID     = videoSettings.shaderID;
+    videoSettings.screenCount = 0;
+    changedVideoSettings = false;
+    if (ENGINE_VERSION == 5)
+        engine.storedState = sceneInfo.state;
+    if (ENGINE_VERSION == 5)
+        sceneInfo.state = ENGINESTATE_VIDEOPLAYBACK;
+
+    // enable dither when playing videos
+#define PM_DITHER_BIT 8
+    uint32_t cfg = PVR_GET(PVR_FB_CFG_2);
+    cfg |= PM_DITHER_BIT;
+    PVR_SET(PVR_FB_CFG_2, cfg);
+
+    // success
+    return true;
 #else  // RETRO_PLATFORM == RETRO_KALLISTIOS
     if (ENGINE_VERSION == 5 && sceneInfo.state == ENGINESTATE_VIDEOPLAYBACK)
         return false;
@@ -206,7 +337,44 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
 void RSDK::ProcessVideo()
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    DC_STUB();
+    // always attempt to run a decode step if the player exists
+    // it should exist if this gets called, but we have error handling *just in case*
+    mpeg_decode_result_t res = mpegPlayer ? mpeg_decode_step(mpegPlayer) : MPEG_DECODE_ERROR;
+
+    // the various conditions where playback should end
+    if ((!mpegPlayer) || (engine.skipCallback && engine.skipCallback()) || ((res == MPEG_DECODE_EOF) || (res == MPEG_DECODE_ERROR))) {
+        // safety first
+        if (mpegPlayer) {
+            // clean up the player, frees all resources
+            mpeg_player_destroy(mpegPlayer);
+            mpegPlayer = NULL;
+        }
+
+        // restore engine settings like the original code would do
+        videoSettings.shaderID    = engine.storedShaderID;
+        videoSettings.screenCount = 1;
+        if (ENGINE_VERSION == 5)
+            sceneInfo.state = engine.storedState;
+#if RETRO_REV0U
+        else if (ENGINE_VERSION == 3)
+            RSDK::Legacy::gameMode = engine.storedState;
+#endif
+
+        // disable dither when done playing videos
+        uint32_t cfg = PVR_GET(PVR_FB_CFG_2);
+        cfg &= ~PM_DITHER_BIT;
+        PVR_SET(PVR_FB_CFG_2, cfg);
+        return;
+    } else {
+        // playback should not end
+
+        // if the last step produced a frame, upload it
+        if (res == MPEG_DECODE_FRAME) {
+            mpeg_upload_frame(mpegPlayer);
+        }
+        // and always render the last produced frame
+        mpeg_draw_frame(mpegPlayer);
+    }
 #else
     bool32 finished = false;
     double curTime  = 0;
