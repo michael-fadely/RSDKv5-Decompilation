@@ -37,6 +37,9 @@ int32 streamLoopPoint  = 0;
 float linearInterpolationLookup[LINEAR_INTERPOLATION_LOOKUP_LENGTH];
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define FREQ_DIV_44K ((float)AUDIO_FREQUENCY / 44100.0f)
+#endif
 
 #if RETRO_AUDIODEVICE_XAUDIO
 #include "XAudio/XAudioDevice.cpp"
@@ -83,7 +86,7 @@ void AudioDeviceBase::ProcessAudioMixing(void *stream, int32 length)
                 break;
 
             case CHANNEL_SFX: {
-                if (channel->soundID != -1) {
+                if ((channel->soundID != -1) && (!channel->loop)) {
                     // get the hardware playback channel number mapped to this RSDK ChannelInfo
                     int aicaChannel = channel->aicaChannel;
                     // valid channels are 0 throug 63
@@ -101,10 +104,10 @@ void AudioDeviceBase::ProcessAudioMixing(void *stream, int32 length)
                         // - is it not looping? has more time elapsed than the computed time it should play for 
                         //   based on sample count and frequency
                         double playTime = (double)(timer_ns_gettime64() - channel->startTimeNs) * 1e-9;
-                        double freq = (AUDIO_FREQUENCY / sfxList[channel->soundID].ratediv);
+                        double freq = sfxList[channel->soundID].freq;
                         double samplesTime = (double)channel->sampleLength / freq;
                         // this allows us to release channels ASAP and not rely solely on the eviction logic in PlaySfx
-                        if ((!channel->loop) && (samplesTime <= playTime)) {
+                        if (samplesTime <= playTime) {
                                 channel->state   = CHANNEL_IDLE;
                                 channel->soundID = -1;
                                 channel->aicaChannel = -1;
@@ -418,7 +421,7 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
         sfxList[slot].maxConcurrentPlays = plays;
         sfxList[slot].length = t->len;
         sfxList[slot].handle = hnd;
-        sfxList[slot].ratediv = 44100 / t->rate;
+        sfxList[slot].freq = (float)t->rate * FREQ_DIV_44K;
     }
 #else
     FileInfo info;
@@ -578,7 +581,7 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
     // looping was causing problems
     data.loop = loopPoint != 0;
     data.loopstart = loopPoint;
-    data.freq = AUDIO_FREQUENCY / sfxList[sfx].ratediv;
+    data.freq = sfxList[sfx].freq;
 
     // trying to have the sound engine actually work like the sw mixer
     uint8 count = 0;
@@ -766,7 +769,7 @@ void RSDK::SetChannelAttributes(uint8 channel, float volume, float panning, floa
             // looping was causing problems
             data.loop = channels[channel].loop != 0;
             data.loopstart = channels[channel].loop;
-            data.freq = channels[channel].speed * (AUDIO_FREQUENCY / sfxList[channels[channel].soundID].ratediv);
+            data.freq = channels[channel].speed * sfxList[channels[channel].soundID].freq;
             snd_sfx_update_ex(&data);
         }
     } else if (channel == CHANNEL_COUNT - 1) {
