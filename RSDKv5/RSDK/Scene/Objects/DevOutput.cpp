@@ -56,7 +56,11 @@ void RSDK::DevOutput_Draw()
 void RSDK::DevOutput_Create(void *data)
 {
     RSDK_THIS(DevOutput);
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     strncpy(self->message, (char *)data, 0x3F4);
+#else
+    strncpy(self->message, (char *)data, 256);
+#endif
 
     self->active      = ACTIVE_ALWAYS;
     self->visible     = true;
