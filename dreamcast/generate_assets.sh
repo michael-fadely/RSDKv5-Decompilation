@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 usage() {
-  printf 'Usage: %s <source_dir> <stage_dir>\n' "${0##*/}" >&2
+  printf 'Usage: %s <path/to/Data.rsdk> <source_dir> <stage_dir>\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -16,10 +16,15 @@ abspath_dir() {
   (cd -P -- "$d" && pwd -P)
 }
 
-[[ $# -eq 2 ]] || usage
+[[ $# -eq 3 ]] || usage
 
-src_in=$1
-stage_in=$2
+rsdk_file=$1
+src_in=$2
+stage_in=$3
+
+mkdir -p -- "$src_in"
+
+python3 rsdkv5_extract.py "$rsdk_file" "$src_in"
 
 # Resolve source (must exist)
 sourcedir=$(abspath_dir "$src_in") || die "source directory not found: $src_in"
@@ -58,6 +63,9 @@ cp -R -- "$sourcedir/Sprites/Global"        "$stagedir/Sprites/"
 cp -R -- "$sourcedir/Sprites/TMZ1"          "$stagedir/Sprites/"
 cp -R -- "$sourcedir/Sprites/UI"            "$stagedir/Sprites/"
 
+# one non-pow2 file -_-
+rm -f -- "$stagedir/Sprites/UI/Achievements.gif"
+
 "$script_dir/video_script.sh"               "$sourcedir" "$stagedir"
 
 "$script_dir/sfx_step_1_downsample.sh"      "$stagedir"
@@ -72,6 +80,8 @@ cp -R -- "$sourcedir/Sprites/UI"            "$stagedir/Sprites/"
 "$script_dir/gfx_step_2_todtex.sh"          "$stagedir"
 
 "$script_dir/img_step_1_todtex.sh"          "$stagedir"
+
+rm -rf -- "$sourcedir"
 
 printf '%s\n' '-- DONE --'
 
