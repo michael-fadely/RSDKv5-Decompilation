@@ -134,27 +134,11 @@ void AudioDeviceBase::ProcessAudioMixing(void *stream, int32 length)
                     if ((aicaChannel != -1)){//} && (snd_get_pos(aicaChannel) == 0)) {
                         sfxhnd_t handle = sfxList[channel->soundID].handle;
                         printf("xxx\ton AICA channel %d (pos %d)\n", aicaChannel, snd_get_pos(aicaChannel));
-    #if 1
-    #if 0
-                        channel->zeroPosCount++;
-                        if (channel->zeroPosCount > 1) {
-                            channel->state   = CHANNEL_IDLE;
-                            channel->soundID = -1;
-                            snd_sfx_stop(aicaChannel);
-                            snd_sfx_chn_free(aicaChannel);
-                            printf("***\t\tReleased AICA Channel %d\n", aicaChannel);
-                            channel->state   = CHANNEL_IDLE;
-                            channel->soundID = -1;
-                            channel->aicaChannel = -1;
-                            channel->zeroPosCount = -1;
-                        }
-                    }
-    #else
                         double playTime = (double)(timer_ns_gettime64() - channel->startNs) * 1e-9;
-                        double freq = /* channel->speed * */ (AUDIO_FREQUENCY / sfxList[channel->soundID].ratediv);
+                        double freq = (AUDIO_FREQUENCY / sfxList[channel->soundID].ratediv);
                         double samplesTime = (double)channel->sampleLength / freq;
                         printf("xxx\t\tloop %d freq %f playTime %f samplesTime %f\n", channel->loop, freq, playTime, samplesTime);
-                        if ((!channel->loop) && ((samplesTime <= playTime) || (((playTime/samplesTime) > 0.5) && (snd_get_pos(aicaChannel) == 0)))) {
+                        if ((!channel->loop) && (samplesTime <= playTime)) {
                                 printf("xxx\t\t\tReleased AICA Channel %d\n", aicaChannel);
                                 channel->state   = CHANNEL_IDLE;
                                 channel->soundID = -1;
@@ -164,8 +148,6 @@ void AudioDeviceBase::ProcessAudioMixing(void *stream, int32 length)
                                 snd_sfx_chn_free(aicaChannel);
                         }
                     }
-    #endif
-    #endif
                 }
             }
         }
