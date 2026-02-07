@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 usage() {
-  printf 'Usage: %s <source_dir> <stage_dir>\n' "${0##*/}" >&2
+  printf 'Usage: %s <path/to/Data.rsdk> <source_dir> <stage_dir>\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -16,10 +16,15 @@ abspath_dir() {
   (cd -P -- "$d" && pwd -P)
 }
 
-[[ $# -eq 2 ]] || usage
+[[ $# -eq 3 ]] || usage
 
-src_in=$1
-stage_in=$2
+rsdk_file=$1
+src_in=$2
+stage_in=$3
+
+mkdir -p -- "$src_in"
+
+python3 rsdkv5_extract.py "$rsdk_file" "$src_in"
 
 # Resolve source (must exist)
 sourcedir=$(abspath_dir "$src_in") || die "source directory not found: $src_in"
@@ -44,28 +49,41 @@ script_dir=$(
 )
 
 # Verify expected source subdirs exist
-for d in "Music" "SoundFX" "Sprites/Global" "Sprites/TMZ1" "Sprites/UI"; do
+for d in "Images" "Video" "Music" "SoundFX" "Sprites/Global" "Sprites/TMZ1" "Sprites/UI"; do
   [[ -d "$sourcedir/$d" ]] || die "missing expected directory: $sourcedir/$d"
 done
 
-cp -R -- "$sourcedir/Music"   "$stagedir/"
-cp -R -- "$sourcedir/SoundFX" "$stagedir/"
+cp -R -- "$sourcedir/Images"                "$stagedir/"
+cp -R -- "$sourcedir/Music"                 "$stagedir/"
+cp -R -- "$sourcedir/SoundFX"               "$stagedir/"
+cp -R -- "$sourcedir/Video"                 "$stagedir/"
 
 mkdir -p -- "$stagedir/Sprites"
-cp -R -- "$sourcedir/Sprites/Global" "$stagedir/Sprites/"
-cp -R -- "$sourcedir/Sprites/TMZ1"   "$stagedir/Sprites/"
-cp -R -- "$sourcedir/Sprites/UI"     "$stagedir/Sprites/"
+cp -R -- "$sourcedir/Sprites/Global"        "$stagedir/Sprites/"
+cp -R -- "$sourcedir/Sprites/TMZ1"          "$stagedir/Sprites/"
+cp -R -- "$sourcedir/Sprites/UI"            "$stagedir/Sprites/"
 
-"$script_dir/sfx_step_1_downsample.sh"  "$stagedir"
-"$script_dir/sfx_step_2_wav2adpcm.sh"   "$stagedir"
-"$script_dir/sfx_step_3_cleanup.sh"     "$stagedir"
-"$script_dir/sfx_step_4_move.sh"        "$stagedir"
+# one non-pow2 file -_-
+rm -f -- "$stagedir/Sprites/UI/Achievements.gif"
+
+"$script_dir/video_script.sh"               "$sourcedir" "$stagedir"
+
+"$script_dir/sfx_step_1_downsample.sh"      "$stagedir"
+"$script_dir/sfx_step_2_wav2adpcm.sh"       "$stagedir"
+"$script_dir/sfx_step_3_cleanup.sh"         "$stagedir"
+"$script_dir/sfx_step_4_move.sh"            "$stagedir"
 
 "$script_dir/music_step_1_ogg_to_pcm.sh"    "$stagedir"
 "$script_dir/music_step_2_rename_to_ogg.sh" "$stagedir"
 
-"$script_dir/gfx_step_1_toalphapng.sh"  "$stagedir"
-"$script_dir/gfx_step_2_todtex.sh"      "$stagedir"
+"$script_dir/gfx_step_1_toalphapng.sh"      "$stagedir"
+"$script_dir/gfx_step_2_todtex.sh"          "$stagedir"
+
+"$script_dir/img_step_1_todtex.sh"          "$stagedir"
+
+rm -rf -- "$sourcedir"
 
 printf '%s\n' '-- DONE --'
+
+exit 0
 
