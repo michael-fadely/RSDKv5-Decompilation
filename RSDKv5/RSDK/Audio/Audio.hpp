@@ -206,8 +206,21 @@ inline void StopAllSfx()
 
 void SetChannelAttributes(uint8 channel, float volume, float panning, float speed);
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+extern "C" {
+    void stream_play(void);
+    void stream_pause(void);
+    void stream_stop(void);
+    int stream_is_playing(void);
+}
+#endif
+
 inline void StopChannel(uint32 channel)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if (channel == CHANNEL_COUNT - 1)
+        stream_stop();
+#endif
     if (channel < CHANNEL_COUNT) {
         if (channels[channel].state != CHANNEL_LOADING_STREAM)
             channels[channel].state = CHANNEL_IDLE;
@@ -216,6 +229,10 @@ inline void StopChannel(uint32 channel)
 
 inline void PauseChannel(uint32 channel)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if (channel == CHANNEL_COUNT - 1)
+        stream_pause();
+#endif
     if (channel < CHANNEL_COUNT) {
         if (channels[channel].state != CHANNEL_LOADING_STREAM)
             channels[channel].state |= CHANNEL_PAUSED;
@@ -224,20 +241,31 @@ inline void PauseChannel(uint32 channel)
 
 inline void ResumeChannel(uint32 channel)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if (channel == CHANNEL_COUNT - 1)
+        stream_play();
+#endif
     if (channel < CHANNEL_COUNT) {
         if (channels[channel].state != CHANNEL_LOADING_STREAM)
             channels[channel].state &= ~CHANNEL_PAUSED;
     }
 }
 
+
 inline void PauseSound()
 {
     for (int32 c = 0; c < CHANNEL_COUNT; ++c) PauseChannel(c);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    stream_pause();
+#endif
 }
 
 inline void ResumeSound()
 {
     for (int32 c = 0; c < CHANNEL_COUNT; ++c) ResumeChannel(c);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    stream_play();
+#endif
 }
 
 inline bool32 SfxPlaying(uint16 sfx)
@@ -249,23 +277,18 @@ inline bool32 SfxPlaying(uint16 sfx)
     return false;
 }
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-extern "C" {
-    int stream_is_playing(void);
-}
-#endif
-
 inline bool32 ChannelActive(uint32 channel)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     // afaict only used to check if song still playing in credits scroll
-    return stream_is_playing();
-#else
+    // implement the full thing now that we can
+    if (channel == CHANNEL_COUNT - 1)
+        stream_is_playing();
+#endif
     if (channel >= CHANNEL_COUNT)
         return false;
     else
         return (channels[channel].state & 0x3F) != CHANNEL_IDLE;
-#endif
 }
 
 uint32 GetChannelPos(uint32 channel);
