@@ -281,9 +281,7 @@ inline bool32 ChannelActive(uint32 channel)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     // afaict only used to check if song still playing in credits scroll
-    // implement the full thing now that we can
-    if (channel == CHANNEL_COUNT - 1)
-        stream_is_playing();
+    return stream_is_playing();
 #endif
     if (channel >= CHANNEL_COUNT)
         return false;
