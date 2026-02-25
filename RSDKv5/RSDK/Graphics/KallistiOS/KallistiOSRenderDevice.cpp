@@ -2190,7 +2190,7 @@ void RenderDevice::DrawFacePolyPT(
             pvr_poly_compile(header, &context);
             pvr_dr_commit(header);
 
-            lastFaceInkEffect == 0xFFFFFFFF;
+            lastFaceInkEffect = 0xFFFFFFFF;
         }
 
         SET_FACEPOLY_VERT_DR(vert, 0, z, 0);
