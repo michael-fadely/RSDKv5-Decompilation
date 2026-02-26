@@ -14,7 +14,7 @@ if __name__ == "__main__":
     dir = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     # Load known files
-    filenames = [x.strip() for x in open(os.path.join(dir, "rsdk_file_list.txt"), "r").readlines()]
+    filenames = [x.strip() for x in open(os.path.join(dir, "strippy/rsdk_file_list.txt"), "r").readlines()]
 
     static_objects_names = [x.strip() for x in open(os.path.join(dir, "static_objects_list.txt"), "r").readlines()]
     filenames += [rsdkv5.RSDKv5.get_static_object_path(name) for name in static_objects_names]
