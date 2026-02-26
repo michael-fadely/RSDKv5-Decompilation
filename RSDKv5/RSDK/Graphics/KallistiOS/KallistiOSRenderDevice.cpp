@@ -17,7 +17,6 @@ struct KOSTexture
 };
 
 static KOSTexture screenTextures[SCREEN_COUNT] {};
-extern int ufoAny;
 
 // ========== FAST SH4 UTILITY ROUTINES ==========
 
