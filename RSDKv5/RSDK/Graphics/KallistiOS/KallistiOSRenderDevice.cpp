@@ -2077,7 +2077,7 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
 
         color = 0xFFFFFFFF;
 
-        pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         SET_LINEPOLY_VERT_DMA(vert, x1 + nx, y1 + ny, z, 0);
         SET_LINEPOLY_VERT_DMA(vert, x1 - nx, y1 - ny, z, 0);
         SET_LINEPOLY_VERT_DMA(vert, x2 + nx, y2 + ny, z, 0);
@@ -2160,7 +2160,7 @@ void RenderDevice::PrepareFacePolyTR(int inkEffect) {
 
 // static
 void RenderDevice::DrawFacePolyPT(
-        Vector2 *vertices, int32 vertCount, int32 faceColor, int32 alpha, uint32 *colors
+        const Vector2 *vertices, int32 vertCount, int32 faceColor, int32 alpha, const uint32 *colors
 ) {
     if (lastPrimitiveType != PrimitiveTypes_FacePT) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW FacePT BEFORE PREPPING!\n");
@@ -2190,7 +2190,7 @@ void RenderDevice::DrawFacePolyPT(
             pvr_poly_compile(header, &context);
             pvr_dr_commit(header);
 
-            lastFaceInkEffect == 0xFFFFFFFF;
+            lastFaceInkEffect = 0xFFFFFFFF;
         }
 
         SET_FACEPOLY_VERT_DR(vert, 0, z, 0);
@@ -2217,7 +2217,7 @@ void RenderDevice::DrawFacePolyPT(
 
 // static
 void RenderDevice::DrawFacePolyTR(
-        Vector2 *vertices, int32 vertCount, int32 faceColor, int32 alpha, uint32 *colors
+        const Vector2 *vertices, int32 vertCount, int32 faceColor, int32 alpha, const uint32 *colors
 ) {
     if (lastPrimitiveType != PrimitiveTypes_FaceTR) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW FaceTR BEFORE PREPPING!\n");

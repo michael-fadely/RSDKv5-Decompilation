@@ -136,24 +136,24 @@ public:
     );
 
     static void PrepareLinePolyPT(int inkEffect);
-    static void DrawLinePolyPT(int x1, int y1, int x2, int y2, int color);
+    static void DrawLinePolyPT(int lx1, int ly1, int lx2, int ly2, int color);
 
     static void SetLinePolyThickness(int thickness);
     static void PrepareLinePolyTR(int inkEffect);
-    static void DrawLinePolyTR(int x1, int y1, int x2, int y2, int color);
+    static void DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color);
 
     static void PrepareFacePolyPT(int inkEffect);
     static void DrawFacePolyPT(
-            Vector2 *vertices, int32 vertCount,
+            const Vector2 *vertices, int32 vertCount,
             int32 faceColor, int32 alpha,
-            uint32 *colors
+            const uint32 *colors
     );
 
     static void PrepareFacePolyTR(int inkEffect);
     static void DrawFacePolyTR(
-            Vector2 *vertices, int32 vertCount,
+            const Vector2 *vertices, int32 vertCount,
             int32 faceColor, int32 alpha,
-            uint32 *colors
+            const uint32 *colors
     );
 
     static void DrawTexturedQuadPTEx(
