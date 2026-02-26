@@ -5273,7 +5273,7 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
             for (int32 c = 0; c < lineSize; ++c) {
                 if (drawX >= 0 && drawX < currentScreen->size.x - 7) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-#if !DO_240
+#if DO_480
                     // DCFIXME: vram_s used to avoid creating another texture
                     uint32 *frameBuffer = (uint32_t *)&vram_s[(drawX*2) + ((y*2)) * 640];
                     uint32 *frameBuffer2 = (uint32_t *)&vram_s[(drawX*2) + ((y*2)+1) * 640];

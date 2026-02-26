@@ -232,7 +232,7 @@ bool RenderDevice::Init()
 #endif
 
 #if defined(KOS_HARDWARE_RENDERER)
-#if DO_240
+#if !DO_480
     if (vid_check_cable() != CT_VGA) {
         vid_set_mode(DM_320x240_NTSC, PM_RGB565);
     } else {
@@ -271,12 +271,12 @@ bool RenderDevice::Init()
 
     displayCount = 1;
 #if defined(KOS_HARDWARE_RENDERER)
-#if DO_240
-    displayWidth[0] = 320;
-    displayHeight[0] = 240;
-#else
+#if DO_480
     displayWidth[0] = 640;
     displayHeight[0] = 480;
+#else
+    displayWidth[0] = 320;
+    displayHeight[0] = 240;
 #endif
 #else
     displayWidth[0] = 640;

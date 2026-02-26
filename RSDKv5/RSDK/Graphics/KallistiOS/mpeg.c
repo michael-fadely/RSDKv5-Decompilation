@@ -494,18 +494,18 @@ void mpeg_draw_frame(mpeg_player_t *player) {
 static int setup_graphics(mpeg_player_t *player, pvr_filter_mode_t filter_mode) {
     const uint32_t color = 0xffffffff;
     const float leftX = 0.0f;
-#if DO_240
-    const float topY = 40.0f;
-    const float lbTopBottomY = 58.0f;
-    const float rightX = 320.0f;
-    const float bottomY = 200.0f;
-    const float lbBottomTopY = 182.0f;
-#else
+#if DO_480
     const float topY = 80.0f;
     const float lbTopBottomY = 116.0f;
     const float rightX = 640.0f;
     const float bottomY = 400.0f;
     const float lbBottomTopY = 364.0f;
+#else
+    const float topY = 40.0f;
+    const float lbTopBottomY = 58.0f;
+    const float rightX = 320.0f;
+    const float bottomY = 200.0f;
+    const float lbBottomTopY = 182.0f;
 #endif
 
     pvr_poly_cxt_t cxt;
