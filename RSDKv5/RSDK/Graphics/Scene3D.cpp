@@ -1911,13 +1911,9 @@ static const __attribute__((aligned(32))) uint8_t specLUT[32] = {
 
 void RSDK::Draw3DScene(uint16 sceneID)
 {
-#if DO_480
-    const float pixelScaleX = 2.0f / (DEFAULT_PIXWIDTH / 320);
-    const float pixelScaleY = 2.0f;
-#else
-    const float pixelScaleX = 1.0f / (DEFAULT_PIXWIDTH / 320);
-    const float pixelScaleY = 1.0f;
-#endif
+    const float pixelScaleX = RenderDevice::viewSize.x / RenderDevice::pixelSize.x;
+    const float pixelScaleY = RenderDevice::viewSize.y / RenderDevice::pixelSize.y;
+
     // always pull the specular table into cache
     // does not really cost us anything but can save a lot
     __builtin_prefetch(specLUT);
