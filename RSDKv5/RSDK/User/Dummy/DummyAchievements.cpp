@@ -11,7 +11,9 @@ void DummyAchievements::TryUnlockAchievement(AchievementID *id)
                     achievementStack.push_back(i);
                     PrintLog(PRINT_NORMAL, "Unlocked Achievement: (%s, %d)", id->identifier, i);
                     achievementList[i].achieved = true;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                     SaveUserData();
+#endif
                 }
                 break;
             }
