@@ -1182,6 +1182,10 @@ bool32 RSDK::SKU::SaveUserFile(const char *filename, void *buffer, uint32 bufSiz
     }
     return false;
 #else
+    // defer achievement saving until game save
+    if (strstr(filename, "SaveData"))
+        SaveUserData();
+
     PrintLog(PRINT_NORMAL, "Attempting to save user file: %s", KallistiOSUserStorage::GetVMUFilename(filename));
     bool32 rv = KallistiOSUserStorage::SaveUserFileToVMU(filename, buffer, bufSize);
     if (postLoadSaveFileCB)
