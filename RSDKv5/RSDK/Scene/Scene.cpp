@@ -54,40 +54,6 @@ uint16 lastNonEmptyRow = 0xffff;
 uint16 __attribute__((aligned(32))) firstNonemptyTileInRow[512];
 uint16 __attribute__((aligned(32))) lastNonemptyTileInRow[512];
 
-#if FLOOR_STATS
-// debugging stats for floor render
-static struct FloorStats {
-// 0
-uint32 last_fps;
-// 4
-uint32 avg_fps;
-// 8
-uint16 count;
-// 10
-uint16 tiles_iterated;
-// 12
-uint16 tiles_skipped;
-// 14
-uint16 skip_distance;
-// 16
-uint16 skip_empty;
-// 18
-uint16 skip_z;
-// 20
-uint16 skip_l;
-// 22
-uint16 skip_r;
-// 24
-uint16 skip_b;
-// 26
-uint16 xform;
-// 28
-uint16 reuse;
-} __attribute__((aligned(32))) floorstats;
-
-static int frameCountForStats = 0;
-#endif
-
 // are we in a ufo stage and if so, which one
 static int ufoNum = 0;
 
@@ -297,10 +263,6 @@ void RSDK::LoadSceneFolder()
     if (strstr(sceneInfo.listData[sceneInfo.listPos].folder, "UFO7")) {
         ufoNum = 7;
     }
-#if FLOOR_STATS
-    // reset frame count
-    frameCountForStats = 0;
-#endif
 #endif
 
     // clear draw groups
@@ -751,9 +713,6 @@ void RSDK::LoadSceneAssets()
             }
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-#if FLOOR_STATS
-            memset((void*)&floorstats, 0, sizeof(floorstats));
-#endif
             firstNonEmptyRow = 0xffff;
             lastNonEmptyRow = 0xffff;
 
@@ -1351,10 +1310,6 @@ void RSDK::LoadStageGIF(char *filepath)
         tileset.Load(NULL, false);
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-#if FLOOR_STATS
-        // i dont remember what rz meant but fc is frame count
-        frameCountForStats = 0;
-#endif
         PaletteFlags::MarkDirtyNoCheck(0);
 #endif
 
@@ -2360,9 +2315,6 @@ static Vector4f __attribute__((aligned(32))) tileVerts[4];
 void RSDK::DrawLayerRotozoom(TileLayer *layer)
 {
 #if defined(KOS_HARDWARE_RENDERER)
-#if FLOOR_STATS
-    memset((void*)&floorstats + 8, 0, sizeof(floorstats) - 8);
-#endif
     const GFXSurface* surface = &gfxSurface[0];
 
     int32 width    = (TILE_SIZE << layer->widthShift) - 1;
@@ -2756,7 +2708,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 #if DO_EUCLIDEAN_DISTANCE_TEST
         float zdiff = (originTZ - tz);
 #endif
-        uint8 lastEmpty = 1;
+        uint8 cantReuse = 1;
 
         // we did a few rounds of bounds refinements earlier
         // but for rows, there's one more that can be done
@@ -2772,9 +2724,6 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
         for (int tx = firstX; tx <= lastX; tx++) {
             uint8 reuseRights = 0;
             layout_offset++;
-#if FLOOR_STATS
-            floorstats.tiles_iterated++;
-#endif
 
 #if DO_EUCLIDEAN_DISTANCE_TEST
             // only test if camera is not pitched down to floor
@@ -2782,11 +2731,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 float xdiff = (originTX - tx);
                 float xzdist = ((xdiff * xdiff) + (zdiff * zdiff));
                 if (xzdist > tileRadSq) {
-                    lastEmpty = 1;
-    #if FLOOR_STATS
-                    floorstats.skip_distance++;
-                    floorstats.tiles_skipped++;
-    #endif
+                    cantReuse = 1;
                     continue;
                 }
             }
@@ -2796,22 +2741,18 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             uint16 tile = layout[layout_offset] & 0xFFF;
             // FFF is an empty tile
             if (tile == 0xFFF) {
-#if FLOOR_STATS
-                floorstats.skip_empty++;
-                floorstats.tiles_skipped++;
-#endif
-                lastEmpty = 1;
+                cantReuse = 1;
                 continue;
             }
 
             // if the previous iteration of inner loop did not process empty tile,
             // we can reuse the upper/lower right verts to skip two sets of transforms
-            if (!lastEmpty) {
+            if (!cantReuse) {
                 reuseRights = 1;
             }
 
             // processing a visible tile
-            lastEmpty = 0;
+            cantReuse = 0;
 
             // u flip and v flip come from upper 2 bits of tile number
             int uf = 0;
@@ -2842,11 +2783,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // new upper-right vert would be very close to, or behind camera
                 // skip the entire tile
                 if (wTest <= EPS) {
-                    lastEmpty = 1;
-#if FLOOR_STATS
-                    floorstats.skip_z++;
-                    floorstats.tiles_skipped++;
-#endif
+                    cantReuse = 1;
                     continue;
                 }
 
@@ -2874,40 +2811,23 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 
                 // transform new upper right
                 mat_trans_nodiv(tileVerts[TILE_UR].x, tileVerts[TILE_UR].y, tileVerts[TILE_UR].z, tileVerts[TILE_UR].w);
-#if FLOOR_STATS
-                floorstats.xform ++;
-#endif
                 // redundant now
 #if 0
                 if (tileVerts[TILE_UR].w <= EPS) {
-                    lastEmpty = 1;
-#if FLOOR_STATS
-                    floorstats.skip_z++;
-                    floorstats.tiles_skipped++;
-#endif
+                    cantReuse = 1;
                     continue;
                 }
 #endif
 
                 // transform new lower right
                 mat_trans_nodiv(tileVerts[TILE_LR].x, tileVerts[TILE_LR].y, tileVerts[TILE_LR].z, tileVerts[TILE_LR].w);
-#if FLOOR_STATS
-                floorstats.xform ++;
-#endif
                 // new lower-right vert would be very close to, or behind camera
                 // skip the entire tile
                 if (tileVerts[TILE_LR].w <= EPS) {
-                    lastEmpty = 1;
-#if FLOOR_STATS
-                    floorstats.skip_z++;
-                    floorstats.tiles_skipped++;
-#endif
+                    cantReuse = 1;
                     continue;
                 }
 
-#if FLOOR_STATS
-                floorstats.reuse += 2;
-#endif
                 // perspective divide
                 float wUR = tileVerts[TILE_UR].w;
                 float wLR = tileVerts[TILE_LR].w;
@@ -2932,11 +2852,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // upper-left vert would be very close to, or behind camera
                 // skip the entire tile
                 if (wTest < EPS) {
-                    lastEmpty = 1;
-#if FLOOR_STATS
-                    floorstats.skip_z++;
-                    floorstats.tiles_skipped++;
-#endif
+                    cantReuse = 1;
                     continue;
                 }
 
@@ -2964,9 +2880,6 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // loop to transform and near-plane test all tile verts
                 int negw = 0;
                 for (int i=0;i<4;i++) {
-#if FLOOR_STATS
-                    floorstats.xform ++;
-#endif
                     mat_trans_nodiv(tileVerts[i].x, tileVerts[i].y, tileVerts[i].z, tileVerts[i].w);
                     float wi = tileVerts[i].w;
                     // vert `i` would be very close to, or behind camera
@@ -2979,11 +2892,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 
                 // skip the entire tile if flag was set
                 if (negw) {
-                    lastEmpty = 1;
-#if FLOOR_STATS
-                    floorstats.skip_z++;
-                    floorstats.tiles_skipped++;
-#endif
+                    cantReuse = 1;
                     continue;
                 }
 
@@ -3001,31 +2910,19 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             // we might still be able to discard tile if it is outside of screenspace bounds
             // off left side of screen
             if (tileVerts[0].x < 0 && tileVerts[1].x < 0 && tileVerts[2].x < 0 && tileVerts[3].x < 0)  {
-                lastEmpty = 1;
-#if FLOOR_STATS
-                floorstats.skip_l++;
-                floorstats.tiles_skipped++;
-#endif
+                cantReuse = 1;
                 continue;
             }
 
             // off right side of screen
             if (tileVerts[0].x > 320 && tileVerts[1].x > 320 && tileVerts[2].x > 320 && tileVerts[3].x > 320)  {
-                lastEmpty = 1;
-#if FLOOR_STATS
-                floorstats.skip_r++;
-                floorstats.tiles_skipped++;
-#endif
+                cantReuse = 1;
                 continue;
             }
 
             // off bottom of screen
             if (tileVerts[0].y > 240 && tileVerts[1].y > 240 && tileVerts[2].y > 240  && tileVerts[3].y > 240) {
-                lastEmpty = 1;
-#if FLOOR_STATS
-                floorstats.skip_b++;
-                floorstats.tiles_skipped++;
-#endif
+                cantReuse = 1;
                 continue;
             }
 
@@ -3034,11 +2931,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             // off top of screen
             if (sp != 0.0f) {
                 if (tileVerts[0].y > 240 && tileVerts[1].y > 240 && tileVerts[2].y > 240  && tileVerts[3].y > 240) {
-                    lastEmpty = 1;
-#if FLOOR_STATS
-                    //floorstats.skip_t++;
-                    floorstats.tiles_skipped++;
-#endif
+                    cantReuse = 1;
                     continue;
                 }
             }
@@ -3091,78 +2984,8 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 v0, v1,
                 surface, color
             );
-#if FLOOR_STATS
-            floorstats.count++;
-#endif
         }
     }
-
-#if FLOOR_STATS
-    // print out a bunch of stats related to tile counts and rendering
-    // once a second (approximately)
-    pvr_stats_t pvr_stats;
-    pvr_get_stats(&pvr_stats);
-    floorstats.last_fps = (uint32)pvr_stats.frame_rate;
-    if (frameCountForStats == 0) {
-        floorstats.avg_fps = floorstats.last_fps;
-    } else {
-        floorstats.avg_fps += floorstats.last_fps;
-    }
-
-    if (frameCountForStats++ % 60 == 0) {
-#define pct(x,y) ((float)(100.0f * (float)(x)/(float)(y)))
-        if (floorstats.count > 3000) {
-            printf("iterated \e[1;31m%d\e[0m (\e[1;31m%.2f%%\e[0m of total)  ", floorstats.tiles_iterated, pct(floorstats.tiles_iterated, 262144.0f));
-        } else {
-            printf("iterated %d (%.2f%% of total)  ", floorstats.tiles_iterated, pct(floorstats.tiles_iterated, 262144.0f));
-        }
-
-        if (pct(floorstats.tiles_skipped, floorstats.tiles_iterated) >= 90.0f) {
-            printf("skipped \e[1;32m%d\e[0m (\e[1;32m%.2f%%\e[0m of iterated)  ", floorstats.tiles_skipped, pct(floorstats.tiles_skipped, floorstats.tiles_iterated));
-        } else if (pct(floorstats.tiles_skipped, floorstats.tiles_iterated) < 75.0f) {
-            printf("skipped \e[1;31m%d\e[0m (\e[1;31m%.2f%%\e[0m of iterated)  ", floorstats.tiles_skipped, pct(floorstats.tiles_skipped, floorstats.tiles_iterated));
-        } else {
-            printf("skipped %d (%.2f%% of iterated)  ", floorstats.tiles_skipped, pct(floorstats.tiles_skipped, floorstats.tiles_iterated));
-        }
-
-        if (floorstats.count < 1000) {
-            printf("drawn \e[1;32m%d\e[0m (\e[1;32m%.2f%%\e[0m of iterated)  ", floorstats.count, pct(floorstats.count, floorstats.tiles_iterated));
-        } else if (floorstats.count > 2500) {
-            printf("drawn \e[1;31m%d\e[0m (\e[1;31m%.2f%%\e[0m of iterated)  ", floorstats.count, pct(floorstats.count, floorstats.tiles_iterated));
-        } else {
-            printf("drawn %d (%.2f%% of iterated)  ", floorstats.count, pct(floorstats.count, floorstats.tiles_iterated));
-        }
-
-        if (floorstats.last_fps > 55) {
-            printf("fps \e[1;32m%d\e[0m  ", floorstats.last_fps);
-        } else if (floorstats.last_fps > 20 && floorstats.last_fps < 30) {
-            printf("fps \e[1;33m%d\e[0m  ", floorstats.last_fps);
-        } else if (floorstats.last_fps < 21) {
-            printf("fps \e[1;31m%d\e[0m  ", floorstats.last_fps);
-        } else {
-            printf("fps %d  ", floorstats.last_fps);
-        }
-
-        printf("avg fps %d\n", (int)((float)floorstats.avg_fps/(float)(frameCountForStats)));
-        printf("skip categories - distance: %d (%.2f%%)  empty: %d (%.2f%%)  z: %d (%.2f%%)  l: %d (%.2f%%)  r: %d (%.2f%%)  b: %d (%.2f%%)\n",
-            floorstats.skip_distance, pct(floorstats.skip_distance,floorstats.tiles_skipped),
-            floorstats.skip_empty,    pct(floorstats.skip_empty,   floorstats.tiles_skipped),
-            floorstats.skip_z,        pct(floorstats.skip_z,       floorstats.tiles_skipped),
-            floorstats.skip_l,        pct(floorstats.skip_l,       floorstats.tiles_skipped),
-            floorstats.skip_r,        pct(floorstats.skip_r,       floorstats.tiles_skipped),
-            floorstats.skip_b,        pct(floorstats.skip_b,       floorstats.tiles_skipped));
-
-        int32 submitted = floorstats.count << 2;
-        int32 total = floorstats.xform + floorstats.reuse;
-
-        printf("total manipulated vertex count %d - transformed: %d (%.2f%%)  reused: %d (%.2f%%)  submitted %d (%.2f%%)\n",
-            total,
-            floorstats.xform, pct(floorstats.xform, total),
-            floorstats.reuse, pct(floorstats.reuse, total),
-            submitted, pct(submitted, total)
-        );
-    }
-#endif
     return;
 #endif
 #if !defined(KOS_HARDWARE_RENDERER)
