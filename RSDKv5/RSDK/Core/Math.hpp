@@ -223,3 +223,4 @@ inline int32 RandSeeded(int32 min, int32 max, int32 *randSeed)
 } // namespace RSDK
 
 #endif // !MATH_H
+
