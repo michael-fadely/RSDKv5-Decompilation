@@ -83,7 +83,8 @@ struct GFXSurface {
     uint8 *pixels;
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     pvr_ptr_t texture;
-    uint8_t isVq;
+    bool32 isVq;
+    bool32 isARGB;
 #endif
     int32 height;
     int32 width;
@@ -409,6 +410,13 @@ void DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRadius, u
 
 void DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 b, int32 alpha, int32 inkEffect);
 void DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, int32 alpha, int32 inkEffect);
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+void Draw3DSprite(Animator *animator, Vector4f *position, bool32 screenRelative);
+void Draw3DFace(Vector4f *vertices, int32 vertCount, int32 r, int32 g, int32 b, int32 alpha, int32 inkEffect);
+void Draw3DBlendedFace(Vector4f *vertices, uint32 *colors, int32 vertCount, int32 alpha, int32 inkEffect);
+void Draw3DLine(float z, int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative);
+#endif
 
 void DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelative);
 void DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 sprX, int32 sprY, int32 direction, int32 inkEffect, int32 alpha,

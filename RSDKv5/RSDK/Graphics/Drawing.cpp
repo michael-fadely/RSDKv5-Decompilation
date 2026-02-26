@@ -305,7 +305,7 @@ void RSDK::InitSystemSurfaces()
     gfxSurface[0].height   = TILE_COUNT * TILE_SIZE;
     gfxSurface[0].lineSize = 4; // 16px
 #endif
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     gfxSurface[0].pixels   = nullptr;
 #else
     gfxSurface[0].pixels   = tilesetPixels;
@@ -663,6 +663,14 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
     }
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+void RSDK::Draw3DLine(float z, int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative) {
+    float oldDepth = RenderDevice::GetDepth();
+    RenderDevice::SetDepth(oldDepth + z);
+    DrawLine(x1, y1, x2, y2, color, alpha, inkEffect, screenRelative);
+    RenderDevice::SetDepth(oldDepth);
+}
+#endif
 void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
     switch (inkEffect) {
@@ -845,7 +853,7 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
 #endif
 #endif // !defined(KOS_HARDWARE_RENDERER)
 
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
@@ -1221,7 +1229,7 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
 }
 void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     bool darkenTint = true;
 #endif
     switch (inkEffect) {
@@ -1244,7 +1252,7 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         case INK_TINT:
             if (!tintLookupTable)
                 return;
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
             // distinguish between INVERT tint and alpha tint
             if (tintLookupTable[0] == 0xFFFF)
                 darkenTint = false;
@@ -1278,7 +1286,7 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
     if (width <= 0 || height <= 0)
         return;
 
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
@@ -1566,7 +1574,7 @@ void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha,
             y = FROM_FIXED(y) - currentScreen->position.y;
         }
 
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
         DrawFilledCircleFromTris(x, y, radius, color, alpha, inkEffect);
 #else
         int32 yRadiusBottom = y + radius;
@@ -1938,7 +1946,7 @@ void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRad
             int32 or2           = outerRadius * outerRadius;
             validDraw           = true;
 
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
             DrawCircleOutlineWithLines(x, y, outerRadius, (outerRadius - innerRadius), color, alpha, inkEffect);
 #else
             uint16 *frameBuffer = &currentScreen->frameBuffer[left + top * currentScreen->pitch];
@@ -2166,9 +2174,54 @@ void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRad
     }
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+void RSDK::Draw3DFace(Vector4f *vertices, int32 vertCount, int32 r, int32 g, int32 b, int32 alpha, int32 inkEffect)
+{
+    if (!RenderDevice::SupportedInk(inkEffect)) {
+        return;
+    }
+
+    validDraw = true;
+
+    switch (inkEffect) {
+        default: break;
+        case INK_ALPHA:
+            if (alpha > 0xFF)
+                inkEffect = INK_NONE;
+            else if (alpha <= 0)
+                return;
+            break;
+
+        case INK_ADD:
+        case INK_SUB:
+            if (alpha > 0xFF)
+                alpha = 0xFF;
+            else if (alpha <= 0)
+                return;
+            break;
+
+        case INK_TINT:
+            if (!tintLookupTable)
+                return;
+            break;
+    }
+
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
+    if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
+        RenderDevice::PrepareFacePolyPT(inkEffect);
+        RenderDevice::Draw3DFacePolyPT(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
+    } else {
+        RenderDevice::PrepareFacePolyTR(inkEffect);
+        RenderDevice::Draw3DFacePolyTR(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
+    }
+}
+#endif
 void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 b, int32 alpha, int32 inkEffect)
 {
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
@@ -2203,7 +2256,7 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
         alpha = 0xFF;
     }
 
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
         RenderDevice::PrepareFacePolyPT(inkEffect);
         RenderDevice::DrawFacePolyPT(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
@@ -2445,9 +2498,54 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
     }
 #endif
 }
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+void RSDK::Draw3DBlendedFace(Vector4f *vertices, uint32 *colors, int32 vertCount, int32 alpha, int32 inkEffect)
+{
+    if (!RenderDevice::SupportedInk(inkEffect)) {
+        return;
+    }
+
+    validDraw = true;
+
+    switch (inkEffect) {
+        default: break;
+        case INK_ALPHA:
+            if (alpha > 0xFF)
+                inkEffect = INK_NONE;
+            else if (alpha <= 0)
+                return;
+            break;
+
+        case INK_ADD:
+        case INK_SUB:
+            if (alpha > 0xFF)
+                alpha = 0xFF;
+            else if (alpha <= 0)
+                return;
+            break;
+
+        case INK_TINT:
+            if (!tintLookupTable)
+                return;
+            break;
+    }
+
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
+    if ((inkEffect != INK_ADD) && (alpha == 0xFF)) {
+        RenderDevice::PrepareFacePolyPT(inkEffect);
+        RenderDevice::Draw3DFacePolyPT(vertices, vertCount, 0, alpha, colors);
+    } else {
+        RenderDevice::PrepareFacePolyTR(inkEffect);
+        RenderDevice::Draw3DFacePolyTR(vertices, vertCount, 0, alpha, colors);
+    }
+}
+#endif
 void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, int32 alpha, int32 inkEffect)
 {
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
@@ -2482,16 +2580,13 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
         alpha = 0xFF;
     }
 
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     if ((inkEffect != INK_ADD) && (alpha == 0xFF)) {
         RenderDevice::PrepareFacePolyPT(inkEffect);
         RenderDevice::DrawFacePolyPT(vertices, vertCount, 0, alpha, colors);
     } else {
-        // need to disable culling to fix the spotlights on SSZ2 
-        RenderDevice::DisableCulling();
         RenderDevice::PrepareFacePolyTR(inkEffect);
         RenderDevice::DrawFacePolyTR(vertices, vertCount, 0, alpha, colors);
-        RenderDevice::EnableCulling();
     }
 #else
     int32 top    = 0x7FFFFFFF;
@@ -2959,6 +3054,18 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
 #endif
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+void RSDK::Draw3DSprite(Animator *animator, Vector4f *position, bool32 screenRelative) {
+    Vector2 pos;
+    pos.x = (int)position->x;
+    pos.y = (int)position->y;
+    float oldDepth = RenderDevice::GetDepth();
+
+    RenderDevice::SetDepth(oldDepth + position->z + 0.125f);
+    DrawSprite(animator, &pos, screenRelative);
+    RenderDevice::SetDepth(oldDepth);
+}
+#endif
 void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelative)
 {
     if (animator && animator->frames) {
@@ -4024,8 +4131,6 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
         alpha = 0xFF;
     }
 
-    RenderDevice::DisableCulling();
-
     if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
         RenderDevice::PrepareTexturedPolyPT(newY + marginTop, inkEffect, surface);
         RenderDevice::DrawTexturedPolyPT(
@@ -4049,8 +4154,6 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
                 alpha,
                 surface);
     }
-
-    RenderDevice::EnableCulling();
 #else
     int32 sine        = sin512LookupTable[angle];
     int32 cosine      = cos512LookupTable[angle];
@@ -4400,7 +4503,7 @@ void RSDK::DrawDeformedSprite(uint16 sheetID, int32 inkEffect, int32 alpha)
             break;
     }
 
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     // DCTODO: DrawDeformedSprite
     validDraw = true;
 #else
@@ -4978,7 +5081,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
 }
 void RSDK::DrawAniTile(uint16 sheetID, uint16 tileIndex, uint16 srcX, uint16 srcY, uint16 width, uint16 height)
 {
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     AniTileTracker::UpdateAniTile(sheetID, tileIndex, srcX, srcY, width, height);
 #else
     if (sheetID < SURFACE_COUNT && tileIndex < TILE_COUNT) {
@@ -5169,7 +5272,7 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
 
             for (int32 c = 0; c < lineSize; ++c) {
                 if (drawX >= 0 && drawX < currentScreen->size.x - 7) {
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
 #if !DO_240
                     // DCFIXME: vram_s used to avoid creating another texture
                     uint32 *frameBuffer = (uint32_t *)&vram_s[(drawX*2) + ((y*2)) * 640];

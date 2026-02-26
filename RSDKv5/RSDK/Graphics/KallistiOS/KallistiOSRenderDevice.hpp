@@ -2,7 +2,7 @@
 #define KOS_HARDWARE_RENDERER
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-#define DO_240 0
+#define DO_240 1
 #endif
 
 using ShaderEntry = ShaderEntryBase; // DCFIXME
@@ -52,10 +52,8 @@ public:
     // KallistiOS only!!!
     static void BeginScene();
     static void EndScene();
-    static void EnableCulling();
-    static void DisableCulling();
     static float GetDepth();
-    static void SetDepth(uint32 depth);
+    static void SetDepth(float depth);
 
 #if defined(KOS_HARDWARE_RENDERER)
     static uint32 GetGamePaletteBankIndex(int32 y);
@@ -91,6 +89,7 @@ public:
     );
 
     static void PrepareTexturedPolyPT(int32 y, int inkEffect, const GFXSurface* surface);
+    static void PrepareTexturedPolyPTEX(int32 y, int inkEffect, const GFXSurface* surface);
     static void DrawTexturedPolyPT(
             int32 x, int32 y,
             int32 ox, int32 oy,
@@ -108,7 +107,13 @@ public:
         int32 sprY0, int32 sprY1,
         const GFXSurface* surface
     );
-
+    static void DrawFloorTexturedPolyPTEx(
+        const Vector4f& upperLeft, const Vector4f& upperRight,
+        const Vector4f& lowerLeft, const Vector4f& lowerRight,
+        float sprX0, float sprX1,
+        float sprY0, float sprY1,
+        const GFXSurface* surface, uint32 color
+    );
     static void PrepareTexturedPolyTR(int32 y, int inkEffect, const GFXSurface* surface);
     static void DrawTexturedPolyTR(
             int32 x, int32 y,
@@ -119,6 +124,14 @@ public:
             int32 rotation,
             int32 alpha,
             const GFXSurface *surface
+    );
+
+    static void DrawFloorTexturedTriStripPTEx(
+        const Vector4f& upperLeft, const Vector4f& upperRight,
+        const Vector4f& lowerLeft, const Vector4f& lowerRight, const Vector4f &fif,
+        float sprX0, float sprX1, float sprX2, float sprX3, float sprx4,
+        float sprY0, float sprY1, float sprY2, float sprY3, float sprY4,
+        const GFXSurface* surface, uint32 color, int count
     );
 
     static void PrepareColoredPolyPT(int32 y, int inkEffect);
@@ -136,25 +149,40 @@ public:
     );
 
     static void PrepareLinePolyPT(int inkEffect);
-    static void DrawLinePolyPT(int lx1, int ly1, int lx2, int ly2, int color);
+    static void DrawLinePolyPT(int x1, int y1, int x2, int y2, int color);
 
     static void SetLinePolyThickness(int thickness);
     static void PrepareLinePolyTR(int inkEffect);
-    static void DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color);
+    static void DrawLinePolyTR(int x1, int y1, int x2, int y2, int color);
 
     static void PrepareFacePolyPT(int inkEffect);
     static void DrawFacePolyPT(
-            const Vector2 *vertices, int32 vertCount,
-            int32 faceColor, int32 alpha,
+            const Vector2 *vertices, const int32 vertCount,
+            const int32 faceColor, const int32 alpha,
+            const uint32 *colors
+    );
+    static void Draw3DFacePolyPT(
+            const Vector4f *vertices, const int32 vertCount,
+            const int32 faceColor, const int32 alpha,
             const uint32 *colors
     );
 
     static void PrepareFacePolyTR(int inkEffect);
     static void DrawFacePolyTR(
-            const Vector2 *vertices, int32 vertCount,
-            int32 faceColor, int32 alpha,
+            const Vector2 *vertices, const int32 vertCount,
+            const int32 faceColor, const int32 alpha,
             const uint32 *colors
     );
+    static void Draw3DFacePolyTR(
+            const Vector4f *vertices, const int32 vertCount,
+            const int32 faceColor, const int32 alpha,
+            const uint32 *colors
+    );
+
+    static void Prepare3DStripPT(int inkEffect);
+    static void Draw3DStripPT(pvr_vertex_t *verts, int count);
+    static void Prepare3DStripTR(int inkEffect);
+    static void Draw3DStripTR(pvr_vertex_t *verts, int count);
 
     static void DrawTexturedQuadPTEx(
         const Vector2& upperLeft, const Vector2& upperRight,
