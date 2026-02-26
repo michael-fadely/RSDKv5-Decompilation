@@ -14,8 +14,3 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-
-
-#define RAYMATH_IMPLEMENTATION
-#include "include/raymath.h"
-
