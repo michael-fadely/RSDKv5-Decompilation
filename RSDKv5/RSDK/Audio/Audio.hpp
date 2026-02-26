@@ -142,7 +142,11 @@ inline void StopSfx(uint16 sfx)
     LockAudioDevice();
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
     for (int32 i = 0; i < CHANNEL_COUNT - 1; ++i) {
+#else
+    for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
+#endif
         if (channels[i].soundID == sfx) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
             // get the hardware playback channel number before MEM_ZERO call
@@ -176,7 +180,11 @@ inline void StopAllSfx()
     LockAudioDevice();
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
     for (int32 i = 0; i < CHANNEL_COUNT - 1; ++i) {
+#else
+    for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
+#endif
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
         // get the hardware playback channel number before MEM_ZERO call
         int aicaChannel = channels[i].aicaChannel;
@@ -282,11 +290,12 @@ inline bool32 ChannelActive(uint32 channel)
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     // afaict only used to check if song still playing in credits scroll
     return stream_is_playing();
-#endif
+#else
     if (channel >= CHANNEL_COUNT)
         return false;
     else
         return (channels[channel].state & 0x3F) != CHANNEL_IDLE;
+#endif
 }
 
 uint32 GetChannelPos(uint32 channel);
