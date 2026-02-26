@@ -349,6 +349,7 @@ static uint8 lastState = ENGINESTATE_NONE;
 void RSDK::ProcessEngine()
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+    AudioDeviceBase::ProcessAudioMixing(nullptr, -1);
     if (lastState == ENGINESTATE_SHOWIMAGE && sceneInfo.state != lastState) {
         RenderDevice::ReleaseImageTexture();
     }

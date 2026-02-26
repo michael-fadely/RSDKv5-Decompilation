@@ -39,6 +39,9 @@ int32 streamLoopPoint  = 0;
 float linearInterpolationLookup[LINEAR_INTERPOLATION_LOOKUP_LENGTH];
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define FREQ_DIV_44K ((float)AUDIO_FREQUENCY / 44100.0f)
+#endif
 
 #if RETRO_AUDIODEVICE_XAUDIO
 #include "XAudio/XAudioDevice.cpp"
@@ -69,7 +72,56 @@ void AudioDeviceBase::Release()
 
 void AudioDeviceBase::ProcessAudioMixing(void *stream, int32 length)
 {
-#if RETRO_PLATFORM != RETRO_KALLISTIOS
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    static float lastStreamVolume = -1.0f;
+    if (engine.streamVolume != lastStreamVolume) {
+        lastStreamVolume = engine.streamVolume;
+        stream_volume(224 * channels[CHANNEL_COUNT - 1].volume * engine.streamVolume);
+    }
+    // we check every channel except the last
+    // we reserve the last channel for music stream
+    for (int32 c = 0; c < CHANNEL_COUNT - 1; ++c) {
+        ChannelInfo *channel = &channels[c];
+
+        switch (channel->state) {
+            default:
+                break;
+
+            case CHANNEL_SFX: {
+                if ((channel->soundID != -1) && (!channel->loop)) {
+                    // get the hardware playback channel number mapped to this RSDK ChannelInfo
+                    int aicaChannel = channel->aicaChannel;
+                    // valid channels are 0 throug 63
+                    if (aicaChannel != -1) {
+                        // I was hoping to use KOS APIs for the following but it isn't possible
+                        // I will explain why:
+                        // 1) `snd_is_playing` - oh, this should work just fine for this task!
+                        //    but no. it always returns true once you've fired a channel ever
+                        // 2) `snd_get_pos` - ok, I'll just check if this is at the end of the sound effect
+                        //    but no. it returns 0 if you've hit the end of the sound. you'd think, 
+                        //    ok I can check that then. also no, because some are so short you never see non-zero.
+                        // so I do this the "hard" way. when a sfx is started, I record the time since boot in NS.
+                        // every call to this function, I see if the sound should be finished playing according to:
+                        // - is it looping? it isn't done
+                        // - is it not looping? has more time elapsed than the computed time it should play for 
+                        //   based on sample count and frequency
+                        double playTime = (double)(timer_ns_gettime64() - channel->startTimeNs) * 1e-9;
+                        double freq = sfxList[channel->soundID].freq;
+                        double samplesTime = (double)channel->sampleLength / freq;
+                        // this allows us to release channels ASAP and not rely solely on the eviction logic in PlaySfx
+                        if (samplesTime <= playTime) {
+                                channel->state   = CHANNEL_IDLE;
+                                channel->soundID = -1;
+                                channel->aicaChannel = -1;
+                                snd_sfx_stop(aicaChannel);
+                                snd_sfx_chn_free(aicaChannel);
+                        }
+                    }
+                }
+            }
+        }
+    }
+#else
     SAMPLE_FORMAT *streamF    = (SAMPLE_FORMAT *)stream;
     SAMPLE_FORMAT *streamEndF = ((SAMPLE_FORMAT *)stream) + length;
 
@@ -182,7 +234,21 @@ void AudioDeviceBase::InitAudioChannels()
     for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
         channels[i].soundID = -1;
         channels[i].state   = CHANNEL_IDLE;
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        // reset to invalid hardware playback channel number
+        channels[i].aicaChannel = -1;
+        // reset to an invalid time
+        channels[i].startTimeNs = 0xFFFFFFFFFFFFFFFFL;
+#endif
     }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // reserve the last channel for music stream
+    channels[CHANNEL_COUNT - 1].state = CHANNEL_STREAM;
+    // and set initial volume to 1.0f
+    // need this for options menu volume setting
+    channels[CHANNEL_COUNT - 1].volume = 1.0f;
+#endif
 
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
     // Compute a lookup table of floating-point linear interpolation delta scales,
@@ -295,8 +361,8 @@ int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint3
     stream_destroy();
     stream_create(streamFilePath, loopPoint);
     stream_play();
-
-    return 0;
+    // last channel always reserved for music stream
+    return CHANNEL_COUNT - 1;
 #else
     if (!engine.streamsEnabled)
         return -1;
@@ -354,22 +420,6 @@ int32 RSDK::PlayStream(const char *filename, uint32 slot, uint32 startPos, uint3
 #define WAV_SIG_HEADER (0x46464952) // RIFF
 #define WAV_SIG_DATA   (0x61746164) // data
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-struct snd_effect;
-LIST_HEAD(selist, snd_effect);
-
-typedef struct snd_effect {
-    uint32_t  locl, locr;
-    uint32_t  len;
-    uint32_t  rate;
-    uint32_t  used;
-    uint32_t  fmt;
-    uint16_t  stereo;
-
-    LIST_ENTRY(snd_effect)  list;
-} snd_effect_t;
-#endif
-
 void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 {
     char fullFilePath[0x80];
@@ -380,16 +430,19 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     sprintf_s(fullFilePath, sizeof(fullFilePath), "%s/Data/SoundFX/%s", KOS_USER_DIR, filename);
 
+    // sfxhnd_t is an opaque type
+    // but really is is a pointer to a `snd_effect_t` struct
+    // you have to poke at some KOS internals to get at it though
     sfxhnd_t hnd = snd_sfx_load(fullFilePath);
 
-    if (hnd != 0) {
+    if (hnd != (sfxhnd_t)0) {
         snd_effect_t *t = (snd_effect_t *)hnd;
         HASH_COPY_MD5(sfxList[slot].hash, hash);
         sfxList[slot].scope              = scope;
         sfxList[slot].maxConcurrentPlays = plays;
         sfxList[slot].length = t->len;
         sfxList[slot].handle = hnd;
-        sfxList[slot].ratediv = 44100 / t->rate;
+        sfxList[slot].freq = (float)t->rate * FREQ_DIV_44K;
     }
 #else
     FileInfo info;
@@ -529,24 +582,119 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
         return -1;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    if (sfxList[sfx].handle != (sfxhnd_t)0) {
-        sfx_play_data_t data = {0};
-        // sound effect to play, by handle
-        data.idx = sfxList[sfx].handle;
-        // -1 means "dynamically allocate an AICA channel for sample playback"
-        data.chn = -1;
-        // 192 is chosen as maximum value to avoid clipping/distortion in sfx playback
-        data.vol = 192 * engine.soundFXVolume;
-        // 127 is neutral/center pan
-        data.pan = 127;
-        // looping was causing problems
-        data.loop = 0; // loopPoint != 0
-        data.loopstart = 0; // loopPoint
-        data.freq = AUDIO_FREQUENCY / sfxList[sfx].ratediv;
-        return snd_sfx_play_ex(&data);
+    if (sfxList[sfx].handle == (sfxhnd_t)0)
+        return -1;
+
+    int reservedChannel = snd_sfx_chn_alloc();
+    if (reservedChannel == -1) {
+        PrintLog(PRINT_ERROR, "PlaySfx: All AICA channels are reserved.\n");
+        return -1;
     }
 
-    return -1;
+    sfx_play_data_t data = {0};
+    // sound effect to play, by handle
+    data.idx = sfxList[sfx].handle;
+    data.chn = reservedChannel;
+    // 224 is chosen as maximum value to avoid clipping/distortion in sfx playback
+    data.vol = 224 * engine.soundFXVolume;
+    // 127 is neutral/center pan
+    data.pan = 127;
+    // looping was causing problems
+    data.loop = loopPoint != 0;
+    data.loopstart = loopPoint;
+    data.freq = sfxList[sfx].freq;
+
+    // trying to have the sound engine actually work like the sw mixer
+    uint8 count = 0;
+    for (int32 c = 0; c < CHANNEL_COUNT; ++c) {
+        if (channels[c].soundID == sfx)
+            ++count;
+    }
+
+    int8 slot = -1;
+    // if we've hit the max, replace the oldest one
+    if (count >= sfxList[sfx].maxConcurrentPlays) {
+        int32 highestStackID = 0;
+        for (int32 c = 0; c < CHANNEL_COUNT - 1; ++c) {
+            if (channels[c].soundID == sfx) {
+                int32 stackID = sfxList[sfx].playCount - channels[c].playIndex;
+                if (stackID > highestStackID) {
+                    slot           = c;
+                    highestStackID = stackID;
+                }
+            }
+        }
+    }
+
+    int need_to_free = 0;
+    if (slot >= 0) {
+        // don't need the hardware channel we just tried to reserve
+        snd_sfx_chn_free(reservedChannel);
+        // reuse the hardware channel from the oldest slot already playing this sfx
+        data.chn = channels[slot].aicaChannel;
+    }
+
+    if (slot == -1) {
+        // if we don't have a slot yet, try to pick any channel that's not currently playing
+        for (int32 c = 0; c < CHANNEL_COUNT - 1; ++c) {
+            if (channels[c].soundID == -1) {
+                slot = c;
+                break;
+            }
+        }
+    }
+
+    // as a last resort, run through all channels
+    // pick the channel closest to being finished AND with lower priority
+    if (slot < 0) {
+        uint32 len = 0xFFFFFFFF;
+        for (int32 c = 0; c < CHANNEL_COUNT - 1; ++c) {
+            if (channels[c].sampleLength < len &&  priority > channels[c].priority) {
+                slot = c;
+                len  = (uint32)channels[c].sampleLength;
+                // we are going to evict the existing channel `c`
+                need_to_free = 1;
+            }
+        }
+    }
+
+    if (slot >= 0 && need_to_free) {
+        // evict whatever was in this slot
+        // release the hardware playback channel it was using
+        if (channels[slot].aicaChannel != -1) {
+            snd_sfx_stop(channels[slot].aicaChannel);
+            snd_sfx_chn_free(channels[slot].aicaChannel);
+            channels[slot].aicaChannel = -1;
+        }
+    }
+
+    if (slot == -1) {
+        snd_sfx_chn_free(reservedChannel);
+        PrintLog(PRINT_ERROR, "PlaySfx: Could not find a usable ChannelInfo slot.\n");
+        return -1;
+    }
+
+    channels[slot].state        = CHANNEL_SFX;
+    channels[slot].sampleLength = sfxList[sfx].length;
+    channels[slot].volume       = 1.0f;
+    channels[slot].pan          = 0.0f;
+    channels[slot].speed        = TO_FIXED(1);
+    channels[slot].soundID      = sfx;
+    if (loopPoint >= 2)
+        channels[slot].loop = loopPoint;
+    else
+        channels[slot].loop = 0;
+    channels[slot].priority  = priority;
+    channels[slot].playIndex = sfxList[sfx].playCount++;
+    channels[slot].aicaChannel = data.chn;
+
+    snd_sfx_play_ex(&data);
+
+    // set the play time *after* firing off the AICA command
+    // so we don't end up cutting it off early
+    channels[slot].startTimeNs = timer_ns_gettime64();
+
+    return slot;
 #else
     uint8 count = 0;
     for (int32 c = 0; c < CHANNEL_COUNT; ++c) {
@@ -614,6 +762,42 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
 
 void RSDK::SetChannelAttributes(uint8 channel, float volume, float panning, float speed)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    volume                   = fminf(4.0f, volume);
+    volume                   = fmaxf(0.0f, volume);
+    channels[channel].volume = volume;
+
+    panning               = fminf(1.0f, panning);
+    panning               = fmaxf(-1.0f, panning);
+    channels[channel].pan = panning;
+
+    if (speed > 0.0f)
+        channels[channel].speed = speed;
+    else if (speed == 1.0f)
+        channels[channel].speed = speed;
+
+    if ((channel < CHANNEL_COUNT - 1) && (channels[channel].state == CHANNEL_SFX)) {
+        // safety check, is there a hardware playback channel assigned to this ChannelInfo
+        if (channels[channel].aicaChannel != -1) {
+            sfx_play_data_t data = {0};
+            // sound effect to play, by handle
+            data.idx = sfxList[channels[channel].soundID].handle;
+            data.chn = channels[channel].aicaChannel;
+            // 224 is chosen as maximum value to avoid clipping/distortion in sfx playback
+            data.vol = 224 * (channels[channel].volume) * engine.soundFXVolume;
+            // 127 is neutral/center pan
+            data.pan = 127 * (channels[channel].pan + 1.0f);
+            // looping was causing problems
+            data.loop = channels[channel].loop != 0;
+            data.loopstart = channels[channel].loop;
+            data.freq = channels[channel].speed * sfxList[channels[channel].soundID].freq;
+            snd_sfx_update_ex(&data);
+        }
+    } else if (channel == CHANNEL_COUNT - 1) {
+        // 224 is chosen as maximum value to avoid clipping/distortion in sfx playback
+        stream_volume(224 * channels[channel].volume * engine.streamVolume);
+    }
+#endif
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (channel < CHANNEL_COUNT) {
         volume                   = fminf(4.0f, volume);
@@ -634,6 +818,16 @@ void RSDK::SetChannelAttributes(uint8 channel, float volume, float panning, floa
 
 uint32 RSDK::GetChannelPos(uint32 channel)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if (channel >= CHANNEL_COUNT - 1)
+        return 0;
+
+    if (channels[channel].state == CHANNEL_SFX) {
+        int aicaChannel = channels[channel].aicaChannel;
+        if (aicaChannel != -1)
+            return snd_get_pos(aicaChannel);
+    }
+#endif
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
     if (channel >= CHANNEL_COUNT)
         return 0;
@@ -668,8 +862,15 @@ void RSDK::ClearStageSfx()
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     stream_destroy();
 
-    for (int i = 0; i < 64; i++) {
-        snd_sfx_chn_free(i);
+    for (int i = 0; i < CHANNEL_COUNT - 1; i++) {
+        if (channels[i].aicaChannel != -1) {
+            snd_sfx_stop(channels[i].aicaChannel);
+            snd_sfx_chn_free(channels[i].aicaChannel);
+            // reset to invalid hardware playback channel number
+            channels[i].aicaChannel = -1;
+            // reset to an invalid time
+            channels[i].startTimeNs = 0xFFFFFFFFFFFFFFFFL;
+        }
     }
 #endif
     LockAudioDevice();
@@ -701,8 +902,15 @@ void RSDK::ClearGlobalSfx()
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     stream_destroy();
 
-    for (int i = 0; i < 64; i++) {
-        snd_sfx_chn_free(i);
+    for (int i = 0; i < CHANNEL_COUNT - 1; i++) {
+        if (channels[i].aicaChannel != -1) {
+            snd_sfx_stop(channels[i].aicaChannel);
+            snd_sfx_chn_free(channels[i].aicaChannel);
+            // reset to invalid hardware playback channel number
+            channels[i].aicaChannel = -1;
+            // reset to an invalid time
+            channels[i].startTimeNs = 0xFFFFFFFFFFFFFFFFL;
+        }
     }
 #endif
     LockAudioDevice();

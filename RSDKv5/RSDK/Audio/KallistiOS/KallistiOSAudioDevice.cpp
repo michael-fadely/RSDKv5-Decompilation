@@ -1,5 +1,6 @@
 #include <dc/sound/sound.h>
 
+#include "KallistiOSSfxUpdate.cpp"
 #include "KallistiOSStream.cpp"
 
 static bool deviceInited;
@@ -8,6 +9,7 @@ static bool deviceInited;
 bool32 AudioDevice::Init()
 {
     bool32 ok = snd_init() >= 0;
+    InitAudioChannels();
     return ok && !!stream_init();
 }
 
