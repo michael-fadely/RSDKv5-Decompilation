@@ -2327,7 +2327,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
     if ((uint32)scanline->deform.x != (uint32)0xFEDCBA09) return;
     //if ((uint32)scanline->deform.y != (uint32)0x90ABCDEF) return;
     // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
-    // to avoid "not consumed" error when LOD quad prepares a different texture first
+    // to avoid "not consumed" RenderDevice warning when LOD quad prepares a different texture first
 
     scanline++;
 
