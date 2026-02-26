@@ -6,7 +6,7 @@ library:
 	$(MAKE) -C $(TRISTIPPER_DIR)
 
 main: library
-	c++ -O3 main.cpp -o strippy -L$(TRISTIPPER_DIR) -lTriStripper -lm
+	c++ -O3 -Ilibs/TriStripper main.cpp -o strippy -L$(TRISTIPPER_DIR) -lTriStripper -lm
 clean:
 	$(MAKE) -C $(TRISTIPPER_DIR) clean
 	rm -f strippy
