@@ -634,8 +634,6 @@ void RenderDevice::ShowCursor(bool)
 
 // KallistiOS only!!!
 
-extern uint16_t *fbtex;// = nullptr;
-
 // static
 void RenderDevice::BeginScene() {
 #if defined(KOS_HARDWARE_RENDERER)
@@ -648,9 +646,9 @@ void RenderDevice::BeginScene() {
     // Update our cached values for pixel global pixel scaling.
     pixelScaleX = viewSize.x / pixelSize.x;
     pixelScaleY = viewSize.y / pixelSize.y;
+
     pvr_scene_begin();
     pvr_set_bg_color(0.0f, 0.0f, 0.0f);
-
 
     // direct render to punch-through list anything that doesn't need to blend
     if (pvr_list_begin(PVR_LIST_PT_POLY) == -1) {
