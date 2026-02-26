@@ -2114,57 +2114,7 @@ void RenderDevice::DrawColoredPolyTR(
         lastInkEffect = 0xFFFFFFFF;
     }
 
-    if (lastInkEffect == INK_UNMASKED) {
-        pvr_poly_cxt_t context;
-        pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
-
-        context.gen.alpha = 1;
-        context.gen.culling = PVR_CULLING_NONE;
-        context.blend.src = PVR_BLEND_INVDESTCOLOR;
-        context.blend.dst = PVR_BLEND_INVSRCALPHA;
-
-        pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        pvr_poly_compile(hdr_ptr, &context);
-        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
-
-        color = 0x90000090;
-
-        pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        // top left
-        vert->flags = PVR_CMD_VERTEX;
-        vert->x = x0;
-        vert->y = y0;
-        vert->z = z;
-        vert->argb = color;
-        vert++;
-
-        // top right
-        vert->flags = PVR_CMD_VERTEX;
-        vert->x = x1;
-        vert->y = y0;
-        vert->z = z;
-        vert->argb = color;
-        vert++;
-
-        // bottom left
-        vert->flags = PVR_CMD_VERTEX;
-        vert->x = x0;
-        vert->y = y1;
-        vert->z = z;
-        vert->argb = color;
-        vert++;
-
-        // bottom right
-        vert->flags = PVR_CMD_VERTEX_EOL;
-        vert->x = x1;
-        vert->y = y1;
-        vert->z = z;
-        vert->argb = color;
-
-        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
-
-        lastInkEffect = 0xFFFFFFFF;
-    } else if (lastInkEffect != INK_TINT) {
+    if (lastInkEffect != INK_TINT) {
         // top left
         pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         vert->flags = PVR_CMD_VERTEX;
