@@ -2715,8 +2715,8 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
         // every row has different first and last non-empty tile
         // some rows are much narrower in these bounds
         // so use them
-        int firstX = minTileX < firstNonemptyTileInRow[tz] ? firstNonemptyTileInRow[tz] : minTileX;
-        int lastX = maxTileX > lastNonemptyTileInRow[tz] ? lastNonemptyTileInRow[tz] : maxTileX;
+        int firstX = (minTileX < firstNonemptyTileInRow[tz]) ? firstNonemptyTileInRow[tz] : minTileX;
+        int lastX  = (maxTileX >  lastNonemptyTileInRow[tz]) ?  lastNonemptyTileInRow[tz] : maxTileX;
 
         // so we can just increment to index next tile
         size_t layout_offset = firstX + (tz << layer->widthShift) - 1;
