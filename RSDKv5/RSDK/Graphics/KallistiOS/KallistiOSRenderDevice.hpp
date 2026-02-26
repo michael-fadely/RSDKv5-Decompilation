@@ -126,14 +126,6 @@ public:
             const GFXSurface *surface
     );
 
-    static void DrawFloorTexturedTriStripPTEx(
-        const Vector4f& upperLeft, const Vector4f& upperRight,
-        const Vector4f& lowerLeft, const Vector4f& lowerRight, const Vector4f &fif,
-        float sprX0, float sprX1, float sprX2, float sprX3, float sprx4,
-        float sprY0, float sprY1, float sprY2, float sprY3, float sprY4,
-        const GFXSurface* surface, uint32 color, int count
-    );
-
     static void PrepareColoredPolyPT(int32 y, int inkEffect);
     static void DrawColoredPolyPT(
             int32 x, int32 y,

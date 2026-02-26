@@ -1288,10 +1288,10 @@ void RenderDevice::DrawTexturedPolyPT(
     lastPrimitiveWasConsumed = true;
 
     // Compute constants up-front
-    const float x0 = static_cast<float>(x) * pixelScaleX;
-    const float y0 = static_cast<float>(y) * pixelScaleY;
-    const float x1 = x0 + (static_cast<float>(width)  * pixelScaleX);
-    const float y1 = y0 + (static_cast<float>(height) * pixelScaleY);
+    const float x0 = static_cast<float>(x);
+    const float y0 = static_cast<float>(y);
+    const float x1 = x0 + static_cast<float>(width);
+    const float y1 = y0 + static_cast<float>(height);
     const float z  = GetDepth();
     const float u0 = shz_div_posf(sprX0, surface->width);
     const float v0 = shz_div_posf(sprY0, surface->height);
@@ -1345,8 +1345,8 @@ void RenderDevice::DrawTexturedPolyPT(
     rotation = (rotation & 0x1FF) << 7;
 
     if (rotation != 0) {
-        const float cx = static_cast<float>(ox) * pixelScaleX;
-        const float cy = static_cast<float>(oy) * pixelScaleY;
+        const float cx = static_cast<float>(ox);
+        const float cy = static_cast<float>(oy);
 
         const float s = fast_isin(rotation);
         const float c = fast_icos(rotation);
@@ -1366,6 +1366,11 @@ void RenderDevice::DrawTexturedPolyPT(
         rotate(verts[1]);
         rotate(verts[2]);
         rotate(verts[3]);
+    }
+
+    for (int i=0;i<4;i++) {
+        verts[i].x *= pixelScaleX;
+        verts[i].y *= pixelScaleY;
     }
 
     /* This is the routine called by `pvr_prim()` under-the-hood when
@@ -1416,9 +1421,6 @@ void RenderDevice::DrawTexturedPolyPTEx(
     const float u1 = shz_div_posf(sprX1, surface->width);
     const float v1 = shz_div_posf(sprY1, surface->height);
 
-    /* Since we have to potentially modify the vertex stream later on to apply
-       rotation to it, we're better off constructing it in RAM rather than
-       using the PVR DR API to write to the SQs directly. SQs are read-only! */
     pvr_vertex_t verts[4] = {
         {
             .flags = PVR_CMD_VERTEX,
@@ -1484,14 +1486,11 @@ void RenderDevice::DrawFloorTexturedPolyPTEx(
     const float u1 = shz_div_posf(sprX1, surface->width);
     const float v1 = shz_div_posf(sprY1, surface->height);
 
-    /* Since we have to potentially modify the vertex stream later on to apply
-       rotation to it, we're better off constructing it in RAM rather than
-       using the PVR DR API to write to the SQs directly. SQs are read-only! */
     pvr_vertex_t verts[4] = {
         {
             .flags = PVR_CMD_VERTEX,
-            .x = upperLeft.x* pixelScaleX,
-            .y = upperLeft.y* pixelScaleY,
+            .x = upperLeft.x * pixelScaleX,
+            .y = upperLeft.y * pixelScaleY,
             .z = upperLeft.z,
             .u = u0,
             .v = v0,
@@ -1500,8 +1499,8 @@ void RenderDevice::DrawFloorTexturedPolyPTEx(
         },
         {
             .flags = PVR_CMD_VERTEX,
-            .x = upperRight.x* pixelScaleX,
-            .y = upperRight.y* pixelScaleY,
+            .x = upperRight.x * pixelScaleX,
+            .y = upperRight.y * pixelScaleY,
             .z = upperRight.z,
             .u = u1,
             .v = v0,
@@ -1510,8 +1509,8 @@ void RenderDevice::DrawFloorTexturedPolyPTEx(
         },
         {
             .flags = PVR_CMD_VERTEX,
-            .x = lowerLeft.x* pixelScaleX,
-            .y = lowerLeft.y* pixelScaleY,
+            .x = lowerLeft.x * pixelScaleX,
+            .y = lowerLeft.y * pixelScaleY,
             .z = lowerLeft.z,
             .u = u0,
             .v = v1,
@@ -1520,8 +1519,8 @@ void RenderDevice::DrawFloorTexturedPolyPTEx(
         },
         {
             .flags = PVR_CMD_VERTEX_EOL,
-            .x = lowerRight.x* pixelScaleX,
-            .y = lowerRight.y* pixelScaleY,
+            .x = lowerRight.x * pixelScaleX,
+            .y = lowerRight.y * pixelScaleY,
             .z = lowerRight.z,
             .u = u1,
             .v = v1,
@@ -1534,175 +1533,6 @@ void RenderDevice::DrawFloorTexturedPolyPTEx(
        the current list does not use DMA transfers and PVR DR mode is
        enabled. We can call this directly to shave off a few cycles. */
     sq_fast_cpy(SQ_MASK_DEST(PVR_TA_INPUT), verts, 4);
-}
-
-// static
-void RenderDevice::DrawFloorTexturedTriStripPTEx(
-    const Vector4f& upperLeft, const Vector4f& upperRight,
-    const Vector4f& lowerLeft, const Vector4f& lowerRight, const Vector4f &fif,
-    float sprX0, float sprX1, float sprX2, float sprX3, float sprX4,
-    float sprY0, float sprY1, float sprY2, float sprY3, float sprY4,
-    const GFXSurface* surface, uint32 color, int count
-) {
-    if (lastPrimitiveType != PrimitiveTypes_TexturedPolyPTEX) {
-        printf("[pvr] [NG] ATTEMPTED TO DRAW PrepareTexturedPolyPTEX BEFORE PREPPING!\n");
-        return;
-    }
-
-    lastPrimitiveWasConsumed = true;
-
-    float u[5];
-    float v[5];
-
-    u[0] = shz_div_posf(sprX0, surface->width);
-    v[0] = shz_div_posf(sprY0, surface->height);
-    u[1] = shz_div_posf(sprX1, surface->width);
-    v[1] = shz_div_posf(sprY1, surface->height);
-    u[2] = shz_div_posf(sprX2, surface->width);
-    v[2] = shz_div_posf(sprY2, surface->height);
-
-    if (count > 3) {
-        u[3] = shz_div_posf(sprX3, surface->width);
-        v[3] = shz_div_posf(sprY3, surface->width);
-    }
-    if (count == 5) {
-        u[4] = shz_div_posf(sprX4, surface->width);
-        v[4] = shz_div_posf(sprY4, surface->width);
-    }
-
-    /* Since we have to potentially modify the vertex stream later on to apply
-       rotation to it, we're better off constructing it in RAM rather than
-       using the PVR DR API to write to the SQs directly. SQs are read-only! */
-    pvr_vertex_t verts[5];
-    if (count == 3) {
-        verts[0] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX,
-            .x = upperLeft.x* pixelScaleX,
-            .y = upperLeft.y* pixelScaleY,
-            .z = upperLeft.z,
-            .u = u[0],
-            .v = v[0],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-        verts[1] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX,
-            .x = upperRight.x* pixelScaleX,
-            .y = upperRight.y* pixelScaleY,
-            .z = upperRight.z,
-            .u = u[1],
-            .v = v[1],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-        verts[2] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX_EOL,
-            .x = lowerLeft.x* pixelScaleX,
-            .y = lowerLeft.y* pixelScaleY,
-            .z = lowerLeft.z,
-            .u = u[2],
-            .v = v[2],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-    } else if (count == 4) {
-        verts[0] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX,
-            .x = upperLeft.x* pixelScaleX,
-            .y = upperLeft.y* pixelScaleY,
-            .z = upperLeft.z,
-            .u = u[0],
-            .v = v[0],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-        verts[1] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX,
-            .x = upperRight.x* pixelScaleX,
-            .y = upperRight.y* pixelScaleY,
-            .z = upperRight.z,
-            .u = u[1],
-            .v = v[1],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-        verts[2] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX,
-            .x = lowerLeft.x* pixelScaleX,
-            .y = lowerLeft.y* pixelScaleY,
-            .z = lowerLeft.z,
-            .u = u[2],
-            .v = v[2],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-        verts[3] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX_EOL,
-            .x = lowerRight.x* pixelScaleX,
-            .y = lowerRight.y* pixelScaleY,
-            .z = lowerRight.z,
-            .u = u[3],
-            .v = v[3],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-    } else if (count == 5) {
-        verts[0] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX,
-            .x = upperLeft.x* pixelScaleX,
-            .y = upperLeft.y* pixelScaleY,
-            .z = upperLeft.z,
-            .u = u[0],
-            .v = v[0],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-        verts[1] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX,
-            .x = upperRight.x* pixelScaleX,
-            .y = upperRight.y* pixelScaleY,
-            .z = upperRight.z,
-            .u = u[1],
-            .v = v[1],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-        verts[2] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX,
-            .x = lowerLeft.x* pixelScaleX,
-            .y = lowerLeft.y* pixelScaleY,
-            .z = lowerLeft.z,
-            .u = u[2],
-            .v = v[2],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-        verts[3] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX,
-            .x = lowerRight.x* pixelScaleX,
-            .y = lowerRight.y* pixelScaleY,
-            .z = lowerRight.z,
-            .u = u[3],
-            .v = v[3],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-        verts[4] = (pvr_vertex_t){
-            .flags = PVR_CMD_VERTEX_EOL,
-            .x = fif.x* pixelScaleX,
-            .y = fif.y* pixelScaleY,
-            .z = fif.z,
-            .u = u[4],
-            .v = v[4],
-            .argb = 0xffffffffu,
-            .oargb = color
-        };
-    }
-
-    /* This is the routine called by `pvr_prim()` under-the-hood when
-       the current list does not use DMA transfers and PVR DR mode is
-       enabled. We can call this directly to shave off a few cycles. */
-    sq_fast_cpy(SQ_MASK_DEST(PVR_TA_INPUT), verts, count);
 }
 
 // static
@@ -1727,10 +1557,10 @@ void RenderDevice::DrawTexturedPolyTR(
         return;
 
     // Compute constants up-front
-    const float x0 = static_cast<float>(x) * pixelScaleX;
-    const float y0 = static_cast<float>(y) * pixelScaleY;
-    const float x1 = x0 + (static_cast<float>(width)  * pixelScaleX);
-    const float y1 = y0 + (static_cast<float>(height) * pixelScaleY);
+    const float x0 = static_cast<float>(x);
+    const float y0 = static_cast<float>(y);
+    const float x1 = x0 + static_cast<float>(width);
+    const float y1 = y0 + static_cast<float>(height);
     const float z  = GetDepth();
     const float u0 = shz_div_posf(sprX0, surface->width);
     const float v0 = shz_div_posf(sprY0, surface->height);
@@ -1783,8 +1613,8 @@ void RenderDevice::DrawTexturedPolyTR(
     rotation = (rotation & 0x1FF) << 7;
 
     if (rotation != 0) {
-        const float cx = static_cast<float>(ox) * pixelScaleX;
-        const float cy = static_cast<float>(oy) * pixelScaleY;
+        const float cx = static_cast<float>(ox);
+        const float cy = static_cast<float>(oy);
 
         const float s = fast_isin(rotation);
         const float c = fast_icos(rotation);
@@ -1804,6 +1634,11 @@ void RenderDevice::DrawTexturedPolyTR(
         rotate(srcverts[1]);
         rotate(srcverts[2]);
         rotate(srcverts[3]);
+    }
+
+    for (int i=0;i<4;i++) {
+        srcverts[i].x *= pixelScaleX;
+        srcverts[i].y *= pixelScaleY;
     }
 
     if (lastInkEffect != INK_SUB) {
@@ -1854,7 +1689,7 @@ void RenderDevice::DrawTexturedPolyTR(
 
             pvr_vertex_t *newverts = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
-            for (int i = 0; i < 4; i++) {
+            for (int i=0;i<4;i++) {
                 newverts[i].argb = 0x00FFFFFF;
             }
             safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
