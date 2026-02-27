@@ -43,20 +43,26 @@ static float pixelScaleX = 1.0f;
 static float pixelScaleY = 1.0f;
 
 #if defined(KOS_HARDWARE_RENDERER)
+// DCFIXME: really bad place for this
+struct vec2f { float x; float y; };
+
 namespace {
 enum PrimitiveTypes {
     PrimitiveTypes_None,
     PrimitiveTypes_TexturedQuadPT,
     PrimitiveTypes_TexturedPolyPT,
+    PrimitiveTypes_TexturedPolyPTEX,
     PrimitiveTypes_ColoredPolyPT,
     PrimitiveTypes_FacePT,
     PrimitiveTypes_LinePT,
+    PrimitiveTypes_StripPT,
 
     PrimitiveTypes_TexturedQuadTR,
     PrimitiveTypes_TexturedPolyTR,
     PrimitiveTypes_ColoredPolyTR,
     PrimitiveTypes_FaceTR,
     PrimitiveTypes_LineTR,
+    PrimitiveTypes_StripTR,
 
     PrimitiveTypes_Roto
 };
@@ -86,15 +92,15 @@ int lastLineSrcBlend = -1;
 int lastLineDstBlend = -1;
 int lastFaceSrcBlend = -1;
 int lastFaceDstBlend = -1;
+int lastStripInkEffect = -1;
+int lastStripSrcBlend = -1;
+int lastStripDstBlend = -1;
 
-bool useCulling = true;
 bool trExhausted = false;
 
-#if defined(KOS_HARDWARE_RENDERER)
 // PVR header/vertex buffer for TR list DMA rendering
 #define TR_VERTBUF_SIZE (256 * 1024)
 static uint8_t __attribute__((aligned(32))) trDmaBuffer[TR_VERTBUF_SIZE];
-#endif
 
 bool IsTrExhausted(void) {
     return trExhausted;
@@ -123,9 +129,8 @@ void *safe_pvr_vertbuf_tail(int list) {
 // would exceed usable buffer size
 // avoid buffer overrun or possible assertion failure
 void safe_pvr_vertbuf_written(int list, size_t amount) {
-    if (IsTrExhausted()) {
+    if (IsTrExhausted())
         return;
-    }
 
     // TR_VERTBUF_SIZE / 2 because DMA is double-buffered
     if ((vbPos + amount) > (TR_VERTBUF_SIZE / 2)) {
@@ -202,8 +207,10 @@ bool RenderDevice::Init()
         },
 
         // vertex buffer size
-        // 512 KB is the default used by pvr_init_defaults(). might need adjusting.
-        512 * 1024,
+        // 512 KB is the default used by pvr_init_defaults().
+        // we have now given it ~1.1 mb.
+        // might need adjusting in the future.
+        1152 * 1024,
 
         // dma enabled? (yes)
         1,
@@ -212,7 +219,7 @@ bool RenderDevice::Init()
         0,
 
         // autosort disabled?
-        1,
+        0,
 
         // Overflow buffer count
         2,
@@ -225,7 +232,7 @@ bool RenderDevice::Init()
 #endif
 
 #if defined(KOS_HARDWARE_RENDERER)
-#if DO_240
+#if !DO_480
     if (vid_check_cable() != CT_VGA) {
         vid_set_mode(DM_320x240_NTSC, PM_RGB565);
     } else {
@@ -245,6 +252,8 @@ bool RenderDevice::Init()
 
     // do not rely on compiling against a version of KOS
     // that is new enough to include `vid_set_dithering`
+    // disable dithering in general
+    // (it gets re-enabled for fmv playback but disabled again right after)
 #define PM_DITHER_BIT 8
     uint32_t cfg = PVR_GET(PVR_FB_CFG_2);
     cfg &= ~PM_DITHER_BIT;
@@ -262,12 +271,12 @@ bool RenderDevice::Init()
 
     displayCount = 1;
 #if defined(KOS_HARDWARE_RENDERER)
-#if DO_240
-    displayWidth[0] = 320;
-    displayHeight[0] = 240;
-#else
+#if DO_480
     displayWidth[0] = 640;
     displayHeight[0] = 480;
+#else
+    displayWidth[0] = 320;
+    displayHeight[0] = 240;
 #endif
 #else
     displayWidth[0] = 640;
@@ -627,8 +636,7 @@ void RenderDevice::ShowCursor(bool)
 // static
 void RenderDevice::BeginScene() {
 #if defined(KOS_HARDWARE_RENDERER)
-    SetDepth(0);
-    DisableCulling();
+    SetDepth(1.0f);
     SetLinePolyThickness(2);
     exceededPalettes = false;
     lastPrimitiveType = PrimitiveTypes_None;
@@ -671,16 +679,6 @@ void RenderDevice::EndScene() {
 }
 
 // static
-void RenderDevice::EnableCulling() {
-    useCulling = true;
-}
-
-// static
-void RenderDevice::DisableCulling() {
-    useCulling = false;
-}
-
-// static
 float RenderDevice::GetDepth() {
 #if defined(KOS_HARDWARE_RENDERER)
     drawDepth += 0.0001f;
@@ -691,10 +689,9 @@ float RenderDevice::GetDepth() {
 }
 
 // static
-void RenderDevice::SetDepth(uint32 depth) {
-    // DCWIP: maybe drop the DRAWGROUP_COUNT limit and use EntityBase.zdepth (ctrl+shift+f that mfer)
+void RenderDevice::SetDepth(float depth) {
+    // DCFIXME: maybe use EntityBase.zdepth (ctrl+shift+f that mfer)
 #if defined(KOS_HARDWARE_RENDERER)
-    depth = MIN(depth + 1, DRAWGROUP_COUNT);
     drawDepth = static_cast<float>(depth);
 #endif
 }
@@ -747,7 +744,12 @@ void RenderDevice::PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPal
     // now set every other color with the opaque bit set
     for (int i = 1; i < PALETTE_BANK_SIZE; ++i) {
         const uint16 color16 = rgb565toargb1555(activePalette[i]) | 0x8000;
-        pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32) color16);
+        // INK_MASK green, set it to fully transparent
+        if (((((color16 >> 10) & 0x1f) == 0) && ((color16 >> 5) & 0x1f) > 0x1d) && (((color16) & 0x1f) == 0)) {
+            pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32) 0);
+        } else {
+            pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32) color16);
+        }
     }
 }
 
@@ -886,8 +888,7 @@ void RenderDevice::PrepareTexturedQuadPT(int32 y, const GFXSurface* surface) {
                 PVR_FILTER_NEAREST
         );
 
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
+        context.gen.culling = PVR_CULLING_NONE;
 
         auto *header = reinterpret_cast<pvr_sprite_hdr_t *>(pvr_dr_target(drState));
         pvr_sprite_compile(header, &context);
@@ -922,8 +923,7 @@ void RenderDevice::PrepareTexturedQuadTR(int32 y, const GFXSurface* surface) {
                 PVR_FILTER_NEAREST
         );
 
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
+        context.gen.culling = PVR_CULLING_NONE;
 
         pvr_sprite_hdr_t *hdr_ptr = (pvr_sprite_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         if (hdr_ptr == nullptr) {
@@ -987,9 +987,6 @@ void RenderDevice::DrawTexturedQuadPT(
     pvr_dr_commit(reinterpret_cast<uint8_t *>(spr2) + 32);
 }
 
-// DCFIXME: really bad place for this
-struct vec2f { float x; float y; };
-
 // static
 void RenderDevice::DrawTexturedQuadTR(
         int32 x, int32 y,
@@ -1004,9 +1001,9 @@ void RenderDevice::DrawTexturedQuadTR(
     }
 
     lastPrimitiveWasConsumed = true;
-    if (IsTrExhausted()) {
+
+    if (IsTrExhausted())
         return;
-    }
 
     // Compute constants up-front.
     const float x0 = static_cast<float>(x) * pixelScaleX;
@@ -1124,6 +1121,7 @@ void RenderDevice::PrepareTexturedPolyPT(int32 y, int inkEffect, const GFXSurfac
         lastPrimitiveWasConsumed = false;
 
         pvr_poly_cxt_t context;
+
         if (surface->isVq) {
             pvr_poly_cxt_txr(
                     &context,
@@ -1145,9 +1143,62 @@ void RenderDevice::PrepareTexturedPolyPT(int32 y, int inkEffect, const GFXSurfac
                     PVR_FILTER_NEAREST
             );
         }
-        context.gen.alpha = 1;
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
+
+        context.gen.alpha = 0;
+        context.gen.culling = PVR_CULLING_NONE;
+        context.blend.src = lastSrcBlend;
+        context.blend.dst = lastDstBlend;
+
+        // Compile polygon header directly into SQ to avoid having to copy it.
+        auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
+        pvr_poly_compile(header, &context);
+        pvr_dr_commit(header);
+    }
+}
+
+// static
+void RenderDevice::PrepareTexturedPolyPTEX(int32 y, int inkEffect, const GFXSurface *surface) {
+    const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
+    const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
+
+    if (PreparePrimitive(PrimitiveTypes_TexturedPolyPTEX,
+                         gamePaletteBankIndex,
+                         pvrPaletteBankIndex,
+                         inkEffect,
+                         surface->texture)) {
+        if (!lastPrimitiveWasConsumed) {
+            printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
+        }
+
+        lastPrimitiveWasConsumed = false;
+
+        pvr_poly_cxt_t context;
+
+        if (surface->isARGB) {
+            pvr_poly_cxt_txr(
+                    &context,
+                    PVR_LIST_PT_POLY,
+                    PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_TWIDDLED,
+                    surface->width,
+                    surface->height,
+                    surface->texture,
+                    PVR_FILTER_NEAREST
+            );
+        } else {
+            pvr_poly_cxt_txr(
+                    &context,
+                    PVR_LIST_PT_POLY,
+                    PVR_TXRFMT_PAL8BPP | PVR_TXRFMT_8BPP_PAL(pvrPaletteBankIndex),
+                    surface->width,
+                    surface->height,
+                    surface->texture,
+                    PVR_FILTER_NEAREST
+            );
+        }
+
+        context.gen.specular = 1;
+        context.gen.alpha = 0;
+        context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
 
@@ -1203,8 +1254,7 @@ void RenderDevice::PrepareTexturedPolyTR(int32 y, int inkEffect, const GFXSurfac
         }
 
         context.gen.alpha = 1;
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
+        context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
 
@@ -1238,16 +1288,17 @@ void RenderDevice::DrawTexturedPolyPT(
     lastPrimitiveWasConsumed = true;
 
     // Compute constants up-front
-    const float x0 = static_cast<float>(x) * pixelScaleX;
-    const float y0 = static_cast<float>(y) * pixelScaleY;
-    const float x1 = x0 + (static_cast<float>(width)  * pixelScaleX);
-    const float y1 = y0 + (static_cast<float>(height) * pixelScaleY);
+    const float x0 = static_cast<float>(x);
+    const float y0 = static_cast<float>(y);
+    const float x1 = x0 + static_cast<float>(width);
+    const float y1 = y0 + static_cast<float>(height);
     const float z  = GetDepth();
     const float u0 = shz_div_posf(sprX0, surface->width);
     const float v0 = shz_div_posf(sprY0, surface->height);
     const float u1 = shz_div_posf(sprX1, surface->width);
     const float v1 = shz_div_posf(sprY1, surface->height);
-    const uint32 argb = 0x00FFFFFFu | (alpha << 24);
+    // alpha is irrelevant for PT
+    const uint32 argb = 0xFFFFFFFFu;
 
     /* Since we have to potentially modify the vertex stream later on to apply
        rotation to it, we're better off constructing it in RAM rather than
@@ -1294,8 +1345,8 @@ void RenderDevice::DrawTexturedPolyPT(
     rotation = (rotation & 0x1FF) << 7;
 
     if (rotation != 0) {
-        const float cx = static_cast<float>(ox) * pixelScaleX;
-        const float cy = static_cast<float>(oy) * pixelScaleY;
+        const float cx = static_cast<float>(ox);
+        const float cy = static_cast<float>(oy);
 
         const float s = fast_isin(rotation);
         const float c = fast_icos(rotation);
@@ -1315,6 +1366,11 @@ void RenderDevice::DrawTexturedPolyPT(
         rotate(verts[1]);
         rotate(verts[2]);
         rotate(verts[3]);
+    }
+
+    for (int i=0;i<4;i++) {
+        verts[i].x *= pixelScaleX;
+        verts[i].y *= pixelScaleY;
     }
 
     /* This is the routine called by `pvr_prim()` under-the-hood when
@@ -1365,9 +1421,6 @@ void RenderDevice::DrawTexturedPolyPTEx(
     const float u1 = shz_div_posf(sprX1, surface->width);
     const float v1 = shz_div_posf(sprY1, surface->height);
 
-    /* Since we have to potentially modify the vertex stream later on to apply
-       rotation to it, we're better off constructing it in RAM rather than
-       using the PVR DR API to write to the SQs directly. SQs are read-only! */
     pvr_vertex_t verts[4] = {
         {
             .flags = PVR_CMD_VERTEX,
@@ -1414,6 +1467,75 @@ void RenderDevice::DrawTexturedPolyPTEx(
 }
 
 // static
+void RenderDevice::DrawFloorTexturedPolyPTEx(
+    const Vector4f& upperLeft, const Vector4f& upperRight,
+    const Vector4f& lowerLeft, const Vector4f& lowerRight,
+    float sprX0, float sprX1,
+    float sprY0, float sprY1,
+    const GFXSurface* surface, uint32 color
+) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedPolyPTEX) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW PrepareTexturedPolyPTEX BEFORE PREPPING!\n");
+        return;
+    }
+
+    lastPrimitiveWasConsumed = true;
+
+    const float u0 = shz_div_posf(sprX0, surface->width);
+    const float v0 = shz_div_posf(sprY0, surface->height);
+    const float u1 = shz_div_posf(sprX1, surface->width);
+    const float v1 = shz_div_posf(sprY1, surface->height);
+
+    pvr_vertex_t verts[4] = {
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = upperLeft.x * pixelScaleX,
+            .y = upperLeft.y * pixelScaleY,
+            .z = upperLeft.z,
+            .u = u0,
+            .v = v0,
+            .argb = 0xffffffffu,
+            .oargb = color
+        },
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = upperRight.x * pixelScaleX,
+            .y = upperRight.y * pixelScaleY,
+            .z = upperRight.z,
+            .u = u1,
+            .v = v0,
+            .argb = 0xffffffffu,
+            .oargb = color
+        },
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = lowerLeft.x * pixelScaleX,
+            .y = lowerLeft.y * pixelScaleY,
+            .z = lowerLeft.z,
+            .u = u0,
+            .v = v1,
+            .argb = 0xffffffffu,
+            .oargb = color
+        },
+        {
+            .flags = PVR_CMD_VERTEX_EOL,
+            .x = lowerRight.x * pixelScaleX,
+            .y = lowerRight.y * pixelScaleY,
+            .z = lowerRight.z,
+            .u = u1,
+            .v = v1,
+            .argb = 0xffffffffu,
+            .oargb = color
+        }
+    };
+
+    /* This is the routine called by `pvr_prim()` under-the-hood when
+       the current list does not use DMA transfers and PVR DR mode is
+       enabled. We can call this directly to shave off a few cycles. */
+    sq_fast_cpy(SQ_MASK_DEST(PVR_TA_INPUT), verts, 4);
+}
+
+// static
 void RenderDevice::DrawTexturedPolyTR(
         int32 x, int32 y,
         int32 ox, int32 oy,
@@ -1431,15 +1553,14 @@ void RenderDevice::DrawTexturedPolyTR(
 
     lastPrimitiveWasConsumed = true;
 
-    if (IsTrExhausted()) {
+    if (IsTrExhausted())
         return;
-    }
 
     // Compute constants up-front
-    const float x0 = static_cast<float>(x) * pixelScaleX;
-    const float y0 = static_cast<float>(y) * pixelScaleY;
-    const float x1 = x0 + (static_cast<float>(width)  * pixelScaleX);
-    const float y1 = y0 + (static_cast<float>(height) * pixelScaleY);
+    const float x0 = static_cast<float>(x);
+    const float y0 = static_cast<float>(y);
+    const float x1 = x0 + static_cast<float>(width);
+    const float y1 = y0 + static_cast<float>(height);
     const float z  = GetDepth();
     const float u0 = shz_div_posf(sprX0, surface->width);
     const float v0 = shz_div_posf(sprY0, surface->height);
@@ -1492,8 +1613,8 @@ void RenderDevice::DrawTexturedPolyTR(
     rotation = (rotation & 0x1FF) << 7;
 
     if (rotation != 0) {
-        const float cx = static_cast<float>(ox) * pixelScaleX;
-        const float cy = static_cast<float>(oy) * pixelScaleY;
+        const float cx = static_cast<float>(ox);
+        const float cy = static_cast<float>(oy);
 
         const float s = fast_isin(rotation);
         const float c = fast_icos(rotation);
@@ -1513,6 +1634,11 @@ void RenderDevice::DrawTexturedPolyTR(
         rotate(srcverts[1]);
         rotate(srcverts[2]);
         rotate(srcverts[3]);
+    }
+
+    for (int i=0;i<4;i++) {
+        srcverts[i].x *= pixelScaleX;
+        srcverts[i].y *= pixelScaleY;
     }
 
     if (lastInkEffect != INK_SUB) {
@@ -1563,7 +1689,7 @@ void RenderDevice::DrawTexturedPolyTR(
 
             pvr_vertex_t *newverts = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
             memcpy(newverts, srcverts, 4 * sizeof(pvr_vertex_t));
-            for (int i = 0; i < 4; i++) {
+            for (int i=0;i<4;i++) {
                 newverts[i].argb = 0x00FFFFFF;
             }
             safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
@@ -1687,9 +1813,9 @@ void RenderDevice::PrepareColoredPolyPT(int32 y, int inkEffect) {
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
-        context.gen.alpha = 1;
+
+        context.gen.alpha = 0;
+        context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
 
@@ -1718,9 +1844,9 @@ void RenderDevice::PrepareColoredPolyTR(int32 y, int inkEffect) {
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
+
         context.gen.alpha = 1;
+        context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
 
@@ -1798,9 +1924,8 @@ void RenderDevice::DrawColoredPolyTR(
 
     lastPrimitiveWasConsumed = true;
 
-    if (IsTrExhausted()) {
+    if (IsTrExhausted())
         return;
-    }
 
     // Compute constants up-front.
     const float x0 = static_cast<float>(x) * pixelScaleX;
@@ -1860,8 +1985,7 @@ void RenderDevice::DrawColoredPolyTR(
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
 
         context.gen.alpha = 1;
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
+        context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = PVR_BLEND_INVDESTCOLOR;
         context.blend.dst = PVR_BLEND_ZERO;
 
@@ -1927,7 +2051,7 @@ void RenderDevice::PrepareLinePolyPT(int inkEffect) {
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
-        context.gen.alpha = 1;
+        context.gen.alpha = 0;
         // always cull
         context.blend.src = lastLineSrcBlend;
         context.blend.dst = lastLineDstBlend;
@@ -2035,9 +2159,8 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
 
     lastPrimitiveWasConsumed = true;
 
-    if (IsTrExhausted()) {
+    if (IsTrExhausted())
         return;
-    }
 
     const float x1 = static_cast<float>(lx1) * pixelScaleX;
     const float y1 = static_cast<float>(ly1) * pixelScaleY;
@@ -2066,8 +2189,8 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
 
         context.gen.alpha = 1;
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
+//        if (!useCulling)
+//            context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = PVR_BLEND_INVDESTCOLOR;
         context.blend.dst = PVR_BLEND_ZERO;
 
@@ -2077,7 +2200,7 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
 
         color = 0xFFFFFFFF;
 
-        vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         SET_LINEPOLY_VERT_DMA(vert, x1 + nx, y1 + ny, z, 0);
         SET_LINEPOLY_VERT_DMA(vert, x1 - nx, y1 - ny, z, 0);
         SET_LINEPOLY_VERT_DMA(vert, x2 + nx, y2 + ny, z, 0);
@@ -2102,9 +2225,9 @@ void RenderDevice::PrepareFacePolyPT(int inkEffect) {
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
-        context.gen.alpha = 1;
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
+
+        context.gen.alpha = 0;
+        context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastFaceSrcBlend;
         context.blend.dst = lastFaceDstBlend;
 
@@ -2130,9 +2253,9 @@ void RenderDevice::PrepareFacePolyTR(int inkEffect) {
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+
         context.gen.alpha = 1;
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
+        context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = lastFaceSrcBlend;
         context.blend.dst = lastFaceDstBlend;
 
@@ -2160,7 +2283,7 @@ void RenderDevice::PrepareFacePolyTR(int inkEffect) {
 
 // static
 void RenderDevice::DrawFacePolyPT(
-        const Vector2 *vertices, int32 vertCount, int32 faceColor, int32 alpha, const uint32 *colors
+        const Vector2 *vertices, const int32 vertCount, const int32 faceColor, const int32 alpha, const uint32 *colors
 ) {
     if (lastPrimitiveType != PrimitiveTypes_FacePT) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW FacePT BEFORE PREPPING!\n");
@@ -2171,8 +2294,8 @@ void RenderDevice::DrawFacePolyPT(
 
     pvr_vertex_t *vert;
     const float z = GetDepth();
-    const float scale_x = (pixelScaleX / 65535.0f);
-    const float scale_y = (pixelScaleY / 65535.0f);
+    const float scale_x = (pixelScaleX / 65536.0f);
+    const float scale_y = (pixelScaleY / 65536.0f);
     int use_fc = (colors == NULL);
     uint32 ualpha = (uint32)alpha;
     if (ualpha < 64) ualpha = 64;
@@ -2183,6 +2306,7 @@ void RenderDevice::DrawFacePolyPT(
         if (use_fc && ((faceColor & 0x00FFFFFF) == 0x00F0D808)) {
             pvr_poly_cxt_t context;
             pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
+
             context.gen.alpha = 1;
             context.gen.culling = PVR_CULLING_NONE;
 
@@ -2204,10 +2328,62 @@ void RenderDevice::DrawFacePolyPT(
     }
 }
 
-#define SET_FACEPOLY_VERT_DMA(_v, _idx, _z, _end)   { \
+// static
+void RenderDevice::Draw3DFacePolyPT(
+        const Vector4f *vertices, const int32 vertCount, const int32 faceColor, const int32 alpha, const uint32 *colors
+) {
+    if (lastPrimitiveType != PrimitiveTypes_FacePT) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW FacePT BEFORE PREPPING!\n");
+        return;
+    }
+
+    lastPrimitiveWasConsumed = true;
+
+    pvr_vertex_t *vert;
+    const float scale_x = (pixelScaleX / 65536.0f);
+    const float scale_y = (pixelScaleY / 65536.0f);
+    int use_fc = (colors == NULL);
+    uint32 ualpha = (uint32)alpha;
+    if (ualpha < 64) ualpha = 64;
+    ualpha <<= 24;
+    const float baseZ = GetDepth();
+    if (vertCount == 3) {
+        // fix the rendering of pause menu yellow right triangle during special stages
+        if (use_fc && ((faceColor & 0x00FFFFFF) == 0x00F0D808)) {
+            pvr_poly_cxt_t context;
+            pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
+
+            context.gen.alpha = 1;
+            context.gen.culling = PVR_CULLING_NONE;
+
+            auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
+            pvr_poly_compile(header, &context);
+            pvr_dr_commit(header);
+
+            lastFaceInkEffect = 0xFFFFFFFF;
+        }
+        float z = baseZ + (float)vertices[0].z;
+        SET_FACEPOLY_VERT_DR(vert, 0, z, 0);
+        z = baseZ + (float)vertices[2].z;
+        SET_FACEPOLY_VERT_DR(vert, 2, z, 0);
+        z = baseZ + (float)vertices[1].z;
+        SET_FACEPOLY_VERT_DR(vert, 1, z, 1);
+    } else { // if (vertCount == 4) {
+        float z = baseZ + (float)vertices[0].z;
+        SET_FACEPOLY_VERT_DR(vert, 0, z, 0);
+        z = baseZ + (float)vertices[1].z;
+        SET_FACEPOLY_VERT_DR(vert, 1, z, 0);
+        z = baseZ + (float)vertices[3].z;
+        SET_FACEPOLY_VERT_DR(vert, 3, z, 0);
+        z = baseZ + (float)vertices[2].z;
+        SET_FACEPOLY_VERT_DR(vert, 2, z, 1);
+    }
+}
+
+#define SET_FACEPOLY_VERT_DMA(_v, _idx, _z, _fc, _end)   { \
             (_v)->flags = (_end) ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX; \
             if (use_fc) \
-                (_v)->argb = ualpha | faceColor; \
+                (_v)->argb = ualpha | _fc; \
             else \
                (_v)->argb = ualpha | colors[(_idx)]; \
             (_v)->x = static_cast<float>(vertices[(_idx)].x) * scale_x; \
@@ -2217,7 +2393,7 @@ void RenderDevice::DrawFacePolyPT(
 
 // static
 void RenderDevice::DrawFacePolyTR(
-        const Vector2 *vertices, int32 vertCount, int32 faceColor, int32 alpha, const uint32 *colors
+        const Vector2 *vertices, const int32 vertCount, const int32 faceColor, const int32 alpha, const uint32 *colors
 ) {
     if (lastPrimitiveType != PrimitiveTypes_FaceTR) {
         printf("[pvr] [NG] ATTEMPTED TO DRAW FaceTR BEFORE PREPPING!\n");
@@ -2226,9 +2402,8 @@ void RenderDevice::DrawFacePolyTR(
 
     lastPrimitiveWasConsumed = true;
 
-    if (IsTrExhausted()) {
+    if (IsTrExhausted())
         return;
-    }
 
     const float z = GetDepth();
     const float scale_x = (pixelScaleX / 65535.0f);
@@ -2241,24 +2416,23 @@ void RenderDevice::DrawFacePolyTR(
     if (lastFaceInkEffect != INK_TINT) {
         pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         if (vertCount == 3) {
-            SET_FACEPOLY_VERT_DMA(vert, 0, z, 0);
-            SET_FACEPOLY_VERT_DMA(vert, 2, z, 0);
-            SET_FACEPOLY_VERT_DMA(vert, 1, z, 1);
+            SET_FACEPOLY_VERT_DMA(vert, 0, z, faceColor, 0);
+            SET_FACEPOLY_VERT_DMA(vert, 2, z, faceColor, 0);
+            SET_FACEPOLY_VERT_DMA(vert, 1, z, faceColor, 1);
         } else { // if (vertCount == 4) {
-            SET_FACEPOLY_VERT_DMA(vert, 0, z, 0);
-            SET_FACEPOLY_VERT_DMA(vert, 1, z, 0);
-            SET_FACEPOLY_VERT_DMA(vert, 3, z, 0);
-            SET_FACEPOLY_VERT_DMA(vert, 2, z, 1);
+            SET_FACEPOLY_VERT_DMA(vert, 0, z, faceColor, 0);
+            SET_FACEPOLY_VERT_DMA(vert, 1, z, faceColor, 0);
+            SET_FACEPOLY_VERT_DMA(vert, 3, z, faceColor, 0);
+            SET_FACEPOLY_VERT_DMA(vert, 2, z, faceColor, 1);
         }
 
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, vertCount * sizeof(pvr_vertex_t));
     } else {
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
-        context.gen.alpha = 1;
-        if (!useCulling)
-            context.gen.culling = PVR_CULLING_NONE;
 
+        context.gen.alpha = 1;
+        context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = PVR_BLEND_INVDESTCOLOR;
         context.blend.dst = PVR_BLEND_ZERO;
 
@@ -2267,22 +2441,199 @@ void RenderDevice::DrawFacePolyTR(
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
         pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         use_fc = 1;
-        faceColor = 0x00FFFFFF;
+        uint32 newFaceColor = 0x00FFFFFF;
         ualpha = 0xFF000000;
 
         if (vertCount == 3) {
-            SET_FACEPOLY_VERT_DMA(vert, 0, z, 0);
-            SET_FACEPOLY_VERT_DMA(vert, 2, z, 0);
-            SET_FACEPOLY_VERT_DMA(vert, 1, z, 1);
+            SET_FACEPOLY_VERT_DMA(vert, 0, z, newFaceColor, 0);
+            SET_FACEPOLY_VERT_DMA(vert, 2, z, newFaceColor, 0);
+            SET_FACEPOLY_VERT_DMA(vert, 1, z, newFaceColor, 1);
         } else { // if (vertCount == 4) {
-            SET_FACEPOLY_VERT_DMA(vert, 0, z, 0);
-            SET_FACEPOLY_VERT_DMA(vert, 1, z, 0);
-            SET_FACEPOLY_VERT_DMA(vert, 3, z, 0);
-            SET_FACEPOLY_VERT_DMA(vert, 2, z, 1);
+            SET_FACEPOLY_VERT_DMA(vert, 0, z, newFaceColor, 0);
+            SET_FACEPOLY_VERT_DMA(vert, 1, z, newFaceColor, 0);
+            SET_FACEPOLY_VERT_DMA(vert, 3, z, newFaceColor, 0);
+            SET_FACEPOLY_VERT_DMA(vert, 2, z, newFaceColor, 1);
         }
 
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, vertCount * sizeof(pvr_vertex_t));
 
         lastFaceInkEffect = 0xFFFFFFFF;
     }
+}
+
+// static
+void RenderDevice::Draw3DFacePolyTR(
+        const Vector4f *vertices, const int32 vertCount, const int32 faceColor, const int32 alpha, const uint32 *colors
+) {
+    if (lastPrimitiveType != PrimitiveTypes_FaceTR) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW FaceTR BEFORE PREPPING!\n");
+        return;
+    }
+
+    lastPrimitiveWasConsumed = true;
+
+    if (IsTrExhausted())
+        return;
+
+    const float scale_x = (pixelScaleX / 65535.0f);
+    const float scale_y = (pixelScaleY / 65535.0f);
+    int use_fc = (colors == NULL);
+    uint32 ualpha = (uint32)alpha;
+    if (ualpha < 64) ualpha = 64;
+    ualpha <<= 24;
+    const float baseZ = GetDepth();
+
+    if (lastFaceInkEffect != INK_TINT) {
+        pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        if (vertCount == 3) {
+            float z = baseZ + (float)vertices[0].z;
+            SET_FACEPOLY_VERT_DMA(vert, 0, z, faceColor, 0);
+            z = baseZ + (float)vertices[2].z;
+            SET_FACEPOLY_VERT_DMA(vert, 2, z, faceColor, 0);
+            z = baseZ + (float)vertices[1].z;
+            SET_FACEPOLY_VERT_DMA(vert, 1, z, faceColor, 1);
+        } else { // if (vertCount == 4) {
+            float z = (float)vertices[0].z;
+            SET_FACEPOLY_VERT_DMA(vert, 0, z, faceColor, 0);
+            z = baseZ + (float)vertices[1].z;
+            SET_FACEPOLY_VERT_DMA(vert, 1, z, faceColor, 0);
+            z = baseZ + (float)vertices[3].z;
+            SET_FACEPOLY_VERT_DMA(vert, 3, z, faceColor, 0);
+            z = baseZ + (float)vertices[2].z;
+            SET_FACEPOLY_VERT_DMA(vert, 2, z, faceColor, 1);
+        }
+
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, vertCount * sizeof(pvr_vertex_t));
+    } else {
+        pvr_poly_cxt_t context;
+        pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+
+        context.gen.alpha = 1;
+        context.gen.culling = PVR_CULLING_NONE;
+        context.blend.src = PVR_BLEND_INVDESTCOLOR;
+        context.blend.dst = PVR_BLEND_ZERO;
+
+        pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        pvr_poly_compile(hdr_ptr, &context);
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        use_fc = 1;
+        uint32 newFaceColor = 0x00FFFFFF;
+        ualpha = 0xFF000000;
+
+        if (vertCount == 3) {
+            float z = baseZ + (float)vertices[0].z;
+            SET_FACEPOLY_VERT_DMA(vert, 0, z, newFaceColor, 0);
+            z = baseZ + (float)vertices[2].z;
+            SET_FACEPOLY_VERT_DMA(vert, 2, z, newFaceColor, 0);
+            z = baseZ + (float)vertices[1].z;
+            SET_FACEPOLY_VERT_DMA(vert, 1, z, newFaceColor, 1);
+        } else { // if (vertCount == 4) {
+            float z = baseZ + (float)vertices[0].z;
+            SET_FACEPOLY_VERT_DMA(vert, 0, z, newFaceColor, 0);
+            z = baseZ + (float)vertices[1].z;
+            SET_FACEPOLY_VERT_DMA(vert, 1, z, newFaceColor, 0);
+            z = baseZ + (float)vertices[3].z;
+            SET_FACEPOLY_VERT_DMA(vert, 3, z, newFaceColor, 0);
+            z = baseZ + (float)vertices[2].z;
+            SET_FACEPOLY_VERT_DMA(vert, 2, z, newFaceColor, 1);
+        }
+
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, vertCount * sizeof(pvr_vertex_t));
+
+        lastFaceInkEffect = 0xFFFFFFFF;
+    }
+}
+
+void RenderDevice::Prepare3DStripPT(int inkEffect) {
+    if ((lastPrimitiveType != PrimitiveTypes_StripPT) ||
+        (lastStripInkEffect != inkEffect)) {
+        if (!lastPrimitiveWasConsumed) {
+            printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
+        }
+
+        lastPrimitiveWasConsumed = false;
+
+        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF),
+                                    &lastStripSrcBlend, &lastStripDstBlend);
+
+        pvr_poly_cxt_t context;
+        pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
+
+        context.gen.alpha = 0;
+        context.gen.culling = PVR_CULLING_NONE;
+        context.blend.src = lastStripSrcBlend;
+        context.blend.dst = lastStripDstBlend;
+
+        auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
+        pvr_poly_compile(header, &context);
+        pvr_dr_commit(header);
+
+        lastStripInkEffect = inkEffect;
+        lastPrimitiveType = PrimitiveTypes_StripPT;
+    }
+}
+
+void RenderDevice::Draw3DStripPT(pvr_vertex_t *verts, int count) {
+    if (lastPrimitiveType != PrimitiveTypes_StripPT) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW 3DStripPT BEFORE PREPPING!\n");
+        return;
+    }
+
+    lastPrimitiveWasConsumed = true;
+
+    const float baseZ = GetDepth();
+    for (int i=0;i<count;i++) {
+        verts[i].z += baseZ;
+    }
+
+    sq_fast_cpy(SQ_MASK_DEST(PVR_TA_INPUT), verts, count);
+}
+
+void RenderDevice::Prepare3DStripTR(int inkEffect) {
+    if ((lastPrimitiveType != PrimitiveTypes_StripTR) ||
+        (lastStripInkEffect != inkEffect)) {
+        if (!lastPrimitiveWasConsumed) {
+            printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
+        }
+
+        lastPrimitiveWasConsumed = false;
+
+        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF),
+                                    &lastStripSrcBlend, &lastStripDstBlend);
+
+        pvr_poly_cxt_t context;
+        pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+
+        context.gen.alpha = 1;
+        context.gen.culling = PVR_CULLING_NONE;
+        context.blend.src = lastStripSrcBlend;
+        context.blend.dst = lastStripDstBlend;
+
+        pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        pvr_poly_compile(hdr_ptr, &context);
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+
+        lastStripInkEffect = inkEffect;
+        lastPrimitiveType = PrimitiveTypes_StripTR;
+    }
+}
+
+void RenderDevice::Draw3DStripTR(pvr_vertex_t *verts, int count) {
+    if (lastPrimitiveType != PrimitiveTypes_StripTR) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW 3DStripTR BEFORE PREPPING!\n");
+        return;
+    }
+    lastPrimitiveWasConsumed = true;
+
+    if (IsTrExhausted())
+        return;
+
+    const float baseZ = GetDepth();
+    for (int i=0;i<count;i++)
+        verts[i].z += baseZ;
+
+    pvr_vertex_t *dst = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+    memcpy(dst, verts, count * sizeof(pvr_vertex_t));
+    safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, count * sizeof(pvr_vertex_t));
 }

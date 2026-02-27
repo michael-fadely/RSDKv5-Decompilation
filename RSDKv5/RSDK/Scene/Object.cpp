@@ -452,7 +452,9 @@ void RSDK::ProcessObjects()
             }
 
             if (sceneInfo.entity->inRange) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                 if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update)
+#endif
                     objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update();
 
                 if (sceneInfo.entity->drawGroup < DRAWGROUP_COUNT)
@@ -493,7 +495,9 @@ void RSDK::ProcessObjects()
         sceneInfo.entity = &objectEntityList[e];
 
         if (sceneInfo.entity->inRange) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
             if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate)
+#endif
                 objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate();
         }
 
@@ -516,7 +520,9 @@ void RSDK::ProcessPausedObjects()
 
         ObjectClass *classInfo = &objectClassList[stageObjectIDs[o]];
         if ((*classInfo->staticVars)->active == ACTIVE_ALWAYS || (*classInfo->staticVars)->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
             if (classInfo->staticUpdate)
+#endif
                 classInfo->staticUpdate();
         }
     }
@@ -531,7 +537,9 @@ void RSDK::ProcessPausedObjects()
 
         if (sceneInfo.entity->classID) {
             if (sceneInfo.entity->active == ACTIVE_ALWAYS || sceneInfo.entity->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                 if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update)
+#endif
                     objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update();
 
                 if (sceneInfo.entity->drawGroup < DRAWGROUP_COUNT)
@@ -554,7 +562,9 @@ void RSDK::ProcessPausedObjects()
         sceneInfo.entity = &objectEntityList[e];
 
         if (sceneInfo.entity->active == ACTIVE_ALWAYS || sceneInfo.entity->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
             if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate)
+#endif
                 objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate();
         }
 
@@ -577,7 +587,9 @@ void RSDK::ProcessFrozenObjects()
 
         ObjectClass *classInfo = &objectClassList[stageObjectIDs[o]];
         if ((*classInfo->staticVars)->active == ACTIVE_ALWAYS || (*classInfo->staticVars)->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
             if (classInfo->staticUpdate)
+#endif
                 classInfo->staticUpdate();
         }
     }
@@ -674,7 +686,9 @@ void RSDK::ProcessFrozenObjects()
 
             if (sceneInfo.entity->inRange) {
                 if (sceneInfo.entity->active == ACTIVE_ALWAYS || sceneInfo.entity->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                     if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update)
+#endif
                         objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update();
                 }
 
@@ -701,7 +715,9 @@ void RSDK::ProcessFrozenObjects()
 
         if (sceneInfo.entity->inRange) {
             if (sceneInfo.entity->active == ACTIVE_ALWAYS || sceneInfo.entity->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                 if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate)
+#endif
                     objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate();
             }
 
@@ -746,7 +762,7 @@ void RSDK::ProcessObjectDrawLists()
             sceneInfo.currentDrawGroup = 0;
             for (int32 l = 0; l < DRAWGROUP_COUNT; ++l) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-                RenderDevice::SetDepth(l);
+                RenderDevice::SetDepth(l + 1.0f);
 #endif
                 if (engine.drawGroupVisible[l]) {
                     DrawList *list = &drawGroups[l];
@@ -783,7 +799,9 @@ void RSDK::ProcessObjectDrawLists()
                         validDraw            = false;
                         sceneInfo.entity     = &objectEntityList[list->entries[i]];
                         if (sceneInfo.entity->visible) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                             if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].draw)
+#endif
                                 objectClassList[stageObjectIDs[sceneInfo.entity->classID]].draw();
 
 #if RETRO_VER_EGS || RETRO_USE_DUMMY_ACHIEVEMENTS

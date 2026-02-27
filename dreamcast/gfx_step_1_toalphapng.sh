@@ -53,6 +53,7 @@ for dir in Global TMZ1 UI; do
     "${IM_CONVERT[@]}" "$file" \
       -alpha on \
       -transparent "$palette0" \
+      -transparent "#00FF00" \
       -define png:color-type=6 \
       "$base.png"
   done
