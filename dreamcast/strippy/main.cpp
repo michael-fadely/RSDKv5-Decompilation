@@ -1,16 +1,14 @@
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <cstdint>
+#include <algorithm>
 #include <cmath>
-#include <vector>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <fstream>
 #include <map>
 #include <string>
-#include <array>
-#include <algorithm>
-#include <fstream>
-#include <sstream>
-#include "main.h"
+#include <vector>
+#include <include/public_types.h>
+#include <include/tri_stripper.h>
 
 #define MDL_HAS_NORMALS  (1 << 0)
 #define MDL_HAS_UVS      (1 << 1)
@@ -52,7 +50,7 @@ struct Triangle {
     uint32_t materialId;
 };
 
-static std::vector<Triangle> triangles;
+static std::vector<Triangle> g_triangles;
 static std::vector<std::vector<uint32_t>> g_raw_strips;
 static std::vector<uint32_t> g_loose_triangles;
 
@@ -333,7 +331,7 @@ join_strips(const triangle_stripper::primitive_vector &originalStrips) {
 
     for (const auto &prim : originalStrips)
         if (prim.Type == triangle_stripper::TRIANGLE_STRIP)
-            strips.push_back(std::vector<size_t>(prim.Indices.begin(), prim.Indices.end()));
+            strips.emplace_back(prim.Indices.begin(), prim.Indices.end());
 
     for (size_t i = 0; i < strips.size(); i++) {
         if (used[i]) continue;
@@ -359,11 +357,11 @@ join_strips(const triangle_stripper::primitive_vector &originalStrips) {
 // =====================================================================
 
 static void optimize_mesh() {
-    if (triangles.empty()) return;
+    if (g_triangles.empty()) return;
     using namespace triangle_stripper;
 
     indices Indices;
-    for (const auto &tri : triangles)
+    for (const auto &tri : g_triangles)
         for (int i = 0; i < 3; i++)
             Indices.push_back(tri.vertices[i].vertexId);
 
@@ -478,7 +476,7 @@ static std::vector<uint16_t> quads_to_tris(const std::vector<uint16_t> &idx) {
 }
 
 static void build_triangles(const MdlMesh &m, const std::vector<uint16_t> &triIdx) {
-    triangles.clear();
+    g_triangles.clear();
     for (size_t i = 0; i + 2 < triIdx.size(); i += 3) {
         Triangle tri;
         tri.materialId = 0;
@@ -497,7 +495,7 @@ static void build_triangles(const MdlMesh &m, const std::vector<uint16_t> &triId
             tv.vertexId = idx;
             tv.normalId = idx;
         }
-        triangles.push_back(tri);
+        g_triangles.push_back(tri);
     }
 }
 
@@ -579,17 +577,17 @@ int main(int argc, char *argv[]) {
 
         const std::string &fname = it->second;
 
-	// if it isn't a mesh, skip it
+        // if it isn't a mesh, skip it
         if (fname.find("/Meshes/") == std::string::npos &&
             fname.find("\\Meshes\\") == std::string::npos) continue;
 
-	// don't strip itembox
+        // don't strip itembox
         if (fname.find("ItemBox") != std::string::npos) continue;
 
-	// don't strip the 3d special stage ring
+        // don't strip the 3d special stage ring
         if (fname.find("SpecialRing") != std::string::npos) continue;
 
-	// don't strip egg tower (SSZ2 boss fight backdrop)
+        // don't strip egg tower (SSZ2 boss fight backdrop)
         if (fname.find("EggTower") != std::string::npos) continue;
 
         auto data = archive.readEntryDecrypted(i, fname.c_str());
