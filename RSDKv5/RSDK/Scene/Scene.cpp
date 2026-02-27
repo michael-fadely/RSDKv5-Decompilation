@@ -1372,7 +1372,7 @@ void RSDK::LoadStageGIF(char *filepath)
             pvr_ptr_t texture = pvr_mem_malloc(surface->width * surface->height);
 
             if (texture == nullptr) {
-               printf("[pvr] [NG] WARNING: failed to allocate tileset texture!\n");
+                printf("[pvr] [NG] WARNING: failed to allocate tileset texture!\n");
             } else {
                 surface->texture = texture;
             }
