@@ -1015,7 +1015,7 @@ void RSDK::LoadSceneAssets()
             // DCWIP
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
             if (activeSlot >= SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT) {
-               printf("\t[NG] SLOT OVERFLOW: activeSlot >= SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT (%ld >= %d)\n",
+                printf("\t[NG] SLOT OVERFLOW: activeSlot >= SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT (%ld >= %d)\n",
                        activeSlot, SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT);
                 break;
             }
