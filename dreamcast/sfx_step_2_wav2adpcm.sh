@@ -10,11 +10,7 @@ stage=$1
 [[ -d "$stage" ]] || die "not a directory: $stage"
 [[ -d "$stage/StagingSoundFX" ]] || die "missing directory: $stage/StagingSoundFX"
 
-# Ensure KOS_BASE is set
-: "${KOS_BASE:?KOS_BASE environment variable is not set}"
-
-wav2adpcm="$KOS_BASE/utils/wav2adpcm/wav2adpcm"
-[[ -x "$wav2adpcm" ]] || die "wav2adpcm not found or not executable: $wav2adpcm"
+command -v ffmpeg >/dev/null 2>&1 || { echo "error: ffmpeg not found in PATH" >&2; exit 1; }
 
 orig_dir=$(pwd -P)
 restore_dir() { cd -- "$orig_dir" || true; }
@@ -28,6 +24,6 @@ while IFS= read -r -d '' file; do
   base=$(basename -- "$file")
 
   out="$dir/adpcm_$base"
-  "$wav2adpcm" -t "$file" "$out"
+  ffmpeg -i "$file" -acodec adpcm_yamaha "$out"
 done
 
