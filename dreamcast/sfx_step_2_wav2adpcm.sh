@@ -18,12 +18,12 @@ trap restore_dir EXIT
 
 cd -- "$stage/StagingSoundFX"
 
-find . -type f -iname 'resample_*.wav' -print0 |
-while IFS= read -r -d '' file; do
+while IFS= read -r -d '' file <&3; do
+  exec </dev/null
   dir=$(dirname -- "$file")
   base=$(basename -- "$file")
 
   out="$dir/adpcm_$base"
   ffmpeg -i "$file" -acodec adpcm_yamaha "$out"
-done
+done 3< <(find . -type f -iname "*.wav" -print0)
 
