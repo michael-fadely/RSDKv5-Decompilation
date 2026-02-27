@@ -1,20 +1,30 @@
 """
-RSDK mesh lighting baker + optional mesh simplifier.
+RSDK mesh lighting baker.
 
-Optional:
-  --collapse    Enable conservative edge collapse
+It also simplifies the decoration meshes.
+
+Usage:
+  python modelbake.py ./Data.rsdk [options]
+
+Reads Data.rsdk, decrypts MDL meshes, bakes lighting into vertex colors,
+writes new archive. Requires rsdk_file_list.txt in same directory.
+
+Options (positional):
+  arg1: path to Data.rsdk
+  arg2: ambient level 0.0-1.0     (default 0.35)
+  arg3: diffuse strength 0.0-1.0  (default 0.55)
+  arg4: spec strength 0.0-1.0     (default 0.25)
+  arg5: spec power (exponent)     (default 2.5)
+  arg6: light direction y,x,z     (default "0.85,0.15,0.1")
 """
 
+
 import struct, os, sys, shutil, hashlib, math, fnmatch
+
 
 # ============================================================
 # SIMPLIFICATION HELPERS
 # ============================================================
-
-def should_simplify(fname):
-    if fnmatch.fnmatch(fname, "*Meshes/Decoration/*.bin"):
-        return True
-    return False
 
 def simplify_mdl(mdl, enable_collapse=False):
     print("    Simplifying mesh...")
@@ -88,25 +98,6 @@ def simplify_mdl(mdl, enable_collapse=False):
         faces = cleaned
 
     # --------------------------------------------------------
-    # Optional edge collapse
-    if enable_collapse:
-        threshold = 0.01
-        for f in faces[:]:
-            v = [verts[i] for i in f]
-            edges = [(0,1),(1,2),(2,0)]
-            for a,b in edges:
-                dx = v[a][0]-v[b][0]
-                dy = v[a][1]-v[b][1]
-                dz = v[a][2]-v[b][2]
-                if math.sqrt(dx*dx+dy*dy+dz*dz) < threshold:
-                    keep = f[a]
-                    rem = f[b]
-                    for tri in faces:
-                        for i in range(3):
-                            if tri[i]==rem:
-                                tri[i]=keep
-
-    # --------------------------------------------------------
     # Rebuild vertex list
     used = sorted(set(i for f in faces for i in f))
     remap = {old:i for i,old in enumerate(used)}
@@ -124,7 +115,6 @@ def simplify_mdl(mdl, enable_collapse=False):
     if mdl['colors']:
         mdl['colors'] = [mdl['colors'][i] for i in used]
 
-#    print(f"    -> {len(used)} verts, {len(faces)} faces")
     orig_verts = mdl['vert_count']
     orig_faces = len(mdl['faces'])
 
@@ -299,36 +289,13 @@ def decimate_vertex_clustering_safe(mdl, cell_size=1.0):
     return mdl
 
 
-# ============================================================
-# (Everything below here is your original file unchanged
-# except for one integration point inside main())
-# ============================================================
-"""
-RSDK mesh lighting baker.
-
-Usage:
-  python bake-rsdk.py ./Data.rsdk [options]
-
-Reads Data.rsdk, decrypts MDL meshes, bakes lighting into vertex colors,
-writes new archive. Requires rsdk_file_list.txt in same directory.
-
-Options (positional):
-  arg1: path to Data.rsdk
-  arg2: ambient level 0.0-1.0     (default 0.35)
-  arg3: diffuse strength 0.0-1.0  (default 0.55)
-  arg4: spec strength 0.0-1.0     (default 0.25)
-  arg5: spec power (exponent)     (default 2.5)
-  arg6: light direction y,x,z     (default "0.85,0.15,0.1")
-"""
-
-import struct, os, sys, shutil, hashlib, math
-
 # =====================================================================
 # RSDK Crypto
 # =====================================================================
 
 def swap_hash_endian(data):
     return struct.pack("<4I", *struct.unpack(">4I", data))
+
 
 def rsdk_decrypt(data, filename):
     key1 = list(swap_hash_endian(hashlib.md5(filename.upper().encode()).digest()))
@@ -542,6 +509,7 @@ def normalize(x, y, z):
         return (0.0, 0.0, 0.0)
     return (x/mag, y/mag, z/mag)
 
+
 def dot3(ax, ay, az, bx, by, bz):
     return ax*bx + ay*by + az*bz
 
@@ -748,14 +716,11 @@ def main():
 
         had_colors = bool(mdl['colors'])
 
-        if "Emerald" not in fname and should_simplify(fname):
+        if "Emerald" not in fname and fnmatch.fnmatch(fname, "*Meshes/Decoration/*.bin"):
             f_cell_size = 0.5
             mdl = decimate_vertex_clustering_safe(mdl, cell_size=f_cell_size)
 
-        if "ItemBox" in fname:
-            bake_lighting(mdl, True, light_dir, ambient, diffuse_str, spec_str, spec_power)
-        else:
-            bake_lighting(mdl, False, light_dir, ambient, diffuse_str, spec_str, spec_power)
+        bake_lighting(mdl, ("ItemBox" in fname), light_dir, ambient, diffuse_str, spec_str, spec_power)
 
         new_data = build_mdl(mdl)
 
@@ -783,24 +748,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# --- KEEP YOUR ORIGINAL FILE CONTENT HERE ---
-# (To save space in this message, everything from your original
-# file remains exactly the same up until the bake section.)
-
-# ============================================================
-# MODIFY ONLY THIS SECTION INSIDE main()
-# ============================================================
-
-# FIND THIS LINE IN YOUR main() LOOP:
-
-#        had_colors = bool(mdl['colors'])
-#        bake_lighting(...)
-#        new_data = build_mdl(mdl)
-
-# REPLACE THAT BLOCK WITH:
-
-
-# ============================================================
-# END
-# ============================================================
