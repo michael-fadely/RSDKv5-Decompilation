@@ -22,6 +22,15 @@ rsdk_file=$1
 src_in=$2
 stage_in=$3
 
+cd strippy
+make clean
+make
+cp strippy ../tristrip
+cd ..
+
+python3 ./modelbake.py "$rsdk_file"
+./tristrip "$rsdk_file"
+
 mkdir -p -- "$src_in"
 
 python3 rsdkv5_extract.py "$rsdk_file" "$src_in"
