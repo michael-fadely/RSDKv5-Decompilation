@@ -89,7 +89,6 @@ int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
     gdb_init();
 #endif
     cont_btn_callback(0, CONT_RESET_BUTTONS, [](uint8_t, uint32_t) {
-        //exit(EXIT_SUCCESS);
         arch_abort();
     });
 

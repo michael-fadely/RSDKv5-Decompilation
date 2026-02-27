@@ -23,6 +23,15 @@ struct Vector2 {
     int32 y;
 };
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+struct Vector4f {
+    float x;
+    float y;
+    float z;
+    float w;
+};
+#endif
+
 #define MEM_ZERO(x) memset(&(x), 0, sizeof((x)))
 
 #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
@@ -49,7 +58,9 @@ extern int32 tan256LookupTable[0x100];
 extern int32 asin256LookupTable[0x100];
 extern int32 acos256LookupTable[0x100];
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
 extern uint8 arcTan256LookupTable[0x100 * 0x100];
+#endif
 
 // Setup angles
 void ClearTrigLookupTables();

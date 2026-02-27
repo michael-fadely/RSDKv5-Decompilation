@@ -74,8 +74,17 @@ struct Model {
     uint8 flags;
     uint8 faceVertCount;
     uint8 scope;
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // triangle strip data (only valid when flags & MODEL_ISSTRIPPED)
+    uint16 stripCount;
+    uint16 looseTriCount;
+    uint16 *stripLengths;
+    uint16 *stripIndices; // all strip vertex indices concatenated
+    uint16 *looseIndices; // looseTriCount * 3 indices
+#endif
 };
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 struct Scene3DVertex {
     int32 x;
     int32 y;
@@ -90,6 +99,30 @@ struct Scene3DVertex {
 
     uint32 color;
 };
+#else
+// for our Dreamcast needs, make this fit in *under* a single cache line
+// we are not using full normals, just the y coord
+// also putting isBaked in here lets us simplify things in scene draw
+struct __attribute__((aligned(32))) Scene3DVertex {
+    int32 x;
+    int32 y;
+    int32 z;
+
+    float ny;
+
+    uint32 color;
+    uint32 isBaked;
+};
+
+// scratch buffer entry
+// one per unique model vertex, transformed in-place
+// used only for stripped models
+struct StripTransformedVert {
+    float x, y, z; // world-space (post mat_trans_nodiv)
+    float ny;      // transformed normal Y for lighting
+    uint32 color;  // base color (from model or passed-in color)
+};
+#endif
 
 struct Scene3DFace {
     int32 depth;
