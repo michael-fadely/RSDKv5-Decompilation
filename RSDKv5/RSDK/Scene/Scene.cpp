@@ -1015,7 +1015,7 @@ void RSDK::LoadSceneAssets()
             // DCWIP
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
             if (activeSlot >= SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT) {
-               printf("\t[NG] SLOT OVERFLOW: activeSlot >= SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT (%ld >= %d)\n",
+                printf("\t[NG] SLOT OVERFLOW: activeSlot >= SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT (%ld >= %d)\n",
                        activeSlot, SCENEENTITY_COUNT + RESERVE_ENTITY_COUNT);
                 break;
             }
@@ -1372,7 +1372,7 @@ void RSDK::LoadStageGIF(char *filepath)
             pvr_ptr_t texture = pvr_mem_malloc(surface->width * surface->height);
 
             if (texture == nullptr) {
-               printf("[pvr] [NG] WARNING: failed to allocate tileset texture!\n");
+                printf("[pvr] [NG] WARNING: failed to allocate tileset texture!\n");
             } else {
                 surface->texture = texture;
             }
