@@ -141,11 +141,11 @@ public:
     );
 
     static void PrepareLinePolyPT(int inkEffect);
-    static void DrawLinePolyPT(int x1, int y1, int x2, int y2, int color);
+    static void DrawLinePolyPT(int lx1, int ly1, int lx2, int ly2, int color);
 
     static void SetLinePolyThickness(int thickness);
     static void PrepareLinePolyTR(int inkEffect);
-    static void DrawLinePolyTR(int x1, int y1, int x2, int y2, int color);
+    static void DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color);
 
     static void PrepareFacePolyPT(int inkEffect);
     static void DrawFacePolyPT(

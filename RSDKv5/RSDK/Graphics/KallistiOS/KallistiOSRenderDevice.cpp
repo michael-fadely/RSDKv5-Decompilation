@@ -2199,7 +2199,7 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
 
         color = 0xFFFFFFFF;
 
-        pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
         SET_LINEPOLY_VERT_DMA(vert, x1 + nx, y1 + ny, z, 0);
         SET_LINEPOLY_VERT_DMA(vert, x1 - nx, y1 - ny, z, 0);
         SET_LINEPOLY_VERT_DMA(vert, x2 + nx, y2 + ny, z, 0);
@@ -2295,7 +2295,7 @@ void RenderDevice::DrawFacePolyPT(
     const float z = GetDepth();
     const float scale_x = (pixelScaleX / 65536.0f);
     const float scale_y = (pixelScaleY / 65536.0f);
-    int use_fc = (colors == NULL);
+    bool use_fc = (colors == NULL);
     uint32 ualpha = (uint32)alpha;
     if (ualpha < 64) ualpha = 64;
     ualpha <<= 24;
@@ -2341,7 +2341,7 @@ void RenderDevice::Draw3DFacePolyPT(
     pvr_vertex_t *vert;
     const float scale_x = (pixelScaleX / 65536.0f);
     const float scale_y = (pixelScaleY / 65536.0f);
-    int use_fc = (colors == NULL);
+    bool use_fc = (colors == NULL);
     uint32 ualpha = (uint32)alpha;
     if (ualpha < 64) ualpha = 64;
     ualpha <<= 24;
@@ -2407,7 +2407,7 @@ void RenderDevice::DrawFacePolyTR(
     const float z = GetDepth();
     const float scale_x = (pixelScaleX / 65535.0f);
     const float scale_y = (pixelScaleY / 65535.0f);
-    int use_fc = (colors == NULL);
+    bool use_fc = (colors == NULL);
     uint32 ualpha = (uint32)alpha;
     if (ualpha < 64) ualpha = 64;
     ualpha <<= 24;
@@ -2439,7 +2439,7 @@ void RenderDevice::DrawFacePolyTR(
         pvr_poly_compile(hdr_ptr, &context);
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
         pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        use_fc = 1;
+        use_fc = true;
         uint32 newFaceColor = 0x00FFFFFF;
         ualpha = 0xFF000000;
 
@@ -2476,7 +2476,7 @@ void RenderDevice::Draw3DFacePolyTR(
 
     const float scale_x = (pixelScaleX / 65535.0f);
     const float scale_y = (pixelScaleY / 65535.0f);
-    int use_fc = (colors == NULL);
+    bool use_fc = (colors == NULL);
     uint32 ualpha = (uint32)alpha;
     if (ualpha < 64) ualpha = 64;
     ualpha <<= 24;
@@ -2516,7 +2516,7 @@ void RenderDevice::Draw3DFacePolyTR(
         pvr_poly_compile(hdr_ptr, &context);
         safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
         pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        use_fc = 1;
+        use_fc = true;
         uint32 newFaceColor = 0x00FFFFFF;
         ualpha = 0xFF000000;
 
