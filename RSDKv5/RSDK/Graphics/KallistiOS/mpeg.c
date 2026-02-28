@@ -89,8 +89,10 @@ static inline void sound_stream_reset(mpeg_player_t *player) {
     if (!player)
         return;
 
-    if (player->start_time != 0)
-        snd_stream_stop(player->snd_hnd);
+    if (player->start_time != 0) {
+        if (player->snd_hnd != SND_STREAM_INVALID)
+            snd_stream_stop(player->snd_hnd);
+    }
 
     player->snd_mod_size = 0;
     player->snd_mod_start = 0;

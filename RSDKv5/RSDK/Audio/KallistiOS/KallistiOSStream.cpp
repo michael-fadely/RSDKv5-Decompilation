@@ -265,27 +265,38 @@ static void *sndstream_thread(void *param)
     while (sndstream_status != SNDDRV_STATUS_DONE) {
         mutex_lock(&stream_mutex);
 
+
         switch (stream.status) {
         case SNDDEC_STATUS_RESUMING:
-            snd_stream_volume(stream.shnd, stream.vol);
-            snd_stream_start_pcm8(stream.shnd, STREAM_SAMPLE_RATE, STREAM_CHANNELS - 1);
-            snd_stream_volume(stream.shnd, stream.vol);
-            stream.status = SNDDEC_STATUS_STREAMING;
+            if (stream.shnd != SND_STREAM_INVALID) {
+                snd_stream_volume(stream.shnd, stream.vol);
+                snd_stream_start_pcm8(stream.shnd, STREAM_SAMPLE_RATE, STREAM_CHANNELS - 1);
+                snd_stream_volume(stream.shnd, stream.vol);
+                stream.status = SNDDEC_STATUS_STREAMING;
+            } else {
+                stream.status = SNDDEC_STATUS_READY;
+            }
             break;
         case SNDDEC_STATUS_PAUSING:
-            snd_stream_stop(stream.shnd);
+            if (stream.shnd != SND_STREAM_INVALID) {
+                snd_stream_stop(stream.shnd);
+            }
             stream.status = SNDDEC_STATUS_READY;
             break;
         case SNDDEC_STATUS_STOPPING:
-            snd_stream_stop(stream.shnd);
-            if (stream.stream_file != NULL) {
-                // ok if this fails, we are stopping anyway
-                fSeek(stream.stream_file, 0, SEEK_SET);
+            if (stream.shnd != SND_STREAM_INVALID) {
+                snd_stream_stop(stream.shnd);
+                if (stream.stream_file != NULL) {
+                    // ok if this fails, we are stopping anyway
+                    fSeek(stream.stream_file, 0, SEEK_SET);
+                }
             }
             stream.status = SNDDEC_STATUS_READY;
             break;
         case SNDDEC_STATUS_STREAMING:
-            snd_stream_poll(stream.shnd);
+            if (stream.shnd != SND_STREAM_INVALID) {
+                snd_stream_poll(stream.shnd);
+            }
             break;
         case SNDDEC_STATUS_READY:
         default:
@@ -306,13 +317,17 @@ static void *stream_file_callback(snd_stream_hnd_t hnd, int req, int *done)
 
     if (read != req) {
         if (fError(stream.stream_file)) {
-            snd_stream_stop(stream.shnd);
+            if (stream.shnd != SND_STREAM_INVALID) {
+                snd_stream_stop(stream.shnd);
+            }
             stream.status = SNDDEC_STATUS_READY;
             return NULL;
         } else if (stream.loop) {
             int seek1 = fSeek(stream.stream_file, (off_t)stream.loop, SEEK_SET);
             if (seek1 != 0) {
-                snd_stream_stop(stream.shnd);
+                if (stream.shnd != SND_STREAM_INVALID) {
+                    snd_stream_stop(stream.shnd);
+                }
                 stream.status = SNDDEC_STATUS_READY;
                 return NULL;
             }
@@ -320,12 +335,16 @@ static void *stream_file_callback(snd_stream_hnd_t hnd, int req, int *done)
             size_t read2 = fRead(stream.drv_buf + read, 1, req - read, stream.stream_file);
 
             if (read2 != (req - read)) {
-                snd_stream_stop(stream.shnd);
+                if (stream.shnd != SND_STREAM_INVALID) {
+                    snd_stream_stop(stream.shnd);
+                }
                 stream.status = SNDDEC_STATUS_READY;
                 return NULL;
             }
         } else {
-            snd_stream_stop(stream.shnd);
+            if (stream.shnd != SND_STREAM_INVALID) {
+                snd_stream_stop(stream.shnd);
+            }
             stream.status = SNDDEC_STATUS_READY;
             return NULL;
         }
