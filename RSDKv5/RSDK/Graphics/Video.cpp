@@ -42,7 +42,7 @@ extern bool introTee;
 // 11 mallocs and 1 realloc
 // I verified this for every video we can possibly play as part of Sonic Mania
 // provide storage for 12 pointers so they don't go out of scope and cause the RSDK pool allocator any grief
-static void *mpegAllocs[12] = {0};
+static void *mpegAllocs[12] = {};
 static int mpegAllocIndex = 0;
 
 // provide wrappers around the RSDK pool allocator for plmpeg,
@@ -75,7 +75,6 @@ static int mpegAllocIndex = 0;
 
 static char videoFilePath[256];
 static mpeg_player_t *mpegPlayer;
-static int mpegDone;
 
 // Dreamcast-specific options for plmpeg playback
 static mpeg_player_options_t mania_opts = {
