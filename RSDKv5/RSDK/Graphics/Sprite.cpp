@@ -1140,7 +1140,6 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
             surface->lineSize = ls;
         }
 
-        // DCWIP
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
         const int32 textureSize = surface->width * surface->height;
 
@@ -1212,8 +1211,8 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
                     printPvrMem(pvrMemBefore, pvrMemAfter);
 
                     // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
-                    // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h)
-                    // DCFIXME: pvr_txr_load_ex actually *always* twiddles, even if you don't want it
+                    // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h).
+                    // pvr_txr_load_ex actually *always* twiddles, even if you don't want it.
                     pvr_txr_load_ex(
                         surface->pixels,
                         surface->texture,

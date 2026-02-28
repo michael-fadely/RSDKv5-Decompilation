@@ -3,7 +3,7 @@
 
 namespace RSDK
 {
-#ifndef _arch_dreamcast
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 #define STORAGE_ENTRY_COUNT (0x1000)
 #else
 #define STORAGE_ENTRY_COUNT (0x800)
@@ -114,8 +114,7 @@ extern DataStorage dataStorage[DATASET_MAX];
 bool32 InitStorage();
 void ReleaseStorage();
 
-// DCFIXME: RETRO_PLATFORM might not be available here, so _arch_dreamcast is used instead
-#ifdef _arch_dreamcast
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
 void PinStorage_(void** pVar, const char* file, size_t line);
 void UnPinStorage_(void** pVar, const char* file, size_t line);
 #define PinStorage(pVar) PinStorage_(pVar, __FILE__, __LINE__)

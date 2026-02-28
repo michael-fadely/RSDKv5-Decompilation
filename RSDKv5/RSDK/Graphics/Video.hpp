@@ -1,7 +1,6 @@
 #ifndef VIDEO_H
 #define VIDEO_H
 
-// DCFIXME
 #if RETRO_PLATFORM != RETRO_KALLISTIOS
 #include <ogg/ogg.h>
 #endif  // RETRO_PLATFORM != RETRO_KALLISTIOS
@@ -10,7 +9,7 @@ namespace RSDK
 {
 
 struct VideoManager {
-    #if RETRO_PLATFORM != RETRO_KALLISTIOS // DCFIXME
+    #if RETRO_PLATFORM != RETRO_KALLISTIOS
     static FileInfo file;
 
     static ogg_sync_state oy;

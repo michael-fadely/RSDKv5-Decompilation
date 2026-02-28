@@ -1,7 +1,6 @@
 #ifndef DRAWING_H
 #define DRAWING_H
 
-// DCWIP
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 #include <dc/pvr.h>
 #endif

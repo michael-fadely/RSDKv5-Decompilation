@@ -663,7 +663,6 @@ void RenderDevice::EndScene() {
 #if defined(KOS_HARDWARE_RENDERER)
     pvr_dr_finish();
 
-    // DCWIP: rendering everything as transparent
     if (pvr_list_finish() == -1) {
         printf("[pvr] [NG] pvr_list_finish() returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
     }
