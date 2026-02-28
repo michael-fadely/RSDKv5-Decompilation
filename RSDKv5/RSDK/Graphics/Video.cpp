@@ -25,8 +25,8 @@ bool32 VideoManager::initializing    = false;
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 // these are flags set in `PlayStream`
 // they let us know which pre-muxed variation of the intro video to play
-extern int introHp;
-extern int introTee;
+extern bool introHp;
+extern bool introTee;
 
 // provider wrappers around RSDK filesystem access for plmpeg
 // we already have it customized for thread safety, might as well use it
@@ -92,7 +92,7 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     // do not play BadEnd.ogv, MREnd.ogv as a standalone video;
     // ending videos are combined and muxed with music tracks during asset generation
-    int vidSkip = 0;
+    bool vidSkip = false;
 
     // reset plmpeg alloc pointer storage index
     mpegAllocIndex = 0;
@@ -114,9 +114,9 @@ bool32 RSDK::LoadVideo(const char *filename, double startDelay, bool32 (*skipCal
             // return without starting it
             // the next video that gets played will be a combined and muxed verison of:
             // BadKnux, BadMighty, BadRay, BadSonic, BadSonic2 or BadTails
-            introHp = 0;
-            introTee = 0;
-            vidSkip = 1;
+            introHp = false;
+            introTee = false;
+            vidSkip = true;
         }
     }
 
