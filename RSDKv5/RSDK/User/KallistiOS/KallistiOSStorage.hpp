@@ -196,18 +196,18 @@ struct KallistiOSUserStorage : RSDK::SKU::UserStorage {
 
 static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsize) {
     char *fn = GetVMUFilename(filename);
-    int exists = 0;
-    int isSave = 0;
-    int isAch = 0;
+    bool exists = false;
+    bool isSave = false;
+    bool isAch = false;
     // large files would be compressed
     int needCompressed = (outsize > 1024u);
     file_t vmu_file = FILEHND_INVALID;
 
     // obvious, I hope
     if (strstr(filename, "SaveData")) {
-        isSave = 1;
+        isSave = true;
     } else if(strstr(filename, "Achieve")) {
-        isAch = 1;
+        isAch = true;
     }
 
 #if VMU_DEBUG
@@ -215,7 +215,7 @@ static bool32 SaveUserFileToVMU(const char *filename, void *outbuf, uint32 outsi
 #endif
     vmu_file = fs_open(fn, O_RDONLY | O_META);
     if (FILEHND_INVALID != vmu_file) {
-        exists = 1;
+        exists = true;
         fs_close(vmu_file);
     }
 

@@ -718,13 +718,13 @@ void RSDK::LoadSceneAssets()
 
             // record the x position of the first non-empty tile in each row
             for (int32 y = 0; y < layer->ysize; y++) {
-                int empty = 1;
+                bool empty = true;
                 for (int32 x = 0; x < layer->xsize; x++) {
                     uint16 tile = layer->layout[x + (y << layer->widthShift)];
                     if (tile == 0xffff) {
                         continue;
                     }
-                    empty = 0;
+                    empty = false;
                     firstNonemptyTileInRow[y] = x;
                     break;
                 }
@@ -735,14 +735,14 @@ void RSDK::LoadSceneAssets()
 
             // record the x position of the last non-empty tile in each row
             for (int32 y = layer->ysize - 1; y >= 0; y--) {
-                int empty = 1;
+                bool empty = true;
                 for (int32 x = layer->xsize - 1; x >= 0; x--) {
                     uint16 tile = layer->layout[x + (y << layer->widthShift)];
                     if (tile == 0xffff) {
                         continue;
                     }
                     lastNonemptyTileInRow[y] = x;
-                    empty = 0;
+                    empty = false;
                     break;
                 }
                 if(!empty && lastNonEmptyRow == 0xffff) {
@@ -2707,7 +2707,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 #if DO_EUCLIDEAN_DISTANCE_TEST
         float zdiff = (originTZ - tz);
 #endif
-        uint8 cantReuse = 1;
+        bool cantReuse = true;
 
         // we did a few rounds of bounds refinements earlier
         // but for rows, there's one more that can be done
@@ -2721,7 +2721,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
         size_t layout_offset = firstX + (tz << layer->widthShift) - 1;
 
         for (int tx = firstX; tx <= lastX; tx++) {
-            uint8 reuseRights = 0;
+            bool reuseRights = false;
             layout_offset++;
 
 #if DO_EUCLIDEAN_DISTANCE_TEST
@@ -2730,7 +2730,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 float xdiff = (originTX - tx);
                 float xzdist = ((xdiff * xdiff) + (zdiff * zdiff));
                 if (xzdist > tileRadSq) {
-                    cantReuse = 1;
+                    cantReuse = true;
                     continue;
                 }
             }
@@ -2740,18 +2740,18 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             uint16 tile = layout[layout_offset] & 0xFFF;
             // FFF is an empty tile
             if (tile == 0xFFF) {
-                cantReuse = 1;
+                cantReuse = true;
                 continue;
             }
 
             // if the previous iteration of inner loop did not process empty tile,
             // we can reuse the upper/lower right verts to skip two sets of transforms
             if (!cantReuse) {
-                reuseRights = 1;
+                reuseRights = true;
             }
 
             // processing a visible tile
-            cantReuse = 0;
+            cantReuse = false;
 
             // u flip and v flip come from upper 2 bits of tile number
             int uf = 0;
@@ -2782,7 +2782,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // new upper-right vert would be very close to, or behind camera
                 // skip the entire tile
                 if (wTest <= EPS) {
-                    cantReuse = 1;
+                    cantReuse = true;
                     continue;
                 }
 
@@ -2813,7 +2813,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // redundant now
 #if 0
                 if (tileVerts[TILE_UR].w <= EPS) {
-                    cantReuse = 1;
+                    cantReuse = true;
                     continue;
                 }
 #endif
@@ -2823,7 +2823,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // new lower-right vert would be very close to, or behind camera
                 // skip the entire tile
                 if (tileVerts[TILE_LR].w <= EPS) {
-                    cantReuse = 1;
+                    cantReuse = true;
                     continue;
                 }
 
@@ -2851,7 +2851,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // upper-left vert would be very close to, or behind camera
                 // skip the entire tile
                 if (wTest < EPS) {
-                    cantReuse = 1;
+                    cantReuse = true;
                     continue;
                 }
 
@@ -2891,7 +2891,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 
                 // skip the entire tile if flag was set
                 if (negw) {
-                    cantReuse = 1;
+                    cantReuse = true;
                     continue;
                 }
 
@@ -2909,19 +2909,19 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             // we might still be able to discard tile if it is outside of screenspace bounds
             // off left side of screen
             if (tileVerts[0].x < 0 && tileVerts[1].x < 0 && tileVerts[2].x < 0 && tileVerts[3].x < 0)  {
-                cantReuse = 1;
+                cantReuse = true;
                 continue;
             }
 
             // off right side of screen
             if (tileVerts[0].x > 320 && tileVerts[1].x > 320 && tileVerts[2].x > 320 && tileVerts[3].x > 320)  {
-                cantReuse = 1;
+                cantReuse = true;
                 continue;
             }
 
             // off bottom of screen
             if (tileVerts[0].y > 240 && tileVerts[1].y > 240 && tileVerts[2].y > 240  && tileVerts[3].y > 240) {
-                cantReuse = 1;
+                cantReuse = true;
                 continue;
             }
 
@@ -2930,7 +2930,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             // off top of screen
             if (sp != 0.0f) {
                 if (tileVerts[0].y > 240 && tileVerts[1].y > 240 && tileVerts[2].y > 240  && tileVerts[3].y > 240) {
-                    cantReuse = 1;
+                    cantReuse = true;
                     continue;
                 }
             }

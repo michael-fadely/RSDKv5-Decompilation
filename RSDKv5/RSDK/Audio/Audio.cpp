@@ -626,7 +626,7 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
         }
     }
 
-    int need_to_free = 0;
+    bool need_to_free = false;
     if (slot >= 0) {
         // don't need the hardware channel we just tried to reserve
         snd_sfx_chn_free(reservedChannel);
@@ -653,7 +653,7 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
                 slot = c;
                 len  = (uint32)channels[c].sampleLength;
                 // we are going to evict the existing channel `c`
-                need_to_free = 1;
+                need_to_free = true;
             }
         }
     }
