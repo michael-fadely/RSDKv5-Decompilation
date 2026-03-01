@@ -88,9 +88,9 @@ bool32 RSDK::InitStorage()
 #if RETRO_PLATFORM == RETRO_KALLISTIOS  /* SAYGA DREAMCAST: Where Sonic Belongs! */
                                                                        // RAM: 32  / 16  MB
                                                                        // -----------------
-    dataStorage[DATASET_STG].storageLimit = 400000 + (DBL_MEM? 4 : 4) * 1024 * 1024; // 4.4   / 4.4   MB
-    dataStorage[DATASET_STR].storageLimit = (DBL_MEM? 3 : 3) *  32 * 1024; // 96  / 96  KB
-    dataStorage[DATASET_TMP].storageLimit = 100000 + (DBL_MEM? 6 : 3) * 1024 * 1024; // 6.1   / 3.1   MB
+    dataStorage[DATASET_STG].storageLimit = 700000 + (DBL_MEM? 4 : 4) * 1024 * 1024; // 4.7   / 4.7   MB
+    dataStorage[DATASET_STR].storageLimit = (DBL_MEM? 3 : 3) * 32 * 1024; // 96  / 96  KB
+    dataStorage[DATASET_TMP].storageLimit = 150000 + (DBL_MEM? 6 : 3) * 1024 * 1024; // 6.15   / 3.15   MB
                                                                      //   -----------------
 #else                                                                // Total: 16+ / 7+  MB 
                                         /* PCs AND BORING SHIT */
