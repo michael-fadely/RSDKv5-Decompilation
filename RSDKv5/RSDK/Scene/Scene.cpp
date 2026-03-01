@@ -2657,7 +2657,8 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 
                 // screen edge culling
                 if (ul.x < 0 && ur.x < 0 && ll.x < 0 && lr.x < 0) continue;
-                if (ul.x > 320 && ur.x > 320 && ll.x > 320 && lr.x > 320) continue;
+                if (ul.x > DEFAULT_PIXWIDTH && ur.x > DEFAULT_PIXWIDTH &&
+                    ll.x > DEFAULT_PIXWIDTH && lr.x > DEFAULT_PIXWIDTH) continue;
                 if (ul.y > 240 && ur.y > 240 && ll.y > 240 && lr.y > 240) continue;
 
                 // UVs from tile-aligned grid boundaries (exact tile indices)
@@ -2914,7 +2915,8 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             }
 
             // off right side of screen
-            if (tileVerts[0].x > 320 && tileVerts[1].x > 320 && tileVerts[2].x > 320 && tileVerts[3].x > 320)  {
+            if (tileVerts[0].x > DEFAULT_PIXWIDTH && tileVerts[1].x > DEFAULT_PIXWIDTH &&
+                tileVerts[2].x > DEFAULT_PIXWIDTH && tileVerts[3].x > DEFAULT_PIXWIDTH)  {
                 cantReuse = true;
                 continue;
             }
