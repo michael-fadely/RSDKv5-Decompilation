@@ -2277,7 +2277,7 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
 #define recip1k 0.00097656f
 
 void rayIntersect(Vector4f cam, Vector4f forward, Vector4f right, Vector4f up, int screenX, int screenY, float *hitX, float *hitZ) {
-    float px = (float)screenX - ((float)320*0.5f);
+    float px = (float)screenX - ((float)DEFAULT_PIXWIDTH*0.5f);
     float py = 120.0f - (float)screenY;
     float nx = px * recip200;
     float ny = py * recip200;
@@ -2381,7 +2381,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
     float dfc = fipr(forward.x, forward.y, forward.z, 0, cam.x, cam.y, cam.z, 0);
 
     // leaving this here to show how f and foa were derived
-    const float aspect = (float)320 / 240.0f;
+    const float aspect = (float)DEFAULT_PIXWIDTH / 240.0f;
     const float fovy   = 47.5f * RSDK_PI / 180.0f;
     const float f      = 1.0f / tanf(fovy * 0.5f);
     const float foa    = f / aspect;
@@ -2396,10 +2396,10 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 
     // ndc to screenspace matrix
     const float __attribute__((aligned(32))) screenspace[4][4] = {
-        {  ((float)320*0.5f),    0.0f, 0.0f, 0.0f },
+        {  ((float)DEFAULT_PIXWIDTH*0.5f),    0.0f, 0.0f, 0.0f },
         {                            0.0f, -120.0f, 0.0f, 0.0f, },
         {                            0.0f,    0.0f, 0.5f, 0.0f, },
-        {  ((float)320*0.5f),  120.0f, 0.5f, 1.0f, },
+        {  ((float)DEFAULT_PIXWIDTH*0.5f),  120.0f, 0.5f, 1.0f, },
     };
 
     // store result of load/apply to use for early-out -w test
