@@ -18,38 +18,26 @@ endif()
 
 set(RETRO_OUTPUT_NAME ${RETRO_NAME} CACHE STRING "The exported name of the executable.")
 
-# Enable -Os for all files globally by default.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os" CACHE STRING "Set C++ Compiler Flags" FORCE)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Os" CACHE STRING "Set C Compiler Flags" FORCE)
-
-# Translation units with hot code which needs high optimization levels.
-set(CRITICAL_FILES
-    RSDKv5/RSDK/Core/Math.cpp
-    RSDKv5/RSDK/Graphics/Drawing.cpp
-    RSDKv5/RSDK/Graphics/Scene3D.cpp
-    RSDKv5/RSDK/Scene/Collision.cpp
-    RSDKv5/RSDK/Scene/Scene.cpp
-)
-
-# Force our list of critical files to get built with -O3 optimizaiton levels.
-set_source_files_properties(${CRITICAL_FILES} PROPERTIES COMPILE_FLAGS "-O3")
-
 set(RETRO_FILES
-    ${CRITICAL_FILES}
     RSDKv5/main.cpp
     RSDKv5/RSDK/Core/RetroEngine.cpp
+    RSDKv5/RSDK/Core/Math.cpp
     RSDKv5/RSDK/Core/Reader.cpp
     RSDKv5/RSDK/Core/Link.cpp
     RSDKv5/RSDK/Core/ModAPI.cpp
     RSDKv5/RSDK/Dev/Debug.cpp
     RSDKv5/RSDK/Storage/Storage.cpp
     RSDKv5/RSDK/Storage/Text.cpp
+    RSDKv5/RSDK/Graphics/Drawing.cpp
+    RSDKv5/RSDK/Graphics/Scene3D.cpp
     RSDKv5/RSDK/Graphics/Animation.cpp
     RSDKv5/RSDK/Graphics/Sprite.cpp
     RSDKv5/RSDK/Graphics/Palette.cpp
     RSDKv5/RSDK/Graphics/Video.cpp
     RSDKv5/RSDK/Audio/Audio.cpp
     RSDKv5/RSDK/Input/Input.cpp
+    RSDKv5/RSDK/Scene/Scene.cpp
+    RSDKv5/RSDK/Scene/Collision.cpp
     RSDKv5/RSDK/Scene/Object.cpp
     RSDKv5/RSDK/Scene/Objects/DefaultObject.cpp
     RSDKv5/RSDK/Scene/Objects/DevOutput.cpp
