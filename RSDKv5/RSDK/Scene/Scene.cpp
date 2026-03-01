@@ -1,5 +1,24 @@
 #include "RSDK/Core/RetroEngine.hpp"
 
+#ifdef KOS_HARDWARE_RENDERER
+#include <RSDK/Graphics/KallistiOS/AniTileTracker.hpp>
+
+//! Calculates 1.0f/sqrtf( \p x ), using a fast approximation.
+__always_inline float shz_inverse_sqrtf(float x) {
+    asm("fsrra %0" : "+f" (x));
+    return x;
+}
+
+__always_inline float shz_invf(float x) {
+    float rx = shz_inverse_sqrtf(x * x);
+    return x < 0 ? -rx : rx;
+}
+
+__always_inline float shz_divf(float num, float denom) {
+    return num * shz_invf(denom);
+}
+#endif
+
 using namespace RSDK;
 
 #if RETRO_REV0U
@@ -23,6 +42,188 @@ char RSDK::currentSceneID[0x10];
 
 SceneInfo RSDK::sceneInfo;
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+// this is used to hold a copy of tilesetPixels as loaded directly from 16x16Tiles.gif
+// just long enough to generate LOD map texture
+uint8_t* persistTiles = nullptr;
+// a GFXSurface used to draw LOD polys with RenderDevice
+GFXSurface mapSurf{};
+
+uint16 firstNonEmptyRow = 0xffff;
+uint16 lastNonEmptyRow = 0xffff;
+uint16 __attribute__((aligned(32))) firstNonemptyTileInRow[512];
+uint16 __attribute__((aligned(32))) lastNonemptyTileInRow[512];
+
+// are we in a ufo stage and if so, which one
+static int ufoNum = 0;
+
+// LOD background quad state
+static bool lodTextureReady = false;
+static int lodTexWidth = 0;
+static int lodTexHeight = 0;
+
+// don't regen LOD texture on reload
+static bool reloading = false;
+#endif
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+static void GenerateLODTexture()
+{
+    lodTextureReady = false;
+
+    if (persistTiles == nullptr) {
+        printf("[LOD] can't generate LOD texture when tileset not staged in RAM\n");
+        return;
+    }
+
+    if (mapSurf.texture != nullptr) {
+        pvr_mem_free(mapSurf.texture);
+        mapSurf.texture = nullptr;
+    }
+
+    if (ufoNum) {
+        uint8 *tilesetData = persistTiles;
+
+        mapSurf.isARGB = 1;
+        mapSurf.isVq = 0;
+        mapSurf.width = 512;
+        mapSurf.height = 512;
+
+        // need to check for this name hash to be sure it is the correct rotozoom layer
+        const char *layerName = "Playfield";
+        RETRO_HASH_MD5(hash);
+        GEN_HASH_MD5(layerName, hash);
+
+        // Find the rotozoom layer
+        TileLayer *rotoLayer = nullptr;
+        for (int l = 0; l < LAYER_COUNT; l++) {
+            if (tileLayers[l].type == LAYER_ROTOZOOM && tileLayers[l].layout) {
+                if (HASH_MATCH_MD5(tileLayers[l].name, hash)) {
+                    rotoLayer = &tileLayers[l];
+                    break;
+                }
+            }
+        }
+
+        if (!rotoLayer) {
+            // clean up the tileset copy
+            UnPinStorage(reinterpret_cast<void**>(&persistTiles));
+            RemoveStorageEntry(reinterpret_cast<void**>(&persistTiles));
+            persistTiles = nullptr;
+            return;
+        }
+
+        int mapW = rotoLayer->xsize;
+        int mapH = rotoLayer->ysize;
+        if (mapW == 0 || mapH == 0) {
+            // clean up the tileset copy
+            UnPinStorage(reinterpret_cast<void**>(&persistTiles));
+            RemoveStorageEntry(reinterpret_cast<void**>(&persistTiles));
+            persistTiles = nullptr;
+            return;
+        }
+        // Power-of-2 texture dimensions
+        lodTexWidth = 512;
+        if (mapW > 512) lodTexWidth = 1024;
+        lodTexHeight = 512;
+        if (mapH > 512) lodTexHeight = 1024;
+        mapSurf.width = lodTexWidth;
+        mapSurf.height = lodTexHeight;
+        mapSurf.texture = pvr_mem_malloc(lodTexWidth * lodTexHeight * 2);
+        if (mapSurf.texture == nullptr) {
+            printf("[LOD] Failed to allocate vram for LOD texture\n");
+            // clean up the tileset copy
+            UnPinStorage(reinterpret_cast<void**>(&persistTiles));
+            RemoveStorageEntry(reinterpret_cast<void**>(&persistTiles));
+            persistTiles = nullptr;
+            return;
+        }
+
+        size_t texSize = (size_t)lodTexWidth * lodTexHeight * sizeof(uint16);
+
+        // Allocate temp buffer
+        uint16 *lodPixels = nullptr;
+        AllocateStorage(reinterpret_cast<void **>(&lodPixels), texSize, DATASET_TMP, true);
+        if (!lodPixels) {
+            printf("[LOD] Failed to allocate temp buffer for LOD texture\n");
+            // clean up the tileset copy
+            UnPinStorage(reinterpret_cast<void**>(&persistTiles));
+            RemoveStorageEntry(reinterpret_cast<void**>(&persistTiles));
+            persistTiles = nullptr;
+            return;
+        }
+
+        // Build LOD texture: one texel per tile
+        uint16 *layout = rotoLayer->layout;
+        int widthShift = rotoLayer->widthShift;
+        uint16 *activePalette = fullPalette[0];
+
+        for (int32 y = 0; y < mapH; ++y) {
+            for (int32 x = 0; x < mapW; ++x) {
+                uint16_t tile = layout[x + (y << widthShift)];
+                if (tile == 0xFFFF) {
+                    lodPixels[x + (y*lodTexWidth)] = 0;
+                } else {
+                    uint32_t r=0;
+                    uint32_t g=0;
+                    uint32_t b=0;
+                    int nonzero = 0;
+                    for (int h=0;h<16;h++) {
+                        for(int w=0;w<16;w++) {
+                            uint8_t index = tilesetData[TILE_SIZE * (h + TILE_SIZE * (tile&0x3ff)) + w];
+                            nonzero+=8;
+
+                            uint16 c = activePalette[index];
+                            uint8_t r5 = (c >> 11) & 0x1F;
+                            uint8_t g6 = (c >>  5) & 0x3F;
+                            uint8_t b5 = (c      ) & 0x1F;
+                            r5 = (r5 * 255) / 31;
+                            g6 = (g6 * 255) / 63;
+                            b5 = (b5 * 255) / 31;
+
+                            if (r5 == 255 && g6 == 0 && b5 == 255) {
+                                nonzero-=8;
+                                continue;
+                            } else if (r5 < 16 && g6 > 224 && b5 < 16) {
+                                nonzero-=8;
+                                continue;
+                            }
+
+                            r += r5;
+                            g += g6;
+                            b += b5;
+                        }
+                    }
+                    if (!nonzero) {
+                        lodPixels[x + (y*lodTexWidth)] = 0;
+                    } else {
+                        r = (r / nonzero);
+                        g = (g / nonzero);
+                        b = (b / nonzero);
+                        lodPixels[x + (y*lodTexWidth)] = 0x8000 | (r << 10) | (g << 5) | b;
+                    }
+                }
+            }
+        }
+
+        // Upload with auto-twiddling for 16bpp
+        pvr_txr_load_ex(lodPixels, mapSurf.texture, lodTexWidth, lodTexHeight, PVR_TXRLOAD_16BPP);
+
+        printf("[LOD] Generated %dx%d LOD texture for %dx%d map (%zu bytes VRAM)\n",
+            lodTexWidth, lodTexHeight, mapW, mapH, texSize);
+
+        lodTextureReady = true;
+
+        // Free temp buffer
+        RemoveStorageEntry(reinterpret_cast<void **>(&lodPixels));
+        // Free tileset copy
+        UnPinStorage(reinterpret_cast<void**>(&persistTiles));
+        RemoveStorageEntry(reinterpret_cast<void**>(&persistTiles));
+        persistTiles = nullptr;
+    }
+}
+#endif
+
 void RSDK::LoadSceneFolder()
 {
 #if RETRO_PLATFORM == RETRO_ANDROID
@@ -38,6 +239,34 @@ void RSDK::LoadSceneFolder()
     sceneInfo.minutes      = 0;
     sceneInfo.seconds      = 0;
     sceneInfo.milliseconds = 0;
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // default to full load, not reload
+    reloading = false;
+    // book-keeping, are we in a ufo stage
+    ufoNum = 0;
+    if (strstr(sceneInfo.listData[sceneInfo.listPos].folder, "UFO1")) {
+        ufoNum = 1;
+    }
+    if (strstr(sceneInfo.listData[sceneInfo.listPos].folder, "UFO2")) {
+        ufoNum = 2;
+    }
+    if (strstr(sceneInfo.listData[sceneInfo.listPos].folder, "UFO3")) {
+        ufoNum = 3;
+    }
+    if (strstr(sceneInfo.listData[sceneInfo.listPos].folder, "UFO4")) {
+        ufoNum = 4;
+    }
+    if (strstr(sceneInfo.listData[sceneInfo.listPos].folder, "UFO5")) {
+        ufoNum = 5;
+    }
+    if (strstr(sceneInfo.listData[sceneInfo.listPos].folder, "UFO6")) {
+        ufoNum = 6;
+    }
+    if (strstr(sceneInfo.listData[sceneInfo.listPos].folder, "UFO7")) {
+        ufoNum = 7;
+    }
+#endif
 
     // clear draw groups
     for (int32 i = 0; i < DRAWGROUP_COUNT; ++i) {
@@ -87,6 +316,9 @@ void RSDK::LoadSceneFolder()
         }
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        reloading = true;
+#endif
         return;
     }
 #endif
@@ -108,6 +340,9 @@ void RSDK::LoadSceneFolder()
                 }
             }
         }
+#endif
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        reloading = true;
 #endif
         return;
     }
@@ -136,7 +371,9 @@ void RSDK::LoadSceneFolder()
 
     // Clear stage storage
     DefragmentAndGarbageCollectStorage(DATASET_STG);
-    DefragmentAndGarbageCollectStorage(DATASET_SFX);
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
+     DefragmentAndGarbageCollectStorage(DATASET_SFX);
+#endif
 
     for (int32 s = 0; s < SCREEN_COUNT; ++s) {
         screens[s].position.x = 0;
@@ -273,6 +510,10 @@ void RSDK::LoadSceneFolder()
         CloseFile(&info);
     }
 
+#ifdef KOS_HARDWARE_RENDERER
+    AniTileTracker::ResetAllTiles();
+#endif
+
     sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Stages/%s/16x16Tiles.gif", currentSceneFolder);
     LoadStageGIF(fullFilePath);
 
@@ -297,6 +538,7 @@ void RSDK::LoadSceneAssets()
     memset(objectEntityList, 0, ENTITY_COUNT * sizeof(EntityBase));
 
     SceneListEntry *sceneEntry = &sceneInfo.listData[sceneInfo.listPos];
+
     char fullFilePath[0x40];
     sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Stages/%s/Scene%s.bin", currentSceneFolder, sceneEntry->id);
 
@@ -370,6 +612,20 @@ void RSDK::LoadSceneAssets()
         */
 
         // Skip over Metadata, since we won't be using it at all in-game
+        //uint8 unknown1 = ReadInt8(&info); // usually 3, sometimes 4, LRZ1 (old) is 2
+        // bg color
+        //uint8 r                = ReadInt8(&info);
+        //uint8 g                = ReadInt8(&info);
+        //uint8 b                = ReadInt8(&info);
+        //uint8 a                = ReadInt8(&info);
+        //color backgroundColor1 = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+
+        //b                      = ReadInt8(&info);
+        //g                      = ReadInt8(&info);
+        //r                      = ReadInt8(&info);
+        //a                      = ReadInt8(&info);
+        //color backgroundColor2 = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+        //Seek_Cur(&info, 0x10 - 4);
         Seek_Cur(&info, 0x10);
         uint8 strLen = ReadInt8(&info);
         Seek_Cur(&info, strLen + 1);
@@ -414,12 +670,7 @@ void RSDK::LoadSceneAssets()
             layer->scrollSpeed    = ReadInt16(&info) << 8;
             layer->scrollPos      = 0;
 
-            // DCWIP
-#if RETRO_PLATFORM == RETRO_KALLISTIOS && !RETRO_USE_ORIGINAL_CODE
-            MaybeRemoveStorageEntryAndNullify((void**)&layer->layout);
-#else
             layer->layout = NULL;
-#endif
             if (layer->xsize || layer->ysize) {
                 AllocateStorage((void **)&layer->layout, sizeof(uint16) * (1UL << layer->widthShift) * (1UL << layer->heightShift), DATASET_STG, true);
                 memset(layer->layout, 0xFF, sizeof(uint16) * (1UL << layer->widthShift) * (1UL << layer->heightShift));
@@ -428,10 +679,6 @@ void RSDK::LoadSceneAssets()
             int32 size = layer->xsize;
             if (size <= layer->ysize)
                 size = layer->ysize;
-            // DCWIP
-#if RETRO_PLATFORM == RETRO_KALLISTIOS && !RETRO_USE_ORIGINAL_CODE
-            MaybeRemoveStorageEntryAndNullify((void**)&layer->lineScroll);
-#endif
             AllocateStorage((void **)&layer->lineScroll, TILE_SIZE * size, DATASET_STG, true);
 
             layer->scrollInfoCount = ReadInt16(&info);
@@ -464,6 +711,46 @@ void RSDK::LoadSceneAssets()
                     id += 2;
                 }
             }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+            firstNonEmptyRow = 0xffff;
+            lastNonEmptyRow = 0xffff;
+
+            // record the x position of the first non-empty tile in each row
+            for (int32 y = 0; y < layer->ysize; y++) {
+                bool empty = true;
+                for (int32 x = 0; x < layer->xsize; x++) {
+                    uint16 tile = layer->layout[x + (y << layer->widthShift)];
+                    if (tile == 0xffff) {
+                        continue;
+                    }
+                    empty = false;
+                    firstNonemptyTileInRow[y] = x;
+                    break;
+                }
+                if(!empty && firstNonEmptyRow == 0xffff) {
+                    firstNonEmptyRow = y;
+                }
+            }
+
+            // record the x position of the last non-empty tile in each row
+            for (int32 y = layer->ysize - 1; y >= 0; y--) {
+                bool empty = true;
+                for (int32 x = layer->xsize - 1; x >= 0; x--) {
+                    uint16 tile = layer->layout[x + (y << layer->widthShift)];
+                    if (tile == 0xffff) {
+                        continue;
+                    }
+                    lastNonemptyTileInRow[y] = x;
+                    empty = false;
+                    break;
+                }
+                if(!empty && lastNonEmptyRow == 0xffff) {
+                    lastNonEmptyRow = y;
+                }
+            }
+
+#endif
 
 #if !RETRO_USE_ORIGINAL_CODE
             RemoveStorageEntry((void **)&tileLayout);
@@ -745,6 +1032,12 @@ void RSDK::LoadSceneAssets()
 #if RETRO_USE_MOD_LOADER
     LoadGameXML(true); // override the stage palette *somewhere* idfk
 #endif
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    if (ufoNum && !reloading)
+        GenerateLODTexture();
+#endif
+
 }
 void RSDK::LoadTileConfig(char *filepath)
 {
@@ -986,14 +1279,28 @@ void RSDK::LoadTileConfig(char *filepath)
         CloseFile(&info);
     }
 }
+
 void RSDK::LoadStageGIF(char *filepath)
 {
     ImageGIF tileset;
 
     if (tileset.Load(filepath, true) && tileset.width == TILE_SIZE && tileset.height <= TILE_COUNT * TILE_SIZE) {
 #if defined(KOS_HARDWARE_RENDERER)
-        uint8_t* tilesetPixels = nullptr;
-        AllocateStorage(reinterpret_cast<void**>(&tilesetPixels), 2 * TILESET_SIZE, DATASET_STG, false);
+        uint8_t *tilesetPixels = nullptr;
+        // we need to make a copy of original tileset when loading UFO stages
+        // to make LOD map texture
+        if (ufoNum) {
+            if (persistTiles == nullptr) {
+                AllocateStorage(reinterpret_cast<void**>(&persistTiles), TILESET_SIZE, DATASET_STG, false);
+                if (persistTiles == nullptr) {
+                    printf("[NG] Failed to allocate for persistent tile set!!!: %s\n", filepath);
+                } else {
+                    PinStorage((void**)&persistTiles);
+                }
+            }
+        }
+        AllocateStorage(reinterpret_cast<void**>(&tilesetPixels), 2 * TILESET_SIZE, DATASET_TMP, true);
+        PinStorage(reinterpret_cast<void**>(&tilesetPixels));
 
         if (tilesetPixels == nullptr) {
             printf("[NG] Failed to allocate for tile set!!!: %s\n", filepath);
@@ -1023,9 +1330,10 @@ void RSDK::LoadStageGIF(char *filepath)
             }
         }
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+#if defined(KOS_HARDWARE_RENDERER)
         // use one of the additional tileset buffers to re-orient the tileset into a 512x512 texture
         // DCTODO: reduce size of tilesetPixels to just what we need
+        // one surface per tile might be nice in the future - jn64
         uint8* const srcTiles = &tilesetPixels[0];
         uint8* const dstTiles = &tilesetPixels[TILESET_SIZE];
         constexpr size_t tilesPerRow = KOS_ATLAS_WIDTH_TILES;
@@ -1043,6 +1351,11 @@ void RSDK::LoadStageGIF(char *filepath)
                 dstPixels += TILE_SIZE * tilesPerRow;
             }
         }
+        // we need to make a copy of original tileset when loading UFO stages
+        // to make LOD map texture
+        if (ufoNum) {
+            memcpy(persistTiles, &tilesetPixels[0], TILESET_SIZE);
+        }
 
         auto* surface = &gfxSurface[0];
 
@@ -1057,6 +1370,7 @@ void RSDK::LoadStageGIF(char *filepath)
         }
 
         if (surface->texture != nullptr) {
+            surface->isVq = 0;
             // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
             // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h)
             pvr_txr_load_ex(
@@ -1408,13 +1722,36 @@ void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
     const int32 flip = layout / TILE_COUNT;
     layout %= TILE_COUNT;
 
-    const int32 tilesetX = TILE_SIZE * ((int32)layout % KOS_ATLAS_WIDTH_TILES);
-    const int32 tilesetY = TILE_SIZE * ((int32)layout / KOS_ATLAS_WIDTH_TILES);
+    bool usePoly;
+    const GFXSurface* surface;
+    const AniTileState* aniTileState = AniTileTracker::GetAniTile(layout);
 
-    int32 sprX0 = tilesetX;
-    int32 sprX1 = tilesetX;
-    int32 sprY0 = tilesetY;
-    int32 sprY1 = tilesetY;
+    int32 sprX0;
+    int32 sprX1;
+    int32 sprY0;
+    int32 sprY1;
+
+    if (aniTileState != nullptr && aniTileState->sheetID != 0) {
+        usePoly = !aniTileState->IsTileAligned();
+        surface = &gfxSurface[aniTileState->sheetID];
+
+        sprX0 = aniTileState->u;
+        sprX1 = aniTileState->u;
+        sprY0 = aniTileState->v;
+        sprY1 = aniTileState->v;
+    }
+    else {
+        usePoly = false;
+        surface = &gfxSurface[0];
+
+        const int32 tilesetX = TILE_SIZE * (static_cast<int32>(layout) % KOS_ATLAS_WIDTH_TILES);
+        const int32 tilesetY = TILE_SIZE * (static_cast<int32>(layout) / KOS_ATLAS_WIDTH_TILES);
+
+        sprX0 = tilesetX;
+        sprX1 = tilesetX;
+        sprY0 = tilesetY;
+        sprY1 = tilesetY;
+    }
 
     if (flip & FLIP_X) {
         sprX0 += TILE_SIZE;
@@ -1430,13 +1767,33 @@ void DrawByLayout(uint16 layout, int32 screenX, int32 screenY) {
         sprY1 += TILE_SIZE;
     }
 
-    RenderDevice::DrawTexturedQuad(
-        screenX, screenY,
-        TILE_SIZE, TILE_SIZE,
-        sprX0, sprX1,
-        sprY0, sprY1,
-        &gfxSurface[0]
-    );
+    const int32 prepY = std::max<int32>(0, screenY);
+
+    if (usePoly) {
+        RenderDevice::PrepareTexturedPolyPT(prepY, INK_NONE, surface);
+
+        RenderDevice::DrawTexturedPolyPT(
+            screenX, screenY,
+            screenX, screenY,
+            TILE_SIZE, TILE_SIZE,
+            sprX0, sprX1,
+            sprY0, sprY1,
+            0,
+            255,
+            surface
+        );
+    }
+    else {
+        RenderDevice::PrepareTexturedQuadPT(prepY, surface);
+
+        RenderDevice::DrawTexturedQuadPT(
+            screenX, screenY,
+            TILE_SIZE, TILE_SIZE,
+            sprX0, sprX1,
+            sprY0, sprY1,
+            &gfxSurface[0]
+        );
+    }
 }
 
 void DrawByLayoutEx(uint16 layout,
@@ -1446,13 +1803,36 @@ void DrawByLayoutEx(uint16 layout,
     const int32 flip = layout / TILE_COUNT;
     layout %= TILE_COUNT;
 
-    const int32 tilesetX = TILE_SIZE * (static_cast<int32>(layout) % KOS_ATLAS_WIDTH_TILES);
-    const int32 tilesetY = TILE_SIZE * (static_cast<int32>(layout) / KOS_ATLAS_WIDTH_TILES);
+    bool usePoly;
+    const GFXSurface* surface;
+    const AniTileState* aniTileState = AniTileTracker::GetAniTile(layout);
 
-    int32 sprX0 = tilesetX;
-    int32 sprX1 = tilesetX;
-    int32 sprY0 = tilesetY;
-    int32 sprY1 = tilesetY;
+    int32 sprX0;
+    int32 sprX1;
+    int32 sprY0;
+    int32 sprY1;
+
+    if (aniTileState != nullptr && aniTileState->sheetID != 0) {
+        usePoly = !aniTileState->IsTileAligned();
+        surface = &gfxSurface[aniTileState->sheetID];
+
+        sprX0 = aniTileState->u;
+        sprX1 = aniTileState->u;
+        sprY0 = aniTileState->v;
+        sprY1 = aniTileState->v;
+    }
+    else {
+        usePoly = false;
+        surface = &gfxSurface[0];
+
+        const int32 tilesetX = TILE_SIZE * (static_cast<int32>(layout) % KOS_ATLAS_WIDTH_TILES);
+        const int32 tilesetY = TILE_SIZE * (static_cast<int32>(layout) / KOS_ATLAS_WIDTH_TILES);
+
+        sprX0 = tilesetX;
+        sprX1 = tilesetX;
+        sprY0 = tilesetY;
+        sprY1 = tilesetY;
+    }
 
     if (flip & FLIP_X) {
         sprX0 += TILE_SIZE;
@@ -1468,13 +1848,29 @@ void DrawByLayoutEx(uint16 layout,
         sprY1 += TILE_SIZE;
     }
 
-    RenderDevice::DrawTexturedQuadEx(
-        upperLeft, upperRight,
-        lowerLeft, lowerRight,
-        sprX0, sprX1,
-        sprY0, sprY1,
-        &gfxSurface[0]
-    );
+    const int32 prepY = std::max<int32>(0, std::min(upperLeft.y, upperRight.y));
+
+    if (usePoly) {
+        RenderDevice::PrepareTexturedPolyPT(prepY, INK_NONE, surface);
+
+        RenderDevice::DrawTexturedPolyPTEx(
+            upperLeft, upperRight,
+            lowerLeft, lowerRight,
+            sprX0, sprX1,
+            sprY0, sprY1,
+            surface);
+    }
+    else {
+        RenderDevice::PrepareTexturedQuadPT(prepY, surface);
+
+        RenderDevice::DrawTexturedQuadPTEx(
+            upperLeft, upperRight,
+            lowerLeft, lowerRight,
+            sprX0, sprX1,
+            sprY0, sprY1,
+            surface
+        );
+    }
 }
 
 int32 GetLayerWrappedFromFixedX(const TileLayer* layer, int32 fixed_x) {
@@ -1489,33 +1885,6 @@ int32 GetLayerWrappedFromFixedX(const TileLayer* layer, int32 fixed_x) {
 
     return FROM_FIXED(fixed_x);
 }
-
-// DCTODO: put somewhere more accessible. could be useful elsewhere.
-template <typename T>
-T constexpr AlignUp(T value, size_t alignment)
-{
-    if (!value || alignment < 2)
-    {
-        return value;
-    }
-
-    value += alignment - 1;
-    value -= value % alignment;
-    return value;
-}
-
-// DCTODO: put somewhere more accessible. could be useful elsewhere.
-template <typename T>
-T constexpr AlignDown(T value, size_t alignment)
-{
-    if (!value || alignment < 2)
-    {
-        return value;
-    }
-
-    value -= value % alignment;
-    return value;
-}
 #endif
 
 void RSDK::DrawLayerHScroll(TileLayer *layer)
@@ -1525,9 +1894,6 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
 
 #if defined(KOS_HARDWARE_RENDERER)
     const ScanlineInfo* upperScanline = &scanlines[currentScreen->clipBound_Y1];
-
-    const int32 prepY = currentScreen->clipBound_Y1;
-    const GFXSurface* prepSurface = &gfxSurface[0];
 
     const int32 sheetY = FROM_FIXED(upperScanline->position.y) & 0xF;
     int32 scanlineIncrement = TILE_SIZE - sheetY;
@@ -1577,8 +1943,6 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
             if (layout == 0xFFFF) {
                 continue;
             }
-
-            RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
 
             const Vector2 screenUpperLeft {
                 screenUpperX,
@@ -1904,11 +2268,725 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
     }
 #endif
 }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+// epsilon for small/negative value rejections
+#define EPS 1e-3f
+// 1/200, for ray intersect projection scaling
+#define recip200 0.005f
+// 1/16, for anything tile-dimensions related
+#define recip16 0.0625f
+// 1/65536, fixed to float
+#define recip64k 0.00001526f
+// 1/1024, to convert the fixed point sin/cos to float
+#define recip1k 0.00097656f
+
+void rayIntersect(Vector4f cam, Vector4f forward, Vector4f right, Vector4f up, int screenX, int screenY, float *hitX, float *hitZ) {
+    float px = (float)screenX - ((float)DEFAULT_PIXWIDTH*0.5f);
+    float py = 120.0f - (float)screenY;
+    float nx = px * recip200;
+    float ny = py * recip200;
+
+    Vector4f dir;
+    dir.x = forward.x + right.x * nx + up.x * ny;
+    dir.y = forward.y + right.y * nx + up.y * ny;
+    dir.z = forward.z + right.z * nx + up.z * ny;
+
+    // intersect with ground plane (y == 0)
+    // prevent div by zero
+    if (dir.y == 0) {
+        dir.y = 1;
+    }
+    float t = -cam.y / dir.y;
+    *hitX = (cam.x + dir.x * t);
+    *hitZ = (cam.z + dir.z * t);
+}
+
+// four corners of a projected tile
+static Vector4f __attribute__((aligned(32))) tileVerts[4];
+
+// indices into tileVerts
+// upper/lower left/right
+#define TILE_UL 0
+#define TILE_LL 1
+#define TILE_UR 2
+#define TILE_LR 3
+#endif
+
 void RSDK::DrawLayerRotozoom(TileLayer *layer)
 {
-    // DCTODO: DrawLayerRotozoom
-    // (using early return so I can still statically analyze stuff!)
+#if defined(KOS_HARDWARE_RENDERER)
+    const GFXSurface* surface = &gfxSurface[0];
+
+    int32 width    = (TILE_SIZE << layer->widthShift) - 1;
+    int32 height   = (TILE_SIZE << layer->heightShift) - 1;
+
+    uint16 *layout         = layer->layout;
+    // hijacked scanlineinfo to store camera pos and orientation info
+    ScanlineInfo *scanline = &scanlines[0];
+
+    if ((uint32)scanline->deform.x != (uint32)0xFEDCBA09) return;
+    //if ((uint32)scanline->deform.y != (uint32)0x90ABCDEF) return;
+    // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
+    // to avoid "not consumed" RenderDevice warning when LOD quad prepares a different texture first
+
+    scanline++;
+
+    // 0.10 fixed-point yaw and pitch sin/cos pairs from UFO_Setup.c
+    int32 scsin = scanline->deform.x;
+    int32 sccos = scanline->deform.y;
+    int32 scsinX = scanline->position.x;
+    int32 sccosX = scanline->position.y;
+
+    scanline++;
+
+    // 16.16 fixed-point camera position from UFO_Setup.c
+    int32 camX = scanline->deform.x;
+    int32 camY = scanline->deform.y;
+    int32 camZ = scanline->position.x;
+
+    // convert all of the camera stuff to float
+    Vector4f cam;
+    cam.x = (float)camX * recip64k;
+    cam.y = (float)camY * recip64k;
+    cam.z = (float)camZ * recip64k;
+
+    float sy = (float)scsin * recip1k;
+    float cy = (float)sccos * recip1k;
+    float sp = (float)scsinX * recip1k;
+    float cp = (float)sccosX * recip1k;
+
+    // build the camera basis
+    Vector4f forward;
+    Vector4f right;
+    Vector4f up;
+
+    forward.x = sy * cp;
+    forward.y = -sp;
+    forward.z = cy * cp;
+
+    right.x = cy;
+    right.y = 0.0f;
+    right.z = -sy;
+
+    // derived, orthonormal up vector
+    up.x = sy * sp;
+    up.y = cp;
+    up.z = cy * sp;
+
+    // normalize camera basis for next computations
+    vec3f_normalize(forward.x, forward.y, forward.z);
+    vec3f_normalize(right.x, right.y, right.z);
+    vec3f_normalize(up.x, up.y, up.z);
+
+    // dot the basis vectors with camera position
+    // this is to build the translation row
+    float drc = fipr(right.x,   right.y,   right.z,   0, cam.x, cam.y, cam.z, 0);
+    float duc = fipr(up.x,      up.y,      up.z,      0, cam.x, cam.y, cam.z, 0);
+    float dfc = fipr(forward.x, forward.y, forward.z, 0, cam.x, cam.y, cam.z, 0);
+
+    // leaving this here to show how f and foa were derived
+    const float aspect = (float)DEFAULT_PIXWIDTH / 240.0f;
+    const float fovy   = 47.5f * RSDK_PI / 180.0f;
+    const float f      = 1.0f / tanf(fovy * 0.5f);
+    const float foa    = f / aspect;
+
+    // projection matrix
+    const float __attribute__((aligned(32))) viewproj[4][4] = {
+        {   -right.x * foa,     up.x * f,    forward.x,  forward.x },
+        {   -right.y * foa,     up.y * f,    forward.y,  forward.y },
+        {   -right.z * foa,     up.z * f,    forward.z,  forward.z },
+        {      drc   * foa,   -duc   * f,       -dfc  ,     -dfc   },
+    };
+
+    // ndc to screenspace matrix
+    const float __attribute__((aligned(32))) screenspace[4][4] = {
+        {  ((float)DEFAULT_PIXWIDTH*0.5f),    0.0f, 0.0f, 0.0f },
+        {                            0.0f, -120.0f, 0.0f, 0.0f, },
+        {                            0.0f,    0.0f, 0.5f, 0.0f, },
+        {  ((float)DEFAULT_PIXWIDTH*0.5f),  120.0f, 0.5f, 1.0f, },
+    };
+
+    // store result of load/apply to use for early-out -w test
+    float __attribute__((aligned(32))) finalmat[4][4];
+
+    // put combined matrices into XMTRX
+    mat_load(&screenspace);
+    mat_apply(&viewproj);
+    mat_store(&finalmat);
+
+    // used to push out the bounding box to deal with some close-up disappearing sections
+    size_t dimensionAdjust = 34;
+
+    // four corner tiles of the screen clip bounds and origin tile
+    float hits[5][2];
+    rayIntersect(cam, forward, right, up, currentScreen->clipBound_X1, currentScreen->clipBound_Y1, &hits[0][0], &hits[0][1]);
+    rayIntersect(cam, forward, right, up, currentScreen->clipBound_X2, currentScreen->clipBound_Y1, &hits[1][0], &hits[1][1]);
+    rayIntersect(cam, forward, right, up, currentScreen->clipBound_X1, currentScreen->clipBound_Y2, &hits[2][0], &hits[2][1]);
+    rayIntersect(cam, forward, right, up, currentScreen->clipBound_X2, currentScreen->clipBound_Y2, &hits[3][0], &hits[3][1]);
+
+    // camera pitching down toward plane
+    if (sp != 0.0f) {
+        // increase the amount we push out the bounding box after the corner intersections
+        // fixes the flickering on jumps
+        dimensionAdjust = 55;
+
+        // move origin toward middle of screen
+        rayIntersect(cam, forward, right, up, 159, 144, &hits[4][0], &hits[4][1]);
+    } else {
+        // origin should be roughly where the player is on screen (by their feet)
+        rayIntersect(cam, forward, right, up, 159, 200, &hits[4][0], &hits[4][1]);
+    }
+
+    // Save unwrapped tile coords for LOD bound calculations
+    float hitsRawX[4];
+    float hitsRawZ[4];
+    for (int i = 0; i < 4; i++) {
+        float tileX = floor(hits[i][0] * recip16);
+        float tileZ = floor(hits[i][1] * recip16);
+        hitsRawX[i] = tileX;
+        hitsRawZ[i] = tileZ;
+        hits[i][0] = (float)((int)tileX & (width >> 4));
+        hits[i][1] = (float)((int)tileZ & (height >> 4));
+    }
+
+    // this is the origin in tilemap coords
+    hits[4][0] = (float)((int)floor(hits[4][0] * recip16) & (width >> 4));
+    hits[4][1] = (float)((int)floor(hits[4][1] * recip16) & (height >> 4));
+
+    // build a tilemap coord AABB for the visible area
+    float minX = hits[0][0];
+    if (hits[1][0] < minX)
+        minX = hits[1][0];
+    if (hits[2][0] < minX)
+        minX = hits[2][0];
+    if (hits[3][0] < minX)
+        minX = hits[3][0];
+
+    float minZ = hits[0][1];
+    if (hits[1][1] < minZ)
+        minZ = hits[1][1];
+    if (hits[2][1] < minZ)
+        minZ = hits[2][1];
+    if (hits[3][1] < minZ)
+        minZ = hits[3][1];
+
+    float maxX = hits[0][0];
+    if (hits[1][0] > maxX)
+        maxX = hits[1][0];
+    if (hits[2][0] > maxX)
+        maxX = hits[2][0];
+    if (hits[3][0] > maxX)
+        maxX = hits[3][0];
+
+    float maxZ = hits[0][1];
+    if (hits[1][1] > maxZ)
+        maxZ = hits[1][1];
+    if (hits[2][1] > maxZ)
+        maxZ = hits[2][1];
+    if (hits[3][1] > maxZ)
+        maxZ = hits[3][1];
+
+    int minTileX = (int)minX;
+    int maxTileX = (int)maxX;
+    int minTileZ = (int)minZ;
+    int maxTileZ = (int)maxZ;
+
+    // expand the corners of the AABB a bit so geometry doesn't disappear
+    minTileX -= dimensionAdjust;
+    if (minTileX < 0) minTileX = 0;
+    // special stage 7 is wider
+    if (ufoNum == 7) {
+        maxTileX += dimensionAdjust;
+        if (maxTileX > 767)
+            maxTileX = 767;
+    } else {
+        maxTileX += dimensionAdjust;
+        if (maxTileX > 511)
+            maxTileX = 511;
+    }
+
+    minTileZ -= dimensionAdjust;
+    if (minTileZ < 0) minTileZ = 0;
+
+    maxTileZ += dimensionAdjust;
+    if (maxTileZ > 511) maxTileZ = 511;
+
+    int originTX = (int)hits[4][0];
+    int originTZ = (int)hits[4][1];
+
+    // LOD bounds from unwrapped ray-cast coords
+    float lodRawMinX = hitsRawX[0];
+    float lodRawMaxX = hitsRawX[0];
+    float lodRawMinZ = hitsRawZ[0];
+    float lodRawMaxZ = hitsRawZ[0];
+    for (int i = 1; i < 4; i++) {
+        if (hitsRawX[i] < lodRawMinX)
+            lodRawMinX = hitsRawX[i];
+        if (hitsRawX[i] > lodRawMaxX)
+            lodRawMaxX = hitsRawX[i];
+        if (hitsRawZ[i] < lodRawMinZ)
+            lodRawMinZ = hitsRawZ[i];
+        if (hitsRawZ[i] > lodRawMaxZ)
+            lodRawMaxZ = hitsRawZ[i];
+    }
+
+    const int mapTilesX = (width >> 4) + 1;
+    const int mapTilesZ = (height >> 4) + 1;
+
+    int lodMinTileX = (int)lodRawMinX - (int)dimensionAdjust;
+    int lodMaxTileX = (int)lodRawMaxX + (int)dimensionAdjust;
+    int lodMinTileZ = (int)lodRawMinZ - (int)dimensionAdjust;
+    int lodMaxTileZ = (int)lodRawMaxZ + (int)dimensionAdjust;
+
+    // clamp to at most one full map extent to avoid drawing duplicate tiles
+    if (lodMaxTileX - lodMinTileX >= mapTilesX)
+        lodMaxTileX = lodMinTileX + mapTilesX - 1;
+    if (lodMaxTileZ - lodMinTileZ >= mapTilesZ)
+        lodMaxTileZ = lodMinTileZ + mapTilesZ - 1;
+
+    // real tiles always draw out to tileRadius; LOD extends beyond this
+    const int tileRadius = 40;
+    const float tileRadSq = (float)(tileRadius * tileRadius);
+
+    // refine tilemap AABB, shouldn't be taller or wider than 2x tileRadius
+    if ((originTX - minTileX) > tileRadius)
+        minTileX = originTX - tileRadius;
+
+    if ((maxTileX - originTX) > tileRadius)
+        maxTileX = originTX + tileRadius;
+
+    if ((originTZ - minTileZ) > tileRadius)
+        minTileZ = originTZ - tileRadius;
+
+    if ((maxTileZ - originTZ) > tileRadius)
+        maxTileZ = originTZ + tileRadius;
+
+    // this will be the first discard test if set to 1
+#define DO_EUCLIDEAN_DISTANCE_TEST 1
+
+    // everything in the game is drawn in layer groups, base depth of the group
+    const float baseZ = RenderDevice::GetDepth();
+
+    // --- LOD background quads ---
+    // covers the visible area with a pre-rendered minimap texture (1 texel per tile)
+    // real tiles render on top within the smaller tileRadius region
+    // uses a shared vertex grid so adjacent cells have identical edge positions
+    // only draw LOD quads when camera is not pitched down toward the floor (jumps)
+    if (sp == 0.0f && lodTextureReady)  {
+        bool lodPrepared = false;
+        const int wrapMaskX = width >> 4;
+        const int wrapMaskZ = height >> 4;
+
+        const int lodTileSpanX = lodMaxTileX - lodMinTileX + 1;
+        const int lodTileSpanZ = lodMaxTileZ - lodMinTileZ + 1;
+
+        const int LOD_GRID = 16;
+
+        // tile-aligned grid boundaries: each grid point sits on an exact tile edge
+        // so LOD texels map 1:1 to tile positions
+        int gridTileX[LOD_GRID + 1];
+        int gridTileZ[LOD_GRID + 1];
+        for (int i = 0; i <= LOD_GRID; i++) {
+            gridTileX[i] = lodMinTileX + (i * lodTileSpanX) / LOD_GRID;
+            gridTileZ[i] = lodMinTileZ + (i * lodTileSpanZ) / LOD_GRID;
+        }
+
+        // compute shared vertex grid at tile-aligned world positions
+        // adjacent cells reference the same vertex, hopefully eliminating seams
+        Vector4f gridVerts[LOD_GRID + 1][LOD_GRID + 1];
+        uint8 gridValid[LOD_GRID + 1][LOD_GRID + 1];
+
+        for (int gz = 0; gz <= LOD_GRID; gz++) {
+            for (int gx = 0; gx <= LOD_GRID; gx++) {
+                float wx = (float)(gridTileX[gx] * TILE_SIZE);
+                float wz = (float)(gridTileZ[gz] * TILE_SIZE);
+
+                gridVerts[gz][gx] = { wx, 0.0f, wz, 1.0f };
+                mat_trans_nodiv(gridVerts[gz][gx].x, gridVerts[gz][gx].y,
+                                gridVerts[gz][gx].z, gridVerts[gz][gx].w);
+
+                if (gridVerts[gz][gx].w <= EPS) {
+                    gridValid[gz][gx] = 0;
+                } else {
+                    float invW = shz_invf(gridVerts[gz][gx].w);
+                    gridVerts[gz][gx].x *= invW;
+                    gridVerts[gz][gx].y *= invW;
+                    gridVerts[gz][gx].z *= invW;
+                    gridVerts[gz][gx].z += baseZ - 0.001f;
+                    gridVerts[gz][gx].w = invW;
+                    gridValid[gz][gx] = 1;
+                }
+            }
+        }
+
+        // draw cells from shared vertices, only where real tiles don't cover
+        const float lodOriginX = (float)originTX;
+        const float lodOriginZ = (float)originTZ;
+
+        for (int gz = 0; gz < LOD_GRID; gz++) {
+            for (int gx = 0; gx < LOD_GRID; gx++) {
+                if (!gridValid[gz][gx] || !gridValid[gz][gx + 1] ||
+                    !gridValid[gz + 1][gx] || !gridValid[gz + 1][gx + 1])
+                    continue;
+
+                // skip cells fully inside the real tile radius to avoid z-fighting
+                float cx0 = (float)gridTileX[gx] - lodOriginX;
+                float cx1 = (float)gridTileX[gx + 1] - lodOriginX;
+                float cz0 = (float)gridTileZ[gz] - lodOriginZ;
+                float cz1 = (float)gridTileZ[gz + 1] - lodOriginZ;
+                // if tiles are outside of the manhattan distance from origin
+                // we can skip the more expensive euclidean distance test
+                // so let's try the cheaper test first
+                if (((cx0 + cz0) < (tileRadius)) &&
+                    ((cx1 + cz1) < (tileRadius)) &&
+                    ((cx0 + cz1) < (tileRadius)) &&
+                    ((cx1 + cz1) < (tileRadius))
+                ) {
+                    if (((cx0*cx0 + cz0*cz0) < tileRadSq) &&
+                        ((cx1*cx1 + cz0*cz0) < tileRadSq) &&
+                        ((cx0*cx0 + cz1*cz1) < tileRadSq) &&
+                        ((cx1*cx1 + cz1*cz1) < tileRadSq))
+                        continue;
+                }
+
+                Vector4f &ul = gridVerts[gz][gx];
+                Vector4f &ur = gridVerts[gz][gx + 1];
+                Vector4f &ll = gridVerts[gz + 1][gx];
+                Vector4f &lr = gridVerts[gz + 1][gx + 1];
+
+                // screen edge culling
+                if (ul.x < 0 && ur.x < 0 && ll.x < 0 && lr.x < 0) continue;
+                if (ul.x > 320 && ur.x > 320 && ll.x > 320 && lr.x > 320) continue;
+                if (ul.y > 240 && ur.y > 240 && ll.y > 240 && lr.y > 240) continue;
+
+                // UVs from tile-aligned grid boundaries (exact tile indices)
+                int iu0 = gridTileX[gx] & wrapMaskX;
+                int iu1 = gridTileX[gx + 1] & wrapMaskX;
+                int iv0 = gridTileZ[gz] & wrapMaskZ;
+                int iv1 = gridTileZ[gz + 1] & wrapMaskZ;
+
+                // skip cells that straddle wrap boundary
+                if (iu1 <= iu0 || iv1 <= iv0)
+                    continue;
+
+                // defer prepare until first drawable cell to avoid "not consumed" RenderDevice warning
+                if (!lodPrepared) {
+                    RenderDevice::PrepareTexturedPolyPTEX(currentScreen->clipBound_Y1, INK_NONE, &mapSurf);
+                    lodPrepared = true;
+                }
+
+                // simulated floor distance shading, experimentally derived
+                uint8 comp = (uint8)((1.0f - ((ur.w*250.0f) < 1.0f ? (ur.w*250.0f) : 1.0f)) * 84.0f);
+                // uses vertex offset color to increase lightness (additive color)
+                uint32 ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+
+                RenderDevice::DrawFloorTexturedPolyPTEx(
+                    ul, ur, ll, lr,
+                    iu0, iu1, iv0, iv1,
+                    &mapSurf, ocolor
+                );
+            }
+        }
+    }
+
+    // Prepare tileset texture for the real tile loop (moved from earlier to avoid
+    // "not consumed" RenderDevice warning when LOD quad prepare comes between the two)
+    RenderDevice::PrepareTexturedPolyPTEX(currentScreen->clipBound_Y1, INK_NONE, surface);
+
+    // get some of the tilemap into cache, hopefully we use more than once cached tile
+    __builtin_prefetch(&layout[(minTileX) + (minTileZ << layer->widthShift)]);
+
+    int firstZ = firstNonEmptyRow > minTileZ ? firstNonEmptyRow : minTileZ;
+    int lastZ = lastNonEmptyRow < maxTileZ ? lastNonEmptyRow : maxTileZ;
+
+    for (int tz = firstZ; tz <= lastZ; tz++) {
+        // only need to compute these once per row
+        float z0 = (float)((uint32)(tz * TILE_SIZE));
+        float z1 = z0 + TILE_SIZE;
+#if DO_EUCLIDEAN_DISTANCE_TEST
+        float zdiff = (originTZ - tz);
+#endif
+        bool cantReuse = true;
+
+        // we did a few rounds of bounds refinements earlier
+        // but for rows, there's one more that can be done
+        // every row has different first and last non-empty tile
+        // some rows are much narrower in these bounds
+        // so use them
+        int firstX = (minTileX < firstNonemptyTileInRow[tz]) ? firstNonemptyTileInRow[tz] : minTileX;
+        int lastX  = (maxTileX >  lastNonemptyTileInRow[tz]) ?  lastNonemptyTileInRow[tz] : maxTileX;
+
+        // so we can just increment to index next tile
+        size_t layout_offset = firstX + (tz << layer->widthShift) - 1;
+
+        for (int tx = firstX; tx <= lastX; tx++) {
+            bool reuseRights = false;
+            layout_offset++;
+
+#if DO_EUCLIDEAN_DISTANCE_TEST
+            // only test if camera is not pitched down to floor
+            if (sp == 0.0f) {
+                float xdiff = (originTX - tx);
+                float xzdist = ((xdiff * xdiff) + (zdiff * zdiff));
+                if (xzdist > tileRadSq) {
+                    cantReuse = true;
+                    continue;
+                }
+            }
+#endif
+
+            // raw tile number (0 - 1023)
+            uint16 tile = layout[layout_offset] & 0xFFF;
+            // FFF is an empty tile
+            if (tile == 0xFFF) {
+                cantReuse = true;
+                continue;
+            }
+
+            // if the previous iteration of inner loop did not process empty tile,
+            // we can reuse the upper/lower right verts to skip two sets of transforms
+            if (!cantReuse) {
+                reuseRights = true;
+            }
+
+            // processing a visible tile
+            cantReuse = false;
+
+            // u flip and v flip come from upper 2 bits of tile number
+            int uf = 0;
+            int vf = 0;
+            if ((tile > 0x3FF) && (tile < 0x800)) {
+                uf = 1;
+            } else if ((tile > 0x7FF) && (tile < 0xC00)) {
+                vf = 1;
+            } else if (tile > 0xBFF) {
+                uf = 1;
+                vf = 1;
+            }
+            tile &= 0x3FF;
+
+            // now we are going back to world coords from tile coords
+            float x0 = (float)((uint32)(tx * TILE_SIZE));
+            float x1 = x0 + TILE_SIZE;
+            uint32 color;
+
+            // prefetch a new cache-line sized run of tiles to speed up later iterations of inner loop
+            __builtin_prefetch(&layout[layout_offset + 16]);
+
+            if (reuseRights) {
+                // early out test
+                // one FIPR and one branch can skip all of the work for this tile
+                float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
+                                    x1, 0.0f, z0, 1.0f);
+                // new upper-right vert would be very close to, or behind camera
+                // skip the entire tile
+                if (wTest <= EPS) {
+                    cantReuse = true;
+                    continue;
+                }
+
+                // reuse previous iteration upper/lower right tiles
+                tileVerts[TILE_UL].x = tileVerts[TILE_UR].x;
+                tileVerts[TILE_UL].y = tileVerts[TILE_UR].y;
+                tileVerts[TILE_UL].z = tileVerts[TILE_UR].z;
+                tileVerts[TILE_UL].w = tileVerts[TILE_UR].w;
+
+                tileVerts[TILE_LL].x = tileVerts[TILE_LR].x;
+                tileVerts[TILE_LL].y = tileVerts[TILE_LR].y;
+                tileVerts[TILE_LL].z = tileVerts[TILE_LR].z;
+                tileVerts[TILE_LL].w = tileVerts[TILE_LR].w;
+
+                // now create new upper/lower right tiles
+                tileVerts[TILE_UR].x = x1;
+                tileVerts[TILE_UR].y = 0.0f;
+                tileVerts[TILE_UR].z = z0;
+                tileVerts[TILE_UR].w = 1.0f;
+
+                tileVerts[TILE_LR].x = x1;
+                tileVerts[TILE_LR].y = 0.0f;
+                tileVerts[TILE_LR].z = z1;
+                tileVerts[TILE_LR].w = 1.0f;
+
+                // transform new upper right
+                mat_trans_nodiv(tileVerts[TILE_UR].x, tileVerts[TILE_UR].y, tileVerts[TILE_UR].z, tileVerts[TILE_UR].w);
+                // redundant now
+#if 0
+                if (tileVerts[TILE_UR].w <= EPS) {
+                    cantReuse = true;
+                    continue;
+                }
+#endif
+
+                // transform new lower right
+                mat_trans_nodiv(tileVerts[TILE_LR].x, tileVerts[TILE_LR].y, tileVerts[TILE_LR].z, tileVerts[TILE_LR].w);
+                // new lower-right vert would be very close to, or behind camera
+                // skip the entire tile
+                if (tileVerts[TILE_LR].w <= EPS) {
+                    cantReuse = true;
+                    continue;
+                }
+
+                // perspective divide
+                float wUR = tileVerts[TILE_UR].w;
+                float wLR = tileVerts[TILE_LR].w;
+                tileVerts[TILE_UR].w = shz_invf(wUR);
+                tileVerts[TILE_LR].w = shz_invf(wLR);
+
+                tileVerts[TILE_UR].x *= tileVerts[TILE_UR].w;
+                tileVerts[TILE_UR].y *= tileVerts[TILE_UR].w;
+                tileVerts[TILE_UR].z *= tileVerts[TILE_UR].w;
+                tileVerts[TILE_UR].z += baseZ;
+
+                tileVerts[TILE_LR].x *= tileVerts[TILE_LR].w;
+                tileVerts[TILE_LR].y *= tileVerts[TILE_LR].w;
+                tileVerts[TILE_LR].z *= tileVerts[TILE_LR].w;
+                tileVerts[TILE_LR].z += baseZ;
+            } else {
+                // early out test
+                // one FIPR and one branch can skip all of the work for this tile
+                float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
+                                    x0, 0.0f, z0, 1.0f);
+
+                // upper-left vert would be very close to, or behind camera
+                // skip the entire tile
+                if (wTest < EPS) {
+                    cantReuse = true;
+                    continue;
+                }
+
+                // create all four tile verts
+                tileVerts[TILE_UL].x = x0;
+                tileVerts[TILE_UL].y = 0.0f;
+                tileVerts[TILE_UL].z = z0;
+                tileVerts[TILE_UL].w = 1.0f;
+
+                tileVerts[TILE_UR].x = x1;
+                tileVerts[TILE_UR].y = 0.0f;
+                tileVerts[TILE_UR].z = z0;
+                tileVerts[TILE_UR].w = 1.0f;
+
+                tileVerts[TILE_LL].x = x0;
+                tileVerts[TILE_LL].y = 0.0f;
+                tileVerts[TILE_LL].z = z1;
+                tileVerts[TILE_LL].w = 1.0f;
+
+                tileVerts[TILE_LR].x = x1;
+                tileVerts[TILE_LR].y = 0.0f;
+                tileVerts[TILE_LR].z = z1;
+                tileVerts[TILE_LR].w = 1.0f;
+
+                // loop to transform and near-plane test all tile verts
+                int negw = 0;
+                for (int i=0;i<4;i++) {
+                    mat_trans_nodiv(tileVerts[i].x, tileVerts[i].y, tileVerts[i].z, tileVerts[i].w);
+                    float wi = tileVerts[i].w;
+                    // vert `i` would be very close to, or behind camera
+                    // set flag and break
+                    if (wi <= EPS) {
+                        negw = 1;
+                        break;
+                    }
+                }
+
+                // skip the entire tile if flag was set
+                if (negw) {
+                    cantReuse = true;
+                    continue;
+                }
+
+                // perspective divide
+                for (int i=0;i<4;i++) {
+                    float wi = shz_invf(tileVerts[i].w);
+                    tileVerts[i].w = wi;
+                    tileVerts[i].x *= tileVerts[i].w;
+                    tileVerts[i].y *= tileVerts[i].w;
+                    tileVerts[i].z *= tileVerts[i].w;
+                    tileVerts[i].z += baseZ;
+                }
+            }
+
+            // we might still be able to discard tile if it is outside of screenspace bounds
+            // off left side of screen
+            if (tileVerts[0].x < 0 && tileVerts[1].x < 0 && tileVerts[2].x < 0 && tileVerts[3].x < 0)  {
+                cantReuse = true;
+                continue;
+            }
+
+            // off right side of screen
+            if (tileVerts[0].x > 320 && tileVerts[1].x > 320 && tileVerts[2].x > 320 && tileVerts[3].x > 320)  {
+                cantReuse = true;
+                continue;
+            }
+
+            // off bottom of screen
+            if (tileVerts[0].y > 240 && tileVerts[1].y > 240 && tileVerts[2].y > 240  && tileVerts[3].y > 240) {
+                cantReuse = true;
+                continue;
+            }
+
+            // I don't know if this actually happens, so this is disabled
+#if 0
+            // off top of screen
+            if (sp != 0.0f) {
+                if (tileVerts[0].y > 240 && tileVerts[1].y > 240 && tileVerts[2].y > 240  && tileVerts[3].y > 240) {
+                    cantReuse = true;
+                    continue;
+                }
+            }
+#endif
+
+            // simulated floor distance shading, experimentally derived
+            uint8 comp = (uint8)((1.0f - ((tileVerts[TILE_UR].w*250.0f) < 1.0f ? (tileVerts[TILE_UR].w*250.0f) : 1.0f)) * 84.0f);
+            // uses vertex offset color to increase lightness (additive color)
+            color = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+
+            // tile index in 32x32 square atlas
+            int atlasX = (tile % KOS_ATLAS_WIDTH_TILES ) * TILE_SIZE;
+            int atlasY = (tile / KOS_ATLAS_HEIGHT_TILES) * TILE_SIZE;
+
+            int u0,u1,v0,v1;
+
+            // handle u/v flip without recompiling headers
+            int uoff0 = ((uf)  * TILE_SIZE);
+            int uoff1 = ((!uf) * TILE_SIZE);
+            int voff0 = ((vf)  * TILE_SIZE);
+            int voff1 = ((!vf) * TILE_SIZE);
+
+            // pull in edges by one texel to avoid adjacent tile pixels being drawn
+            // ("holes" in the grid)
+            if (uoff0 < uoff1) {
+                uoff0 += 1;
+                uoff1 -= 1;
+            } else {
+                uoff0 -= 1;
+                uoff1 += 1;
+            }
+
+            if (voff0 < voff1) {
+                voff0 += 1;
+                voff1 -= 1;
+            } else {
+                voff0 -= 1;
+                voff1 += 1;
+            }
+
+            u0 = atlasX + uoff0;
+            u1 = atlasX + uoff1;
+            v0 = atlasY + voff0;
+            v1 = atlasY + voff1;
+
+            RenderDevice::DrawFloorTexturedPolyPTEx(
+                tileVerts[TILE_UL], tileVerts[TILE_UR],
+                tileVerts[TILE_LL], tileVerts[TILE_LR],
+                u0, u1,
+                v0, v1,
+                surface, color
+            );
+        }
+    }
     return;
+#endif
 #if !defined(KOS_HARDWARE_RENDERER)
     if (!layer->xsize || !layer->ysize)
         return;
@@ -1963,9 +3041,6 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
     uint16 *activePalette = fullPalette[0];
     if (currentScreen->clipBound_X1 < currentScreen->clipBound_X2 && currentScreen->clipBound_Y1 < currentScreen->clipBound_Y2) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-        const int32 prepY = currentScreen->clipBound_Y1;
-        const auto* prepSurface = &gfxSurface[0];
-
         ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
 
         int32 ty = FROM_FIXED(scanline->position.y) >> 4;
@@ -1981,7 +3056,6 @@ void RSDK::DrawLayerBasic(TileLayer *layer)
 
             for (int32 screenX = currentScreen->clipBound_X1 - offsetX; screenX < currentScreen->clipBound_X2; screenX += TILE_SIZE) {
                 if (*layout != 0xFFFF) {
-                    RenderDevice::PrepareTexturedQuad(prepY, prepSurface);
                     DrawByLayout(*layout, screenX, screenY);
                 }
 

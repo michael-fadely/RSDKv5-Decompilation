@@ -10,12 +10,25 @@ namespace RSDK
 #define MIX_BUFFER_SIZE (0x800)
 #define SAMPLE_FORMAT   float
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define AUDIO_FREQUENCY (22050)
+#else
 #define AUDIO_FREQUENCY (44100)
+#endif
 #define AUDIO_CHANNELS  (2)
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include <kos.h>
+#endif
 
 struct SFXInfo {
     RETRO_HASH_MD5(hash);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    sfxhnd_t handle;
+    float freq;
+#else
     float *buffer;
+#endif
     size_t length;
     int32 playCount;
     uint8 maxConcurrentPlays;
@@ -23,17 +36,29 @@ struct SFXInfo {
 };
 
 struct ChannelInfo {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     float *samplePtr;
+#endif
     float pan;
     float volume;
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    float speed;
+#else
     int32 speed;
+#endif
     size_t sampleLength;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     int32 bufferPos;
+#endif
     int32 playIndex;
     uint32 loop;
     int16 soundID;
     uint8 priority;
     uint8 state;
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    uint64_t startTimeNs;
+    int aicaChannel;
+#endif
 };
 
 enum ChannelStates { CHANNEL_IDLE, CHANNEL_SFX, CHANNEL_STREAM, CHANNEL_LOADING_STREAM, CHANNEL_PAUSED = 0x40 };
@@ -93,9 +118,20 @@ inline uint16 GetSfx(const char *sfxName)
     GEN_HASH_MD5(sfxName, hash);
 
     for (int32 s = 0; s < SFX_COUNT; ++s) {
-        if (HASH_MATCH_MD5(sfxList[s].hash, hash))
+        if (HASH_MATCH_MD5(sfxList[s].hash, hash)) {
             return s;
+        }
     }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    LoadSfx((char*)sfxName, 1, 1);
+
+    for (int32 s = 0; s < SFX_COUNT; ++s) {
+        if (HASH_MATCH_MD5(sfxList[s].hash, hash)) {
+            return s;
+        }
+    }
+#endif
 
     return -1;
 }
@@ -106,9 +142,27 @@ inline void StopSfx(uint16 sfx)
     LockAudioDevice();
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    for (int32 i = 0; i < CHANNEL_COUNT - 1; ++i) {
+#else
     for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
+#endif
         if (channels[i].soundID == sfx) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            // get the hardware playback channel number before MEM_ZERO call
+            int aicaChannel = channels[i].aicaChannel;
+#endif
             MEM_ZERO(channels[i]);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            // if this is not -1, a hardware playback channel was assigned to this RSDK ChannelInfo
+            // release it
+            if (aicaChannel != -1) {
+                snd_sfx_stop(aicaChannel);
+                snd_sfx_chn_free(aicaChannel);
+            }
+            channels[i].aicaChannel = -1;
+            channels[i].startTimeNs = 0xFFFFFFFFFFFFFFFFL;
+#endif
             channels[i].soundID = -1;
             channels[i].state   = CHANNEL_IDLE;
         }
@@ -126,9 +180,27 @@ inline void StopAllSfx()
     LockAudioDevice();
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    for (int32 i = 0; i < CHANNEL_COUNT - 1; ++i) {
+#else
     for (int32 i = 0; i < CHANNEL_COUNT; ++i) {
+#endif
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        // get the hardware playback channel number before MEM_ZERO call
+        int aicaChannel = channels[i].aicaChannel;
+#endif
         if (channels[i].state == CHANNEL_SFX) {
             MEM_ZERO(channels[i]);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            // if this is not -1, a hardware playback channel was assigned to this RSDK ChannelInfo
+            // release it
+            if (aicaChannel != -1) {
+                snd_sfx_stop(aicaChannel);
+                snd_sfx_chn_free(aicaChannel);
+            }
+            channels[i].aicaChannel = -1;
+            channels[i].startTimeNs = 0xFFFFFFFFFFFFFFFFL;
+#endif
             channels[i].soundID = -1;
             channels[i].state   = CHANNEL_IDLE;
         }
@@ -142,8 +214,21 @@ inline void StopAllSfx()
 
 void SetChannelAttributes(uint8 channel, float volume, float panning, float speed);
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+extern "C" {
+    void stream_play(void);
+    void stream_pause(void);
+    void stream_stop(void);
+    int stream_is_playing(void);
+}
+#endif
+
 inline void StopChannel(uint32 channel)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if (channel == CHANNEL_COUNT - 1)
+        stream_stop();
+#endif
     if (channel < CHANNEL_COUNT) {
         if (channels[channel].state != CHANNEL_LOADING_STREAM)
             channels[channel].state = CHANNEL_IDLE;
@@ -152,6 +237,10 @@ inline void StopChannel(uint32 channel)
 
 inline void PauseChannel(uint32 channel)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if (channel == CHANNEL_COUNT - 1)
+        stream_pause();
+#endif
     if (channel < CHANNEL_COUNT) {
         if (channels[channel].state != CHANNEL_LOADING_STREAM)
             channels[channel].state |= CHANNEL_PAUSED;
@@ -160,20 +249,31 @@ inline void PauseChannel(uint32 channel)
 
 inline void ResumeChannel(uint32 channel)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    if (channel == CHANNEL_COUNT - 1)
+        stream_play();
+#endif
     if (channel < CHANNEL_COUNT) {
         if (channels[channel].state != CHANNEL_LOADING_STREAM)
             channels[channel].state &= ~CHANNEL_PAUSED;
     }
 }
 
+
 inline void PauseSound()
 {
     for (int32 c = 0; c < CHANNEL_COUNT; ++c) PauseChannel(c);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    stream_pause();
+#endif
 }
 
 inline void ResumeSound()
 {
     for (int32 c = 0; c < CHANNEL_COUNT; ++c) ResumeChannel(c);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    stream_play();
+#endif
 }
 
 inline bool32 SfxPlaying(uint16 sfx)
@@ -187,10 +287,15 @@ inline bool32 SfxPlaying(uint16 sfx)
 
 inline bool32 ChannelActive(uint32 channel)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // afaict only used to check if song still playing in credits scroll
+    return stream_is_playing();
+#else
     if (channel >= CHANNEL_COUNT)
         return false;
     else
         return (channels[channel].state & 0x3F) != CHANNEL_IDLE;
+#endif
 }
 
 uint32 GetChannelPos(uint32 channel);

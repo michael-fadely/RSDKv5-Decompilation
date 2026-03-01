@@ -6,6 +6,10 @@ using namespace RSDK;
 #include "Legacy/DrawingLegacy.cpp"
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+#include <RSDK/Graphics/KallistiOS/AniTileTracker.hpp>
+#endif
+
 // all render devices need to access the initial vertex buffer :skull:
 
 // clang-format off
@@ -301,7 +305,7 @@ void RSDK::InitSystemSurfaces()
     gfxSurface[0].height   = TILE_COUNT * TILE_SIZE;
     gfxSurface[0].lineSize = 4; // 16px
 #endif
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     gfxSurface[0].pixels   = nullptr;
 #else
     gfxSurface[0].pixels   = tilesetPixels;
@@ -621,8 +625,14 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
         const auto width = currentScreen->size.x;
         const auto height = currentScreen->size.y;
 
-        RenderDevice::PrepareColoredPoly(0, PVR_BLEND_SRCALPHA, PVR_BLEND_INVSRCALPHA);
-        RenderDevice::DrawColoredPoly(0, 0, width, height, color | (badAlpha << 24));
+        // color poly is only ever used for fill
+        if ((badAlpha == 0xFF)) {
+            RenderDevice::PrepareColoredPolyPT(0, INK_NONE);
+            RenderDevice::DrawColoredPolyPT(0, 0, width, height, color | (badAlpha << 24));
+        } else {
+            RenderDevice::PrepareColoredPolyTR(0, INK_NONE);
+            RenderDevice::DrawColoredPolyTR(0, 0, width, height, color | (badAlpha << 24));
+        }
         #else
         validDraw        = true;
         #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
@@ -653,6 +663,14 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
     }
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+void RSDK::Draw3DLine(float z, int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative) {
+    float oldDepth = RenderDevice::GetDepth();
+    RenderDevice::SetDepth(oldDepth + z);
+    DrawLine(x1, y1, x2, y2, color, alpha, inkEffect, screenRelative);
+    RenderDevice::SetDepth(oldDepth);
+}
+#endif
 void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
     switch (inkEffect) {
@@ -691,6 +709,7 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
         drawY2 = FROM_FIXED(y2) - currentScreen->position.y;
     }
 
+#if !defined(KOS_HARDWARE_RENDERER)
     int32 flags1 = 0;
     if (drawX1 >= currentScreen->clipBound_X2)
         flags1 = 2;
@@ -832,9 +851,26 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
 #else
     uint16 color16 = PACK_RGB888_32(color);
 #endif
+#endif // !defined(KOS_HARDWARE_RENDERER)
 
-#if defined(KOS_HARDWARE_RENDERER)
-    // DCTODO: DrawLine
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    if (!RenderDevice::SupportedInk(inkEffect)) {
+        return;
+    }
+
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
+    uint32 color32      = (alpha << 24) | color;
+
+    if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
+        RenderDevice::PrepareLinePolyPT(inkEffect);
+        RenderDevice::DrawLinePolyPT(drawX1, drawY1, drawX2, drawY2, color32);
+    } else {
+        RenderDevice::PrepareLinePolyTR(inkEffect);
+        RenderDevice::DrawLinePolyTR(drawX1, drawY1, drawX2, drawY2, color32);
+    }
 #else
     uint16 *frameBuffer = &currentScreen->frameBuffer[drawX1 + drawY1 * currentScreen->pitch];
 
@@ -1193,6 +1229,9 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
 }
 void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    bool darkenTint = true;
+#endif
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -1213,6 +1252,11 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         case INK_TINT:
             if (!tintLookupTable)
                 return;
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+            // distinguish between INVERT tint and alpha tint
+            if (tintLookupTable[0] == 0xFFFF)
+                darkenTint = false;
+#endif
             break;
     }
 
@@ -1242,23 +1286,64 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
     if (width <= 0 || height <= 0)
         return;
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    if (!RenderDevice::SupportedInk(inkEffect)) {
+        return;
+    }
+
     if (inkEffect == INK_NONE) {
         alpha = 0xFF;
     }
 
-    int srcBlend;
-    int dstBlend;
+    if (inkEffect == INK_TINT) {
+        alpha = 0x80;
+    }
 
-    if (!RenderDevice::InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
-        return;
+    // water pools in GHZ Act 2 use INK_SUB with solid colored rectangles
+    // we don't have any special handling for this in KallistiOSRenderDevice
+    // if we don't handle it here, they will be opaque robin-egg blue rectangles
+    // this is THE ONLY DrawRect call with INK_SUB in Mania (I checked -- jn64)
+    if (inkEffect == INK_SUB) {
+        uint8_t r = (color >> 16) & 0xFF;
+        uint8_t g = (color >>  8) & 0xFF;
+        uint8_t b = (color      ) & 0xFF;
+        // INK_SUB isn't quite a linear darken, but not a lot we can do here
+        if (r > 32)
+            r -= 32;
+        else
+            r = 0;
+
+        if (b > 32)
+            b -= 32;
+        else
+            b = 0;
+
+        if (g > 32)
+            g -= 32;
+        else
+            g = 0;
+
+        color = (r << 16) | (g << 8) | b;
+        alpha = 0x60;
+        inkEffect = INK_ALPHA;
     }
 
     validDraw = true;
 
-    RenderDevice::PrepareColoredPoly(y, srcBlend, dstBlend);
-
-    RenderDevice::DrawColoredPoly(x, y, width, height, color | (alpha << 24));
+    if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
+        RenderDevice::PrepareColoredPolyPT(y, inkEffect);
+        RenderDevice::DrawColoredPolyPT(x, y, width, height, color | (alpha << 24));
+    } else {
+        // distinguish between INVERT tint and alpha tint
+        // when it is an alpha tint and not an invert tint,
+        // set high bit of inkEffect word to 1
+        // we check for this in KallistiOSRenderDevice
+        if ((inkEffect == INK_TINT) && darkenTint) {
+            inkEffect |= 0x80000000;
+        }
+        RenderDevice::PrepareColoredPolyTR(y, inkEffect);
+        RenderDevice::DrawColoredPolyTR(x, y, width, height, color | (alpha << 24));
+    }
 #else
     int32 pitch         = currentScreen->pitch - width;
     validDraw           = true;
@@ -1384,11 +1469,82 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
     }
 #endif
 }
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+// Helpers for DrawCircle/DrawCircleOutline functions
+static void DrawFilledCircleFromTris(int cx, int cy, int radius, uint32 color, int32 alpha, int32 inkEffect)
+{
+    const int segs = 64;
+    const float step = 2.0f * (float)M_PI / (float)segs;
+
+    struct Vector2 triv[3];
+
+    int32 red = (color >> 16) & 0xFF;
+    int32 green = (color >> 8) & 0xFf;
+    int32 blue = color & 0xFF;
+
+    radius <<= 16;
+    cx <<= 16;
+    cy <<= 16;
+
+    int x0 = cx + radius;
+    int y0 = cy;
+
+    triv[2].x = cx;
+    triv[2].y = cy;
+
+    float angle = step;
+
+    for (int i = 1; i <= segs; i++) {
+        int x1 = cx + (int)((float)radius * cosf(angle));
+        int y1 = cy + (int)((float)radius * sinf(angle));
+        triv[1].x = x0;
+        triv[1].y = y0;
+        triv[0].x = x1;
+        triv[0].y = y1;
+
+        DrawFace(triv, 3, red, green, blue, alpha, inkEffect);
+
+        x0 = x1;
+        y0 = y1;
+
+        angle += step;
+    }
+}
+
+static void DrawCircleOutlineWithLines(int cx, int cy, int radius, int width, uint32 color, int32 alpha, int32 inkEffect)
+{
+    const int segs = 64;
+    const float step = 2.0f * (float)M_PI / (float)segs;
+
+    RenderDevice::SetLinePolyThickness(width);
+
+    int x0 = cx + radius;
+    int y0 = cy;
+
+    // avoid blowing up hybrid rendering with a huge amount of buffered TR
+    if (inkEffect == INK_BLEND) {
+        inkEffect = INK_NONE;
+        alpha = 0xFF;
+    }
+
+    float angle = step;
+    for (int i = 1; i <= segs; i++) {
+        int x1 = cx + (int)((float)radius * cosf(angle));
+        int y1 = cy + (int)((float)radius * sinf(angle));
+
+        DrawLine(x0, y0, x1, y1, color, alpha, inkEffect, true);
+
+        x0 = x1;
+        y0 = y1;
+
+        angle += step;
+    }
+
+    RenderDevice::SetLinePolyThickness(2);
+}
+#endif
 void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
-#if defined(KOS_HARDWARE_RENDERER)
-    // DCTODO: DrawCircle
-#else
     if (radius > 0) {
         switch (inkEffect) {
             default: break;
@@ -1418,6 +1574,9 @@ void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha,
             y = FROM_FIXED(y) - currentScreen->position.y;
         }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+        DrawFilledCircleFromTris(x, y, radius, color, alpha, inkEffect);
+#else
         int32 yRadiusBottom = y + radius;
         int32 bottom        = yRadiusBottom + 1;
         int32 yRadiusTop    = y - radius;
@@ -1722,8 +1881,8 @@ void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha,
                     break;
             }
         }
-    }
 #endif
+    }
 }
 void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRadius, uint32 color, int32 alpha, int32 inkEffect,
                              bool32 screenRelative)
@@ -1787,8 +1946,8 @@ void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRad
             int32 or2           = outerRadius * outerRadius;
             validDraw           = true;
 
-#if defined(KOS_HARDWARE_RENDERER)
-            // DCTODO: DrawCircleOutline
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+            DrawCircleOutlineWithLines(x, y, outerRadius, (outerRadius - innerRadius), color, alpha, inkEffect);
 #else
             uint16 *frameBuffer = &currentScreen->frameBuffer[left + top * currentScreen->pitch];
 #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
@@ -2015,11 +2174,15 @@ void RSDK::DrawCircleOutline(int32 x, int32 y, int32 innerRadius, int32 outerRad
     }
 }
 
-void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 b, int32 alpha, int32 inkEffect)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+void RSDK::Draw3DFace(Vector4f *vertices, int32 vertCount, int32 r, int32 g, int32 b, int32 alpha, int32 inkEffect)
 {
-#if defined(KOS_HARDWARE_RENDERER)
-    // DCTODO: DrawFace
-#else
+    if (!RenderDevice::SupportedInk(inkEffect)) {
+        return;
+    }
+
+    validDraw = true;
+
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -2043,6 +2206,65 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
             break;
     }
 
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
+    if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
+        RenderDevice::PrepareFacePolyPT(inkEffect);
+        RenderDevice::Draw3DFacePolyPT(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
+    } else {
+        RenderDevice::PrepareFacePolyTR(inkEffect);
+        RenderDevice::Draw3DFacePolyTR(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
+    }
+}
+#endif
+void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 b, int32 alpha, int32 inkEffect)
+{
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    if (!RenderDevice::SupportedInk(inkEffect)) {
+        return;
+    }
+#endif
+
+    validDraw = true;
+
+    switch (inkEffect) {
+        default: break;
+        case INK_ALPHA:
+            if (alpha > 0xFF)
+                inkEffect = INK_NONE;
+            else if (alpha <= 0)
+                return;
+            break;
+
+        case INK_ADD:
+        case INK_SUB:
+            if (alpha > 0xFF)
+                alpha = 0xFF;
+            else if (alpha <= 0)
+                return;
+            break;
+
+        case INK_TINT:
+            if (!tintLookupTable)
+                return;
+            break;
+    }
+
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
+        RenderDevice::PrepareFacePolyPT(inkEffect);
+        RenderDevice::DrawFacePolyPT(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
+    } else {
+        RenderDevice::PrepareFacePolyTR(inkEffect);
+        RenderDevice::DrawFacePolyTR(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
+    }
+#else
     int32 top    = 0x7FFFFFFF;
     int32 bottom = -0x10000;
     for (int32 v = 0; v < vertCount; ++v) {
@@ -2276,11 +2498,15 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
     }
 #endif
 }
-void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, int32 alpha, int32 inkEffect)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+void RSDK::Draw3DBlendedFace(Vector4f *vertices, uint32 *colors, int32 vertCount, int32 alpha, int32 inkEffect)
 {
-#if defined(KOS_HARDWARE_RENDERER)
-    // DCTODO: DrawBlendedFace
-#else
+    if (!RenderDevice::SupportedInk(inkEffect)) {
+        return;
+    }
+
+    validDraw = true;
+
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -2304,6 +2530,65 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
             break;
     }
 
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
+    if ((inkEffect != INK_ADD) && (alpha == 0xFF)) {
+        RenderDevice::PrepareFacePolyPT(inkEffect);
+        RenderDevice::Draw3DFacePolyPT(vertices, vertCount, 0, alpha, colors);
+    } else {
+        RenderDevice::PrepareFacePolyTR(inkEffect);
+        RenderDevice::Draw3DFacePolyTR(vertices, vertCount, 0, alpha, colors);
+    }
+}
+#endif
+void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, int32 alpha, int32 inkEffect)
+{
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    if (!RenderDevice::SupportedInk(inkEffect)) {
+        return;
+    }
+#endif
+
+    validDraw = true;
+
+    switch (inkEffect) {
+        default: break;
+        case INK_ALPHA:
+            if (alpha > 0xFF)
+                inkEffect = INK_NONE;
+            else if (alpha <= 0)
+                return;
+            break;
+
+        case INK_ADD:
+        case INK_SUB:
+            if (alpha > 0xFF)
+                alpha = 0xFF;
+            else if (alpha <= 0)
+                return;
+            break;
+
+        case INK_TINT:
+            if (!tintLookupTable)
+                return;
+            break;
+    }
+
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    if ((inkEffect != INK_ADD) && (alpha == 0xFF)) {
+        RenderDevice::PrepareFacePolyPT(inkEffect);
+        RenderDevice::DrawFacePolyPT(vertices, vertCount, 0, alpha, colors);
+    } else {
+        RenderDevice::PrepareFacePolyTR(inkEffect);
+        RenderDevice::DrawFacePolyTR(vertices, vertCount, 0, alpha, colors);
+    }
+#else
     int32 top    = 0x7FFFFFFF;
     int32 bottom = -0x10000;
     for (int32 v = 0; v < vertCount; ++v) {
@@ -2769,6 +3054,18 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
 #endif
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+void RSDK::Draw3DSprite(Animator *animator, Vector4f *position, bool32 screenRelative) {
+    Vector2 pos;
+    pos.x = (int)position->x;
+    pos.y = (int)position->y;
+    float oldDepth = RenderDevice::GetDepth();
+
+    RenderDevice::SetDepth(oldDepth + position->z + 0.125f);
+    DrawSprite(animator, &pos, screenRelative);
+    RenderDevice::SetDepth(oldDepth);
+}
+#endif
 void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelative)
 {
     if (animator && animator->frames) {
@@ -2985,14 +3282,7 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
         return;
     }
 
-    if (inkEffect == INK_NONE) {
-        alpha = 0xFF;
-    }
-
-    int srcBlend;
-    int dstBlend;
-
-    if (!RenderDevice::InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
+    if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
 
@@ -3054,17 +3344,33 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
     const int32 xClipped = x + marginLeft;
     const int32 yClipped = y + marginTop;
 
-    RenderDevice::PrepareTexturedPoly(yClipped, srcBlend, dstBlend, surface);
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
 
-    RenderDevice::DrawTexturedPoly(
-            xClipped, yClipped,
-            xClipped, yClipped,
-            widthClipped, heightClipped,
-            sprX0, sprX1,
-            sprY0, sprY1,
-            0,
-            alpha,
-            surface);
+    if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
+        RenderDevice::PrepareTexturedPolyPT(yClipped, inkEffect, surface);
+        RenderDevice::DrawTexturedPolyPT(
+                xClipped, yClipped,
+                xClipped, yClipped,
+                widthClipped, heightClipped,
+                sprX0, sprX1,
+                sprY0, sprY1,
+                0,
+                alpha,
+                surface);
+    } else {
+        RenderDevice::PrepareTexturedPolyTR(yClipped, inkEffect, surface);
+        RenderDevice::DrawTexturedPolyTR(
+                xClipped, yClipped,
+                xClipped, yClipped,
+                widthClipped, heightClipped,
+                sprX0, sprX1,
+                sprY0, sprY1,
+                0,
+                alpha,
+                surface);
+    }
 #else
     int32 widthFlip  = width;
     int32 heightFlip = height;
@@ -3740,14 +4046,7 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
         return;
     }
 
-    if (inkEffect == INK_NONE) {
-        alpha = 0xFF;
-    }
-
-    int srcBlend;
-    int dstBlend;
-
-    if (!RenderDevice::InkToBlendModes(inkEffect, &srcBlend, &dstBlend)) {
+    if (!RenderDevice::SupportedInk(inkEffect)) {
         return;
     }
 
@@ -3828,17 +4127,33 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
         sprY1 = sprY + height;
     }
 
-    RenderDevice::PrepareTexturedPoly(newY + marginTop, srcBlend, dstBlend, surface);
+    if (inkEffect == INK_NONE) {
+        alpha = 0xFF;
+    }
 
-    RenderDevice::DrawTexturedPoly(
-            newX, newY,
-            x, y,
-            scaledWidth, scaledHeight,
-            sprX0, sprX1,
-            sprY0, sprY1,
-            512 - angle,
-            alpha,
-            surface);
+    if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
+        RenderDevice::PrepareTexturedPolyPT(newY + marginTop, inkEffect, surface);
+        RenderDevice::DrawTexturedPolyPT(
+                newX, newY,
+                x, y,
+                scaledWidth, scaledHeight,
+                sprX0, sprX1,
+                sprY0, sprY1,
+                512 - angle,
+                alpha,
+                surface);
+    } else {
+        RenderDevice::PrepareTexturedPolyTR(newY + marginTop, inkEffect, surface);
+        RenderDevice::DrawTexturedPolyTR(
+                newX, newY,
+                x, y,
+                scaledWidth, scaledHeight,
+                sprX0, sprX1,
+                sprY0, sprY1,
+                512 - angle,
+                alpha,
+                surface);
+    }
 #else
     int32 sine        = sin512LookupTable[angle];
     int32 cosine      = cos512LookupTable[angle];
@@ -4188,7 +4503,7 @@ void RSDK::DrawDeformedSprite(uint16 sheetID, int32 inkEffect, int32 alpha)
             break;
     }
 
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     // DCTODO: DrawDeformedSprite
     validDraw = true;
 #else
@@ -4418,8 +4733,22 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         const int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
-                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
+                        int32 sheetID;
+                        int32 tilesetX;
+                        int32 tilesetY;
+
+                        const AniTileState* aniTileState = AniTileTracker::GetAniTile(tile);
+
+                        if (aniTileState != nullptr) {
+                            sheetID = aniTileState->sheetID;
+                            tilesetX = aniTileState->u;
+                            tilesetY = aniTileState->v;
+                        }
+                        else {
+                            sheetID = 0;
+                            tilesetX = TILE_SIZE * (static_cast<int32>(tile) % KOS_ATLAS_WIDTH_TILES);
+                            tilesetY = TILE_SIZE * (static_cast<int32>(tile) / KOS_ATLAS_WIDTH_TILES);
+                        }
 
                         const int32 screenX = (tx * TILE_SIZE) + pivotX;
 
@@ -4429,7 +4758,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                                           flip,
                                           sceneInfo.entity->inkEffect,
                                           sceneInfo.entity->alpha,
-                                          0);
+                                          sheetID);
                     }
                 }
 #else
@@ -4472,8 +4801,22 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
-                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
+                        int32 sheetID;
+                        int32 tilesetX;
+                        int32 tilesetY;
+
+                        const AniTileState* aniTileState = AniTileTracker::GetAniTile(tile);
+
+                        if (aniTileState != nullptr) {
+                            sheetID = aniTileState->sheetID;
+                            tilesetX = aniTileState->u;
+                            tilesetY = aniTileState->v;
+                        }
+                        else {
+                            sheetID = 0;
+                            tilesetX = TILE_SIZE * (static_cast<int32>(tile) % KOS_ATLAS_WIDTH_TILES);
+                            tilesetY = TILE_SIZE * (static_cast<int32>(tile) / KOS_ATLAS_WIDTH_TILES);
+                        }
 
                         const int32 screenX = x + (tx * TILE_SIZE);
 
@@ -4493,7 +4836,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                                            static_cast<int16>(rotation),
                                            sceneInfo.entity->inkEffect,
                                            sceneInfo.entity->alpha,
-                                           0);
+                                           sheetID);
                     }
                 }
 #else
@@ -4559,8 +4902,22 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
-                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
+                        int32 sheetID;
+                        int32 tilesetX;
+                        int32 tilesetY;
+
+                        const AniTileState* aniTileState = AniTileTracker::GetAniTile(tile);
+
+                        if (aniTileState != nullptr) {
+                            sheetID = aniTileState->sheetID;
+                            tilesetX = aniTileState->u;
+                            tilesetY = aniTileState->v;
+                        }
+                        else {
+                            sheetID = 0;
+                            tilesetX = TILE_SIZE * (static_cast<int32>(tile) % KOS_ATLAS_WIDTH_TILES);
+                            tilesetY = TILE_SIZE * (static_cast<int32>(tile) / KOS_ATLAS_WIDTH_TILES);
+                        }
 
                         const int32 screenX = x + (tx * TILE_SIZE);
                         int32 rotation;
@@ -4581,7 +4938,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                                            static_cast<int16>(rotation),
                                            sceneInfo.entity->inkEffect,
                                            sceneInfo.entity->alpha,
-                                           0);
+                                           sheetID);
                     }
                 }
 #else
@@ -4647,8 +5004,22 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                         int32 flip = tile / TILE_COUNT;
                         tile %= TILE_COUNT;
 
-                        const int32 tilesetX = TILE_SIZE * ((int32)tile % KOS_ATLAS_WIDTH_TILES);
-                        const int32 tilesetY = TILE_SIZE * ((int32)tile / KOS_ATLAS_WIDTH_TILES);
+                        int32 sheetID;
+                        int32 tilesetX;
+                        int32 tilesetY;
+
+                        const AniTileState* aniTileState = AniTileTracker::GetAniTile(tile);
+
+                        if (aniTileState != nullptr) {
+                            sheetID = aniTileState->sheetID;
+                            tilesetX = aniTileState->u;
+                            tilesetY = aniTileState->v;
+                        }
+                        else {
+                            sheetID = 0;
+                            tilesetX = TILE_SIZE * (static_cast<int32>(tile) % KOS_ATLAS_WIDTH_TILES);
+                            tilesetY = TILE_SIZE * (static_cast<int32>(tile) / KOS_ATLAS_WIDTH_TILES);
+                        }
 
                         const int32 screenX = x + (tx * TILE_SIZE);
                         int32 rotation = sceneInfo.entity->rotation;
@@ -4667,7 +5038,7 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
                                            static_cast<int16>(rotation),
                                            sceneInfo.entity->inkEffect,
                                            sceneInfo.entity->alpha,
-                                           0);
+                                           sheetID);
                     }
                 }
 #else
@@ -4710,8 +5081,8 @@ void RSDK::DrawTile(uint16 *tiles, int32 countX, int32 countY, Vector2 *position
 }
 void RSDK::DrawAniTile(uint16 sheetID, uint16 tileIndex, uint16 srcX, uint16 srcY, uint16 width, uint16 height)
 {
-#if defined(KOS_HARDWARE_RENDERER)
-    // DCTODO: DrawAniTile
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    AniTileTracker::UpdateAniTile(sheetID, tileIndex, srcX, srcY, width, height);
 #else
     if (sheetID < SURFACE_COUNT && tileIndex < TILE_COUNT) {
         GFXSurface *surface = &gfxSurface[sheetID];
@@ -4859,7 +5230,12 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
 #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
     uint16 color16 = rgb32To16_B[(color >> 0) & 0xFF] | rgb32To16_G[(color >> 8) & 0xFF] | rgb32To16_R[(color >> 16) & 0xFF];
 #else
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    uint32 color16 = PACK_RGB888_32(color);
+    color16 |= (color16 << 16);
+#else
     uint16 color16 = PACK_RGB888_32(color);
+#endif
 #endif
 
     int32 charOffset   = 0;
@@ -4896,10 +5272,33 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
 
             for (int32 c = 0; c < lineSize; ++c) {
                 if (drawX >= 0 && drawX < currentScreen->size.x - 7) {
-#if defined(KOS_HARDWARE_RENDERER)
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+#if DO_480
                     // DCFIXME: vram_s used to avoid creating another texture
-                    // DCFIXME: on-screen coordinates are incorrect - this is just to make the debug menu usable
-                    uint16 *frameBuffer = &vram_s[drawX + y * 640];
+                    uint32 *frameBuffer = (uint32_t *)&vram_s[(drawX*2) + ((y*2)) * 640];
+                    uint32 *frameBuffer2 = (uint32_t *)&vram_s[(drawX*2) + ((y*2)+1) * 640];
+
+                    if ((*curChar < '\t' || *curChar > '\n') && *curChar != ' ') {
+                        uint8 *textStencilPtr = &devTextStencil[8 * *curChar];
+
+                        for (int32 h = 0; h < 8; ++h) {
+                            for (int32 w = 0; w < 8; ++w) {
+                                if (((*textStencilPtr >> w) & 1) != 0) {
+                                    *frameBuffer = color16;
+                                    *frameBuffer2 = color16;
+                                }
+                                ++frameBuffer;
+                                ++frameBuffer2;
+                            }
+
+                            ++textStencilPtr;
+                            frameBuffer += 640 - 8;
+                            frameBuffer2 += 640 - 8;
+                        }
+                    }
+#else
+                    // DCFIXME: vram_s used to avoid creating another texture
+                    uint16 *frameBuffer = &vram_s[drawX + y * 320];
 
                     if ((*curChar < '\t' || *curChar > '\n') && *curChar != ' ') {
                         uint8 *textStencilPtr = &devTextStencil[8 * *curChar];
@@ -4913,9 +5312,10 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
                             }
 
                             ++textStencilPtr;
-                            frameBuffer += 640 - 8;
+                            frameBuffer += 320 - 8;
                         }
                     }
+#endif
 #else
                     uint16 *frameBuffer = &currentScreen->frameBuffer[drawX + y * currentScreen->pitch];
 

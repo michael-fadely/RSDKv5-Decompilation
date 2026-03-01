@@ -88,11 +88,9 @@ bool32 RSDK::InitStorage()
 #if RETRO_PLATFORM == RETRO_KALLISTIOS  /* SAYGA DREAMCAST: Where Sonic Belongs! */
                                                                        // RAM: 32  / 16  MB
                                                                        // -----------------
-    dataStorage[DATASET_STG].storageLimit = (DBL_MEM? 4 : 4) * 1024 * 1024; // 4   / 4   MB
-    dataStorage[DATASET_MUS].storageLimit = (DBL_MEM? 4 : 0) * 1024 * 1024; // 4   / 0   MB
-    dataStorage[DATASET_SFX].storageLimit = (DBL_MEM? 2 : 0) * 1024 * 1024; // 2   / 0   MB
-    dataStorage[DATASET_STR].storageLimit = (DBL_MEM? 2 : 1) *   32 * 1024; // 64  / 32  KB
-    dataStorage[DATASET_TMP].storageLimit = (DBL_MEM? 6 : 3) * 1024 * 1024; // 6   / 3   MB
+    dataStorage[DATASET_STG].storageLimit = 400000 + (DBL_MEM? 4 : 4) * 1024 * 1024; // 4.4   / 4.4   MB
+    dataStorage[DATASET_STR].storageLimit = (DBL_MEM? 3 : 3) *  32 * 1024; // 96  / 96  KB
+    dataStorage[DATASET_TMP].storageLimit = 100000 + (DBL_MEM? 6 : 3) * 1024 * 1024; // 6.1   / 3.1   MB
                                                                      //   -----------------
 #else                                                                // Total: 16+ / 7+  MB 
                                         /* PCs AND BORING SHIT */
@@ -163,10 +161,6 @@ const char* DataSetToString(uint32 dataSet) {
     switch (dataSet) {
         case DATASET_STG:
             return "DATASET_STG";
-        case DATASET_MUS:
-            return "DATASET_MUS";
-        case DATASET_SFX:
-            return "DATASET_SFX";
         case DATASET_STR:
             return "DATASET_STR";
         case DATASET_TMP:
@@ -190,10 +184,35 @@ void PrintAllocState(uint32 dataSet, const DataStorage* storage, const void* var
         printf("%s\n", dataSetName);
     }
 }
+
+uint32 DataSetFromPointer(const void* ptr) {
+    // assuming non-null
+
+    for (uint32 i = 0; i < DATASET_MAX; ++i) {
+        const auto& storage = dataStorage[i];
+
+        if (storage.memoryTable == nullptr || !storage.storageLimit) {
+            continue;
+        }
+
+        const uint8* poolBegin = reinterpret_cast<const uint8*>(storage.memoryTable);
+        const uint8* poolEnd = poolBegin + storage.storageLimit;
+
+        if (ptr >= poolBegin && ptr < poolEnd) {
+            return i;
+        }
+    }
+
+    return DATASET_MAX;
+}
 }
 
 void RSDK::PinStorage_(void** pVar, const char* file, size_t line) {
     if (pVar == nullptr || *pVar == nullptr) {
+        return;
+    }
+
+    if (DataSetFromPointer(*pVar) == DATASET_MAX) {
         return;
     }
 
@@ -206,6 +225,10 @@ void RSDK::UnPinStorage_(void** pVar, const char* file, size_t line) {
         return;
     }
 
+    if (DataSetFromPointer(*pVar) == DATASET_MAX) {
+        return;
+    }
+
     auto* header = static_cast<StorageHeader*>(*pVar) - 1;
     header->flags &= ~StorageFlags::pinned;
 }
@@ -213,13 +236,6 @@ void RSDK::UnPinStorage_(void** pVar, const char* file, size_t line) {
 
 void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line)
 {
-    // DCWIP
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-    if (dataPtr && *dataPtr) {
-        printf("\t[UH] WARNING: NON-NULL ALLOC FROM: %s:%u\n", file, line);
-    }
-#endif
-
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     if (dataPtr == nullptr) {
         return;
@@ -246,17 +262,8 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
         assert(header->VeryUnsafeNext() == poolEnd);
     }
 
-    const uint32 inputSize = size;
-
-    {
-        const uint32 size_aligned = size & -static_cast<int32>(sizeof(void *));
-
-        if (size_aligned < size)
-            size = size_aligned + sizeof(void *);
-    }
-
     static_assert(sizeof(StorageHeader) % sizeof(uint32) == 0, "nope");
-    const uint32 size_i = size / sizeof(uint32);
+    const uint32 size_i = AlignUp(size, sizeof(uint32)) / sizeof(uint32);
     bool ranGC = false;
 
     if (storage->entryCount >= STORAGE_ENTRY_COUNT ||
@@ -266,7 +273,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
         if (storage->entryCount >= STORAGE_ENTRY_COUNT ||
             sizeof(uint32) * (storage->usedStorage + size_i + StorageHeader::SizeInts()) >= storage->storageLimit) {
-            PrintAllocState(dataSet, storage, *dataPtr, inputSize, file, line);
+            PrintAllocState(dataSet, storage, *dataPtr, size, file, line);
             return; // :(
         }
     }
@@ -304,7 +311,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
         printf("%s failed to find big enough block for alloc size %u - running GC and retrying\n",
                DataSetToString(dataSet),
-               inputSize);
+               size);
 
         // would be nice if this function just reported whether or not anything got done...
         DefragmentAndGarbageCollectStorage(dataSet);
@@ -312,7 +319,7 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
     }
 
     if (fitHeader == nullptr) {
-        PrintAllocState(dataSet, storage, *dataPtr, inputSize, file, line);
+        PrintAllocState(dataSet, storage, *dataPtr, size, file, line);
         return; // :(
     }
 
@@ -452,6 +459,10 @@ void RSDK::RemoveStorageEntry_(void **dataPtr, const char* file, size_t line)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     if (dataPtr == nullptr || *dataPtr == nullptr) {
+        return;
+    }
+
+    if (DataSetFromPointer(*dataPtr) == DATASET_MAX) {
         return;
     }
 

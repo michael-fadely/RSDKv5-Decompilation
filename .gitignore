@@ -28,6 +28,14 @@ bin/
 [Bb]in/
 [Oo]bj/
 cmake/
+__pycache__/
+Data.rsdk.bak
+dreamcast/tristrip
+dreamcast/strippy/libs/TriStripper/libTriStripper.a
+dreamcast/strippy/libs/TriStripper/src/connectivity_graph.o
+dreamcast/strippy/libs/TriStripper/src/policy.o
+dreamcast/strippy/libs/TriStripper/src/tri_stripper.o
+dreamcast/strippy/strippy
 
 # Safety
 *.rsdk

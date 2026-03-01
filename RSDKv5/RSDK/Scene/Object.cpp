@@ -6,6 +6,10 @@ using namespace RSDK;
 #include "Legacy/ObjectLegacy.cpp"
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include <algorithm>
+#endif
+
 ObjectClass RSDK::objectClassList[OBJECT_COUNT];
 int32 RSDK::objectClassCount = 0;
 
@@ -87,7 +91,7 @@ void RSDK::RegisterObject(Object **staticVars, const char *name, uint32 entityCl
         classInfo->staticLoad = staticLoad;
 #endif
 
-#if !RETRO_USE_ORIGINAL_CODE
+#if !RETRO_USE_ORIGINAL_CODE && RETRO_PLATFORM != RETRO_KALLISTIOS
         classInfo->name = name;
 #endif
 
@@ -448,7 +452,9 @@ void RSDK::ProcessObjects()
             }
 
             if (sceneInfo.entity->inRange) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                 if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update)
+#endif
                     objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update();
 
                 if (sceneInfo.entity->drawGroup < DRAWGROUP_COUNT)
@@ -489,7 +495,9 @@ void RSDK::ProcessObjects()
         sceneInfo.entity = &objectEntityList[e];
 
         if (sceneInfo.entity->inRange) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
             if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate)
+#endif
                 objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate();
         }
 
@@ -512,7 +520,9 @@ void RSDK::ProcessPausedObjects()
 
         ObjectClass *classInfo = &objectClassList[stageObjectIDs[o]];
         if ((*classInfo->staticVars)->active == ACTIVE_ALWAYS || (*classInfo->staticVars)->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
             if (classInfo->staticUpdate)
+#endif
                 classInfo->staticUpdate();
         }
     }
@@ -527,7 +537,9 @@ void RSDK::ProcessPausedObjects()
 
         if (sceneInfo.entity->classID) {
             if (sceneInfo.entity->active == ACTIVE_ALWAYS || sceneInfo.entity->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                 if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update)
+#endif
                     objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update();
 
                 if (sceneInfo.entity->drawGroup < DRAWGROUP_COUNT)
@@ -550,7 +562,9 @@ void RSDK::ProcessPausedObjects()
         sceneInfo.entity = &objectEntityList[e];
 
         if (sceneInfo.entity->active == ACTIVE_ALWAYS || sceneInfo.entity->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
             if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate)
+#endif
                 objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate();
         }
 
@@ -573,7 +587,9 @@ void RSDK::ProcessFrozenObjects()
 
         ObjectClass *classInfo = &objectClassList[stageObjectIDs[o]];
         if ((*classInfo->staticVars)->active == ACTIVE_ALWAYS || (*classInfo->staticVars)->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
             if (classInfo->staticUpdate)
+#endif
                 classInfo->staticUpdate();
         }
     }
@@ -670,7 +686,9 @@ void RSDK::ProcessFrozenObjects()
 
             if (sceneInfo.entity->inRange) {
                 if (sceneInfo.entity->active == ACTIVE_ALWAYS || sceneInfo.entity->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                     if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update)
+#endif
                         objectClassList[stageObjectIDs[sceneInfo.entity->classID]].update();
                 }
 
@@ -697,7 +715,9 @@ void RSDK::ProcessFrozenObjects()
 
         if (sceneInfo.entity->inRange) {
             if (sceneInfo.entity->active == ACTIVE_ALWAYS || sceneInfo.entity->active == ACTIVE_PAUSED) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                 if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate)
+#endif
                     objectClassList[stageObjectIDs[sceneInfo.entity->classID]].lateUpdate();
             }
 
@@ -719,9 +739,13 @@ void RSDK::ProcessFrozenObjects()
     RunModCallbacks(MODCB_ONLATEUPDATE, INT_TO_VOID(ENGINESTATE_FROZEN));
 #endif
 }
+
 void RSDK::ProcessObjectDrawLists()
 {
     if (sceneInfo.state != ENGINESTATE_LOAD && sceneInfo.state != (ENGINESTATE_LOAD | ENGINESTATE_STEPOVER)) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        RenderDevice::BeginScene();
+#endif
         for (int32 s = 0; s < videoSettings.screenCount; ++s) {
             currentScreen             = &screens[s];
             sceneInfo.currentScreenID = s;
@@ -738,7 +762,7 @@ void RSDK::ProcessObjectDrawLists()
             sceneInfo.currentDrawGroup = 0;
             for (int32 l = 0; l < DRAWGROUP_COUNT; ++l) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-                RenderDevice::SetDepth(l);
+                RenderDevice::SetDepth(l + 1.0f);
 #endif
                 if (engine.drawGroupVisible[l]) {
                     DrawList *list = &drawGroups[l];
@@ -747,6 +771,16 @@ void RSDK::ProcessObjectDrawLists()
                         list->hookCB();
 
                     if (list->sorted) {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+                        // Use the faster std::sort instead
+                        std::sort(
+                                list->entries,
+                                list->entries + list->entityCount,
+                                [&](int32 a, int32 b) {
+                                    return objectEntityList[a].zdepth > objectEntityList[b].zdepth;
+                                }
+                            );
+#else
                         for (int32 e = 0; e < list->entityCount; ++e) {
                             for (int32 i = list->entityCount - 1; i > e; --i) {
                                 int32 slot1 = list->entries[i - 1];
@@ -757,6 +791,7 @@ void RSDK::ProcessObjectDrawLists()
                                 }
                             }
                         }
+#endif
                     }
 
                     for (int32 i = 0; i < list->entityCount; ++i) {
@@ -764,7 +799,9 @@ void RSDK::ProcessObjectDrawLists()
                         validDraw            = false;
                         sceneInfo.entity     = &objectEntityList[list->entries[i]];
                         if (sceneInfo.entity->visible) {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                             if (objectClassList[stageObjectIDs[sceneInfo.entity->classID]].draw)
+#endif
                                 objectClassList[stageObjectIDs[sceneInfo.entity->classID]].draw();
 
 #if RETRO_VER_EGS || RETRO_USE_DUMMY_ACHIEVEMENTS
@@ -905,8 +942,13 @@ void RSDK::ProcessObjectDrawLists()
 
                             if (entity->visible || (engine.showEntityInfo & 2)) {
                                 char buffer[0x100];
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                                 sprintf_s(buffer, sizeof(buffer), "%s\nx: %g\ny: %g", objectClassList[stageObjectIDs[entity->classID]].name,
                                           entity->position.x / 65536.0f, entity->position.y / 65536.0f);
+#else
+                                sprintf_s(buffer, sizeof(buffer), "x: %g\ny: %g",
+                                          entity->position.x / 65536.0f, entity->position.y / 65536.0f);
+#endif
 
                                 DrawDevString(buffer, FROM_FIXED(entity->position.x) - currentScreen->position.x,
                                               FROM_FIXED(entity->position.y) - currentScreen->position.y, ALIGN_LEFT, 0xF0F0F0);
@@ -1003,6 +1045,9 @@ void RSDK::ProcessObjectDrawLists()
             currentScreen++;
             sceneInfo.currentScreenID++;
         }
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        RenderDevice::EndScene();
+#endif
     }
 }
 

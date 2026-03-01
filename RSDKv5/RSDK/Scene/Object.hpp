@@ -10,16 +10,16 @@ namespace RSDK
 
 #define RSDK_SIGNATURE_OBJ (0x4A424F) // "OBJ"
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#define OBJECT_COUNT (605) // 603 Mania objects + 2 Engine objects
+#else
 #define OBJECT_COUNT (0x400)
+#endif
 
 // 0x800 scene objects, 0x40 reserved ones, and 0x100 spare slots for creation
 #define RESERVE_ENTITY_COUNT (0x40)
 #define TEMPENTITY_COUNT     (0x100)
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
 #define SCENEENTITY_COUNT    (0x800)
-#else
-#define SCENEENTITY_COUNT    (0x800)
-#endif
 #define ENTITY_COUNT         (RESERVE_ENTITY_COUNT + SCENEENTITY_COUNT + TEMPENTITY_COUNT)
 #define TEMPENTITY_START     (ENTITY_COUNT - TEMPENTITY_COUNT)
 
@@ -137,7 +137,11 @@ struct Entity {
 };
 
 struct EntityBase : Entity {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    void *data[0xF2];
+#else
     void *data[0x100];
+#endif
 #if RETRO_REV0U
     void *unknown;
 #endif
@@ -184,7 +188,7 @@ struct ObjectClass {
     ObjectClass *inherited;
 #endif
 
-#if !RETRO_USE_ORIGINAL_CODE
+#if !RETRO_USE_ORIGINAL_CODE && RETRO_PLATFORM != RETRO_KALLISTIOS
     const char *name; // for debugging purposes
 #endif
 };

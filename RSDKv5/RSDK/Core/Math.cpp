@@ -3,6 +3,19 @@
 
 using namespace RSDK;
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && !RETRO_USE_ORIGINAL_CODE
+//! Calculates 1.0f/sqrtf( \p x ), using a fast approximation.
+__always_inline float shz_inverse_sqrtf(float x) {
+    asm("fsrra %0" : "+f" (x));
+    return x;
+}
+
+__always_inline float shz_invf(float x) {
+    float rx = shz_inverse_sqrtf(x * x);
+    return x < 0 ? -rx : rx;
+}
+#endif
+
 #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
 int32 RSDK::sin1024LookupTable[0x400];
 int32 RSDK::cos1024LookupTable[0x400];
@@ -27,7 +40,9 @@ int32 RSDK::tan256LookupTable[0x100];
 int32 RSDK::asin256LookupTable[0x100];
 int32 RSDK::acos256LookupTable[0x100];
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
 uint8 RSDK::arcTan256LookupTable[0x100 * 0x100];
+#endif
 
 uint32 RSDK::randSeed = 0;
 
@@ -54,7 +69,9 @@ void RSDK::ClearTrigLookupTables()
 #endif
     memset(asin1024LookupTable, 0, sizeof(asin1024LookupTable));
     memset(acos1024LookupTable, 0, sizeof(acos1024LookupTable));
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
     memset(arcTan256LookupTable, 0, sizeof(arcTan256LookupTable));
+#endif
     randSeed = 0;
 }
 
@@ -117,6 +134,7 @@ void RSDK::CalculateTrigAngles()
         acos256LookupTable[i] = (int32)((acosf(i / 255.f) * 128.f) / RSDK_PI);
     }
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
     for (int32 y = 0; y < 0x100; ++y) {
         uint8 *arcTan = (uint8 *)&arcTan256LookupTable[y];
 
@@ -126,8 +144,10 @@ void RSDK::CalculateTrigAngles()
             arcTan += 0x100;
         }
     }
+#endif
 }
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
 uint8 RSDK::ArcTanLookup(int32 X, int32 Y)
 {
     int32 x = abs(X);
@@ -156,3 +176,54 @@ uint8 RSDK::ArcTanLookup(int32 X, int32 Y)
     else
         return arcTan256LookupTable[(x << 8) + y];
 }
+#endif
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && !RETRO_USE_ORIGINAL_CODE
+// atan2 approx that scales output by (0x100 / (2 * M_PI))
+// before returning
+// battle-tested in multiple DC ports
+static inline float scaled_atan2f(const float y, const float x)
+{
+    if ((x == 0.0f) && (y == 0.0f))
+        return 0.0f;
+
+    float abs_y = fabsf(y);
+	float absy_plus_absx = abs_y + fabsf(x);
+	float inv_absy_plus_absx = shz_invf(absy_plus_absx);
+	float angle = 1.57079633f - copysignf(0.78539816f, x);
+	float r = (x - copysignf(abs_y, x)) * inv_absy_plus_absx;
+	angle += (0.1963f * r * r - 0.9817f) * r;
+
+    return copysignf(angle, y) * 40.743664f;
+}
+
+uint8 RSDK::ArcTanLookup(int32 X, int32 Y)
+{
+    int32 x = abs(X);
+    int32 y = abs(Y);
+
+    if (x <= y) {
+        while (y > 0xFF) {
+            x >>= 4;
+            y >>= 4;
+        }
+    }
+    else {
+        while (x > 0xFF) {
+            x >>= 4;
+            y >>= 4;
+        }
+    }
+
+    if (X <= 0) {
+        if (Y <= 0)
+            return (uint8)(int32)(float)(scaled_atan2f((float)y, (float)x)) + 0x80;
+        else
+            return 0x80 - (uint8)(int32)(float)(scaled_atan2f((float)y, (float)x));
+    }
+    else if (Y <= 0)
+        return -(uint8)(int32)(float)(scaled_atan2f((float)y, (float)x));
+    else
+        return (uint8)(int32)(float)(scaled_atan2f((float)y, (float)x));
+}
+#endif

@@ -23,6 +23,15 @@ struct Vector2 {
     int32 y;
 };
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+struct Vector4f {
+    float x;
+    float y;
+    float z;
+    float w;
+};
+#endif
+
 #define MEM_ZERO(x) memset(&(x), 0, sizeof((x)))
 
 #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
@@ -49,7 +58,9 @@ extern int32 tan256LookupTable[0x100];
 extern int32 asin256LookupTable[0x100];
 extern int32 acos256LookupTable[0x100];
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
 extern uint8 arcTan256LookupTable[0x100 * 0x100];
+#endif
 
 // Setup angles
 void ClearTrigLookupTables();
@@ -152,6 +163,33 @@ inline int32 ACos256(int32 angle)
 
 // Get Arc Tan value
 uint8 ArcTanLookup(int32 x, int32 y);
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+template <typename T>
+T constexpr AlignUp(T value, size_t alignment)
+{
+    if (!value || alignment < 2)
+    {
+        return value;
+    }
+
+    value += alignment - 1;
+    value -= value % alignment;
+    return value;
+}
+
+template <typename T>
+T constexpr AlignDown(T value, size_t alignment)
+{
+    if (!value || alignment < 2)
+    {
+        return value;
+    }
+
+    value -= value % alignment;
+    return value;
+}
+#endif
 
 extern uint32 randSeed;
 

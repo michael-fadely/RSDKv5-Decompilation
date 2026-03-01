@@ -1,29 +1,41 @@
+#include <dc/sound/sound.h>
+
+#include "KallistiOSSfxUpdate.cpp"
+#include "KallistiOSStream.cpp"
+
+static bool deviceInited;
+
 // static
 bool32 AudioDevice::Init()
 {
-    // DCFIXME: AudioDevice::Init
-    return true;
+    bool32 ok = snd_init() >= 0;
+    InitAudioChannels();
+    return ok && !!stream_init();
 }
+
 // static
 void AudioDevice::Release()
 {
-    // DCFIXME: AudioDevice::Release
+    ;
 }
 
 // static
 void AudioDevice::ProcessAudioMixing(void *stream, int32 length)
 {
-    // DCFIXME: AudioDevice::ProcessAudioMixing
+    ;
 }
 
 // static
 void AudioDevice::FrameInit()
 {
-    // DCFIXME: AudioDevice::FrameInit
+    if (!deviceInited) {
+        Init();
+        deviceInited = true;
+    }
 }
 
 // static
 void AudioDevice::HandleStreamLoad(ChannelInfo *channel, bool32 async)
 {
-    // DCFIXME: AudioDevice::HandleStreamLoad
+    ;
 }

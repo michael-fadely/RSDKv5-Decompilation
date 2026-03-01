@@ -3,14 +3,24 @@
 
 namespace RSDK
 {
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
 #define STORAGE_ENTRY_COUNT (0x1000)
+#else
+#define STORAGE_ENTRY_COUNT (0x800)
+#endif
 
 enum StorageDataSets {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    DATASET_STG = 0,
+    DATASET_STR = 1,
+    DATASET_TMP = 2,
+#else
     DATASET_STG = 0,
     DATASET_MUS = 1,
     DATASET_SFX = 2,
     DATASET_STR = 3,
     DATASET_TMP = 4,
+#endif
     DATASET_MAX, // used to signify limits
 };
 
@@ -104,8 +114,7 @@ extern DataStorage dataStorage[DATASET_MAX];
 bool32 InitStorage();
 void ReleaseStorage();
 
-// DCFIXME: RETRO_PLATFORM might not be available here, so _arch_dreamcast is used instead
-#ifdef _arch_dreamcast
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
 void PinStorage_(void** pVar, const char* file, size_t line);
 void UnPinStorage_(void** pVar, const char* file, size_t line);
 #define PinStorage(pVar) PinStorage_(pVar, __FILE__, __LINE__)
@@ -117,30 +126,9 @@ void DefragmentAndGarbageCollectStorage(StorageDataSets set);
 void RemoveStorageEntry_(void **dataPtr, const char* file, size_t line);
 void CopyStorage(uint32 **src, uint32 **dst);
 void GarbageCollectStorage(StorageDataSets dataSet);
-// DCWIP
-inline void MaybeRemoveStorageEntryAndNullify_(void **dataPtr, const char *file, size_t line) {
-    if (dataPtr && *dataPtr) {
-        RemoveStorageEntry_(dataPtr, file, line);
-        *dataPtr = NULL;
-    }
-}
-// DCWIP
-inline void
-RemoveAndAllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char *file, size_t line) {
-    if (!dataPtr) {
-        return;
-    }
-
-    MaybeRemoveStorageEntryAndNullify_(dataPtr, file, line);
-    AllocateStorage_(dataPtr, size, dataSet, clear, file, line);
-}
 
 #define RemoveStorageEntry(dataPtr) RemoveStorageEntry_(dataPtr, __FILE__, __LINE__)
 #define AllocateStorage(dataPtr, size, dataSet, clear) AllocateStorage_(dataPtr, size, dataSet, clear, __FILE__, __LINE__)
-// DCWIP
-#define RemoveAndAllocateStorage(dataPtr, size, dataSet, clear) RemoveAndAllocateStorage_(dataPtr, size, dataSet, clear, __FILE__, __LINE__)
-// DCWIP
-#define MaybeRemoveStorageEntryAndNullify(dataPtr) MaybeRemoveStorageEntryAndNullify_(dataPtr, __FILE__, __LINE__)
 
 #if RETRO_REV0U
 #include "Legacy/UserStorageLegacy.hpp"

@@ -3,3 +3,4 @@
 
 # I do not like \r\n, \n supremacy
 *.txt text eol=lf
+*.sh text eol=lf

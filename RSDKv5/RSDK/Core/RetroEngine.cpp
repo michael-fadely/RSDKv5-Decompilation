@@ -213,9 +213,10 @@ int32 RSDK::RunRetroEngine(int32 argc, char *argv[])
 
                         dataStorage[DATASET_STG].entryCount  = 0;
                         dataStorage[DATASET_STG].usedStorage = 0;
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
                         dataStorage[DATASET_SFX].entryCount  = 0;
                         dataStorage[DATASET_SFX].usedStorage = 0;
-
+#endif
                         for (int32 o = 0; o < objectClassCount; ++o) {
                             if (objectClassList[o].staticVars && *objectClassList[o].staticVars)
                                 (*objectClassList[o].staticVars) = NULL;
@@ -269,13 +270,7 @@ int32 RSDK::RunRetroEngine(int32 argc, char *argv[])
                         case 3: Legacy::v3::ProcessEngine(); break;
                     }
 #else
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-                    RenderDevice::BeginScene();
                     ProcessEngine();
-                    RenderDevice::EndScene();
-#else
-                    ProcessEngine();
-#endif
 #endif
                 }
 
@@ -348,8 +343,17 @@ int32 RSDK::RunRetroEngine(int32 argc, char *argv[])
     return 0;
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+static uint8 lastState = ENGINESTATE_NONE;
+#endif
 void RSDK::ProcessEngine()
 {
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    AudioDeviceBase::ProcessAudioMixing(nullptr, -1);
+    if (lastState == ENGINESTATE_SHOWIMAGE && sceneInfo.state != lastState) {
+        RenderDevice::ReleaseImageTexture();
+    }
+#endif
     switch (sceneInfo.state) {
         default: break;
 
@@ -516,20 +520,35 @@ void RSDK::ProcessEngine()
             break;
 
         case ENGINESTATE_DEVMENU:
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            RenderDevice::BeginScene();
+#endif
             ProcessInput();
             currentScreen = &screens[0];
 
             if (devMenu.state)
                 devMenu.state();
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            RenderDevice::EndScene();
+#endif
             break;
 
         case ENGINESTATE_VIDEOPLAYBACK:
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            RenderDevice::BeginScene();
+#endif
             ProcessInput();
             ProcessVideo();
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            RenderDevice::EndScene();
+#endif
             break;
 
         case ENGINESTATE_SHOWIMAGE:
             ProcessInput();
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+            RenderDevice::DrawImageTexture(videoSettings.dimMax);
+#endif
 
             if (engine.imageFadeSpeed <= 0.0 || videoSettings.dimMax >= 1.0) {
                 if (engine.displayTime <= 0.0) {
@@ -587,6 +606,9 @@ void RSDK::ProcessEngine()
         }
 #endif
     }
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    lastState = sceneInfo.state;
+#endif
 }
 
 void RSDK::ParseArguments(int32 argc, char *argv[])
