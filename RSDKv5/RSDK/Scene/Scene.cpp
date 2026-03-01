@@ -2326,8 +2326,168 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
     ScanlineInfo *scanline = &scanlines[0];
 
     if ((uint32)scanline->deform.x != (uint32)0xFEDCBA09) return;
-    //if ((uint32)scanline->deform.y != (uint32)0x90ABCDEF) return;
-    // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
+    if ((uint32)scanline->deform.y == (uint32)0x890ABCDE) {
+        int32 scsin = scanline->position.x;
+        int32 sccos = scanline->position.y;
+        float sy = (float)scsin * recip1k;
+        float cy = (float)sccos * recip1k;
+        float cs = cy;
+        float ss = -sy;
+
+        int32 width    = (TILE_SIZE << layer->widthShift) - 1;
+        int32 height   = (TILE_SIZE << layer->heightShift) - 1;
+
+        Vector4f cam = { 0.0f, 20, -180.0f/* -360 */, 0};
+
+        Vector4f target = { 0.0f, 0.0f, 60,0};
+
+        Vector4f f = {target.x - cam.x, target.y - cam.y, target.z - cam.z};
+        vec3f_normalize(f.x,f.y,f.z);
+
+        // right = normalize(cross worldUp , forward) = (fz, 0, -fx) then normalize
+        float rx = f.z;
+        float ry = 0.0f;
+        float rz = -f.x;
+        float rlen = sqrtf(rx*rx + rz*rz);
+        rx /= rlen; rz /= rlen;
+
+        // up = cross forward, right
+        float ux = f.y*rz - f.z*ry;
+        float uy = f.z*rx - f.x*rz;
+        float uz = f.x*ry - f.y*rx;
+
+        for (int h2=0;h2<(1<<layer->heightShift);h2++) {
+            for (int w2=0;w2<(1<<layer->widthShift);w2++) {
+                float w = w2;
+                float h = h2;
+                uint16 tile = layout[w2 + (h2 << layer->widthShift)];
+                if (tile == 0xffff) continue;
+                int uf = 0;
+                int vf = 0;
+                if ((tile > 0x3FF) && (tile < 0x800)) {
+                    uf = 1;
+                } else if ((tile > 0x7FF) && (tile < 0xC00)) {
+                    vf = 1;
+                } else if (tile > 0xBFF) {
+                    uf = 1;
+                    vf = 1;
+                }
+                tile &= 0x3FF;
+                // tile index in 32x32 square atlas
+                int atlasX = (tile % KOS_ATLAS_WIDTH_TILES ) * TILE_SIZE;
+                int atlasY = (tile / KOS_ATLAS_HEIGHT_TILES) * TILE_SIZE;
+
+                int u0,u1,v0,v1;
+
+                // handle u/v flip without recompiling headers
+                int uoff0 = ((uf)  * TILE_SIZE);
+                int uoff1 = ((!uf) * TILE_SIZE);
+                int voff0 = ((vf)  * TILE_SIZE);
+                int voff1 = ((!vf) * TILE_SIZE);
+
+                // pull in edges by one texel to avoid adjacent tile pixels being drawn
+                // ("holes" in the grid)
+                if (uoff0 < uoff1) {
+                    uoff0 += 1;
+                    uoff1 -= 1;
+                } else {
+                    uoff0 -= 1;
+                    uoff1 += 1;
+                }
+
+                if (voff0 < voff1) {
+                    voff0 += 1;
+                    voff1 -= 1;
+                } else {
+                    voff0 -= 1;
+                    voff1 += 1;
+                }
+
+                u0 = atlasX + uoff0;
+                u1 = atlasX + uoff1;
+                v0 = atlasY + voff0;
+                v1 = atlasY + voff1;
+
+                w -= 32.0f;
+                h -= 32.0f;
+
+                tileVerts[TILE_UL].x = (w) *16.0f;
+                tileVerts[TILE_UL].y = -8;
+                tileVerts[TILE_UL].z = (h) *16.0f;
+                tileVerts[TILE_UL].w = 1.0f;
+
+                tileVerts[TILE_UR].x = ((w) + 1)*16.0f;
+                tileVerts[TILE_UR].y = -8;
+                tileVerts[TILE_UR].z = (h)*16.0f;
+                tileVerts[TILE_UR].w = 1.0f;
+
+                tileVerts[TILE_LL].x = (w)*16.0f;
+                tileVerts[TILE_LL].y = -8;
+                tileVerts[TILE_LL].z = ((h) + 1)*16.0f;
+                tileVerts[TILE_LL].w = 1.0f;
+
+                tileVerts[TILE_LR].x = ((w) + 1)*16.0f;
+                tileVerts[TILE_LR].y = -8;
+                tileVerts[TILE_LR].z = ((h) + 1)*16.0f;
+                tileVerts[TILE_LR].w = 1.0f;
+
+                int negw = 0;
+                for (int i=0;i<4;i++) {
+                    float x = tileVerts[i].x;
+                    float z = tileVerts[i].z;
+                    float xr =  x * cs + z * ss;
+                    float zr = -x * ss + z * cs;
+                    float y = tileVerts[i].y;
+                    x = xr * 1.333f;
+                    z = zr * 1.333f;
+
+                    float dx = x - cam.x;
+                    float dy = y - cam.y;
+                    float dz = z - cam.z;
+
+                    float xv = dx*rx + dy*ry + dz*rz;
+                    float yv = dx*ux + dy*uy + dz*uz;
+                    float zv = dx*f.x + dy*f.y + dz*f.z; 
+
+                    if (zv <= 0) {
+                        negw = 1;
+                        break;
+                    }
+
+                    xv = -xv;
+                    float aspect = 1920.0f / 1080.0f;
+                    float fovy   = 13.0f * (RSDK_PI/180);
+                    float ff     = 1.0f / tanf(fovy*0.5f);
+                    float foa    = ff / aspect;
+
+                    float ndc_x = (xv * foa) / zv;
+                    float ndc_y = (yv * ff)  / zv;
+
+                    float scrx = 160.0f + (ndc_x/* *2.2f */) * 160.0f;
+                    float scry = 120.0f - (ndc_y/* *1.6f */) * 120.0f;
+                    tileVerts[i].x = scrx;
+                    tileVerts[i].y = scry;
+                    tileVerts[i].z = zv/1000.0f;
+                    tileVerts[i].z += RenderDevice::GetDepth();
+                }
+
+                if (!negw) {
+                    RenderDevice::PrepareTexturedPolyPTEX(currentScreen->clipBound_Y1, INK_NONE, surface);
+
+                    RenderDevice::DrawFloorTexturedPolyPTEx(
+                        tileVerts[TILE_UL], tileVerts[TILE_UR],
+                        tileVerts[TILE_LL], tileVerts[TILE_LR],
+                        u0,u1,
+                        v0,v1,
+                        surface, 0
+                    );
+                }
+            }
+        }
+        return;
+    }
+
+     // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
     // to avoid "not consumed" RenderDevice warning when LOD quad prepares a different texture first
 
     scanline++;
