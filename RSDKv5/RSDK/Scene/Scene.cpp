@@ -61,12 +61,17 @@ static int ufoNum = 0;
 static bool lodTextureReady = false;
 static int lodTexWidth = 0;
 static int lodTexHeight = 0;
-
-// don't regen LOD texture on reload
-static bool reloading = false;
 #endif
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+static void ReleaseLODTexture()
+{
+    if (mapSurf.texture != nullptr) {
+        pvr_mem_free(mapSurf.texture);
+        mapSurf.texture = nullptr;
+    }
+}
+
 static void GenerateLODTexture()
 {
     lodTextureReady = false;
@@ -76,10 +81,7 @@ static void GenerateLODTexture()
         return;
     }
 
-    if (mapSurf.texture != nullptr) {
-        pvr_mem_free(mapSurf.texture);
-        mapSurf.texture = nullptr;
-    }
+    ReleaseLODTexture();
 
     if (ufoNum) {
         uint8 *tilesetData = persistTiles;
@@ -241,8 +243,7 @@ void RSDK::LoadSceneFolder()
     sceneInfo.milliseconds = 0;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    // default to full load, not reload
-    reloading = false;
+    ReleaseLODTexture();
     // book-keeping, are we in a ufo stage
     ufoNum = 0;
     if (strstr(sceneInfo.listData[sceneInfo.listPos].folder, "UFO1")) {
@@ -316,9 +317,6 @@ void RSDK::LoadSceneFolder()
         }
 #endif
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-        reloading = true;
-#endif
         return;
     }
 #endif
@@ -340,9 +338,6 @@ void RSDK::LoadSceneFolder()
                 }
             }
         }
-#endif
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-        reloading = true;
 #endif
         return;
     }
@@ -1034,7 +1029,7 @@ void RSDK::LoadSceneAssets()
 #endif
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-    if (ufoNum && !reloading)
+    if (ufoNum)
         GenerateLODTexture();
 #endif
 
