@@ -112,7 +112,7 @@ public:
         const Vector4f& lowerLeft, const Vector4f& lowerRight,
         float sprX0, float sprX1,
         float sprY0, float sprY1,
-        const GFXSurface* surface, uint32 color
+        const GFXSurface* surface, uint32 color, uint32 addcolor
     );
     static void PrepareTexturedPolyTR(int32 y, int inkEffect, const GFXSurface* surface);
     static void DrawTexturedPolyTR(

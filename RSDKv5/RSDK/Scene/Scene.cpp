@@ -2312,6 +2312,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 {
 #if defined(KOS_HARDWARE_RENDERER)
     const GFXSurface* surface = &gfxSurface[0];
+    bool pinball = false;
 
     int32 width    = (TILE_SIZE << layer->widthShift) - 1;
     int32 height   = (TILE_SIZE << layer->heightShift) - 1;
@@ -2321,13 +2322,15 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
     ScanlineInfo *scanline = &scanlines[0];
 
     if ((uint32)scanline->deform.x != (uint32)0xFEDCBA09) return;
-    //if ((uint32)scanline->deform.y != (uint32)0x90ABCDEF) return;
+    if ((uint32)scanline->deform.y == (uint32)0xCDEF0123)
+        pinball = true;
+
     // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
     // to avoid "not consumed" RenderDevice warning when LOD quad prepares a different texture first
 
     scanline++;
 
-    // 0.10 fixed-point yaw and pitch sin/cos pairs from UFO_Setup.c
+    // 0.10 fixed-point yaw and pitch sin/cos pairs from UFO_Setup.c, PBL_Setup.c
     int32 scsin = scanline->deform.x;
     int32 sccos = scanline->deform.y;
     int32 scsinX = scanline->position.x;
@@ -2335,7 +2338,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 
     scanline++;
 
-    // 16.16 fixed-point camera position from UFO_Setup.c
+    // 16.16 fixed-point camera position from UFO_Setup.c, PBL_Setup.c
     int32 camX = scanline->deform.x;
     int32 camY = scanline->deform.y;
     int32 camZ = scanline->position.x;
@@ -2676,11 +2679,11 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 uint8 comp = (uint8)((1.0f - ((ur.w*250.0f) < 1.0f ? (ur.w*250.0f) : 1.0f)) * 84.0f);
                 // uses vertex offset color to increase lightness (additive color)
                 uint32 ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
-
+                const uint32 color = 0xFFFFFFFFu;
                 RenderDevice::DrawFloorTexturedPolyPTEx(
                     ul, ur, ll, lr,
                     iu0, iu1, iv0, iv1,
-                    &mapSurf, ocolor
+                    &mapSurf, color, ocolor
                 );
             }
         }
@@ -2935,9 +2938,16 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 
             // simulated floor distance shading, experimentally derived
             uint8 comp = (uint8)((1.0f - ((tileVerts[TILE_UR].w*250.0f) < 1.0f ? (tileVerts[TILE_UR].w*250.0f) : 1.0f)) * 84.0f);
-            // uses vertex offset color to increase lightness (additive color)
-            color = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
-
+            uint32 ocolor;
+            uint32 color;
+            if (!pinball) {
+                ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+                color = 0xFFFFFFFF;
+            } else {
+                ocolor = 0x00000000;
+                comp = 255 - comp;
+                color = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+            }
             // tile index in 32x32 square atlas
             int atlasX = (tile % KOS_ATLAS_WIDTH_TILES ) * TILE_SIZE;
             int atlasY = (tile / KOS_ATLAS_HEIGHT_TILES) * TILE_SIZE;
@@ -2978,7 +2988,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 tileVerts[TILE_LL], tileVerts[TILE_LR],
                 u0, u1,
                 v0, v1,
-                surface, color
+                surface, color, ocolor
             );
         }
     }
