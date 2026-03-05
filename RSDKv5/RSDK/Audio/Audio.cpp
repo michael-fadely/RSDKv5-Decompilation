@@ -678,7 +678,7 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
     channels[slot].sampleLength = sfxList[sfx].length;
     channels[slot].volume       = 1.0f;
     channels[slot].pan          = 0.0f;
-    channels[slot].speed        = TO_FIXED(1);
+    channels[slot].speed        = 1.0f;
     channels[slot].soundID      = sfx;
     if (loopPoint >= 2)
         channels[slot].loop = loopPoint;
