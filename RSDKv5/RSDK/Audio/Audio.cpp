@@ -107,7 +107,8 @@ void AudioDeviceBase::ProcessAudioMixing(void *stream, int32 length)
                         //   based on sample count and frequency
                         double playTime = (double)(timer_ns_gettime64() - channel->startTimeNs) * 1e-9;
                         double freq = sfxList[channel->soundID].freq;
-                        double samplesTime = (double)channel->sampleLength / freq;
+                        // take into account playback speed for time calculation
+                        double samplesTime = ((double)channel->sampleLength / freq) * / channel->speed;
                         // this allows us to release channels ASAP and not rely solely on the eviction logic in PlaySfx
                         if (samplesTime <= playTime) {
                                 channel->state   = CHANNEL_IDLE;
