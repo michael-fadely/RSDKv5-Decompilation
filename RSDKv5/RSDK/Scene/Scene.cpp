@@ -2679,7 +2679,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 uint8 comp = (uint8)((1.0f - ((ur.w*250.0f) < 1.0f ? (ur.w*250.0f) : 1.0f)) * 84.0f);
                 // uses vertex offset color to increase lightness (additive color)
                 uint32 ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
-                const uint32 color = 0xFFFFFFFFu;
+                const uint32 color = 0xFFEEEEEE;
                 RenderDevice::DrawFloorTexturedPolyPTEx(
                     ul, ur, ll, lr,
                     iu0, iu1, iv0, iv1,
