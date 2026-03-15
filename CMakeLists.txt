@@ -163,6 +163,8 @@ target_compile_definitions(RetroEngine PRIVATE
     DECOMP_VERSION="${DECOMP_VERSION}"
 )
 
+target_compile_options(RetroEngine PUBLIC "-fpermissive")
+
 if(WITH_RSDK)
     if(NOT GAME_STATIC)
         add_custom_command(TARGET RetroEngine POST_BUILD
