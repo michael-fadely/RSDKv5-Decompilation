@@ -2320,8 +2320,65 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
     // hijacked scanlineinfo to store camera pos and orientation info
     ScanlineInfo *scanline = &scanlines[0];
 
-    if ((uint32)scanline->deform.x != (uint32)0xFEDCBA09) return;
-    //if ((uint32)scanline->deform.y != (uint32)0x90ABCDEF) return;
+    if ((uint32)scanline->deform.x != SCANLINE_MAJOR_MAGIC_3DTILES) {
+        // clouds and 3d floors/3d skies
+        if (currentScreen->clipBound_Y2 == 136 || layer->widthShift < 5)
+            return;
+
+        // MMZ1 far plane rendering
+        ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
+
+        int32 ty = FROM_FIXED(scanline->position.y) >> 4;
+
+        const int32 offsetY = FROM_FIXED(scanline->position.y) & 0xF;
+        int32 scanlineIncrement = (16 - offsetY)/2;
+
+        const int32 clipX2w = currentScreen->clipBound_X2 << 1;
+        const int32 clipY2w = currentScreen->clipBound_Y2 << 1;
+
+        for (int32 screenY = currentScreen->clipBound_Y1 - offsetY; screenY < clipY2w; screenY += TILE_SIZE) {
+            int32 tx = (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x)) >> 4;
+            uint16* layout = &layer->layout[tx + (ty << layer->widthShift)];
+
+            const int32 offsetX = (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x)) & 0xF;
+
+            for (int32 screenX = currentScreen->clipBound_X1 - offsetX; screenX < clipX2w; screenX += TILE_SIZE) {
+                if (*layout != 0xFFFF) {
+                    Vector2 ul;
+                    Vector2 ur;
+                    Vector2 ll;
+                    Vector2 lr;
+
+                    ul.x = (screenX * 0.5f);
+                    ll.x = ul.x;
+                    ur.x = ul.x + 8;
+                    lr.x = ur.x;
+
+                    ul.y = (screenY* 0.5f);
+                    ll.y = ul.y + 8;
+                    ur.y = ul.y;
+                    lr.y = ur.y + 8;
+
+                    DrawByLayoutEx(*layout, ul, ur, ll, lr);
+                }
+
+                ++layout;
+                if (++tx == layer->xsize) {
+                    tx = 0;
+                    layout -= layer->xsize;
+                }
+            }
+
+            ty = (ty + 1) % layer->ysize;
+
+            scanline += scanlineIncrement;
+            scanlineIncrement = TILE_SIZE/2;
+        }
+
+        return;
+    }
+    if ((uint32)scanline->deform.y != (uint32)SCANLINE_MINOR_MAGIC_UFO) return;
+
     // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
     // to avoid "not consumed" RenderDevice warning when LOD quad prepares a different texture first
 
