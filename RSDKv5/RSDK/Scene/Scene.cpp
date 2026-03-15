@@ -2325,8 +2325,8 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
     // hijacked scanlineinfo to store camera pos and orientation info
     ScanlineInfo *scanline = &scanlines[0];
 
-    if ((uint32)scanline->deform.x != (uint32)0xFEDCBA09) return;
-    if ((uint32)scanline->deform.y == (uint32)0x890ABCDE) {
+    if ((uint32)scanline->deform.x != (uint32)SCANLINE_MAJOR_MAGIC_3DTILES) return;
+    if ((uint32)scanline->deform.y == (uint32)SCANLINE_MINOR_MAGIC_ISLAND) {
         int32 scsin = scanline->position.x;
         int32 sccos = scanline->position.y;
         float sy = (float)scsin * recip1k;
@@ -2487,7 +2487,9 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
         return;
     }
 
-     // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
+    if ((uint32)scanline->deform.x != (uint32)SCANLINE_MINOR_MAGIC_UFO) return;
+
+    // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
     // to avoid "not consumed" RenderDevice warning when LOD quad prepares a different texture first
 
     scanline++;
