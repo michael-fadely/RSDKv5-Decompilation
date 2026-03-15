@@ -2681,7 +2681,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 uint8 comp = (uint8)((1.0f - ((ur.w*250.0f) < 1.0f ? (ur.w*250.0f) : 1.0f)) * 84.0f);
                 // uses vertex offset color to increase lightness (additive color)
                 uint32 ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
-                const uint32 color = 0xFFFFFFFFu;
+                const uint32 color = 0xFFEEEEEE;
                 RenderDevice::DrawFloorTexturedPolyPTEx(
                     ul, ur, ll, lr,
                     iu0, iu1, iv0, iv1,
@@ -2944,11 +2944,31 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             uint32 color;
             if (!pinball) {
                 ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
-                color = 0xFFFFFFFF;
+                color = 0xFFEEEEEE;
             } else {
+                // no additive fade for pinball stage
+                // instead, try to recreate the darkness fade at the upper end of table
+                // applied to vertex color
                 ocolor = 0x00000000;
-                comp = 255 - comp;
-                color = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+                float invW = 1.0f / tileVerts[TILE_UR].w;
+#define INVW_MAX 1000.0f
+#define INVW_SHADE_THRESHOLD 475.0f
+#define INVW_SHADE_FACTOR 478.0f
+                // the invw stuff
+                // 1/w == 475 nearing the uppermost end of the table, below the signage
+                // past that point, it quickly approaches a value of around 1000
+                // so past our invw threshold
+                // and for the color component
+                // scaling from 0xEE to black
+                // 512 because its a nice computer number
+                // ee/ff == 0.933333  * 512 == ~478
+                if (invW > INVW_SHADE_THRESHOLD) {
+                    comp = 0xEE - (((invW - INVW_SHADE_THRESHOLD) / (INVW_MAX - INVW_SHADE_THRESHOLD)) * 478.0f);
+                    // clamp to 0
+                    if (comp < 0) comp = 0;
+                    // shading light to dark from threshold to top
+                    color = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+                }
             }
             // tile index in 32x32 square atlas
             int atlasX = (tile % KOS_ATLAS_WIDTH_TILES ) * TILE_SIZE;
