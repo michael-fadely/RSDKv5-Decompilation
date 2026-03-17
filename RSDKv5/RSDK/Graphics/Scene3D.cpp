@@ -2489,9 +2489,17 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             int32 g = (color >>  8) & 0xff;
                             int32 b = (color      ) & 0xff;
                             if (!isBaked) {
-                                int32 normal    = (int32)drawVert[v].ny;
+                                int32 normal    = (int32)drawVert[v].ny + 2;
+                                if (normal > 31) normal = 31;
                                 int32 specularC = specLUT[(int32)normal];
-                                float diffuseC  = (normal * DIFFUSE_SCALE) + 0.625f;
+                                float diffuseC  = (normal * DIFFUSE_SCALE) + 0.75f;
+
+                                // fix the lack of color on the pinball stage target bumpers
+                                if (scn->diffuseX != scn->diffuseY || scn->diffuseX != scn->diffuseZ) {
+                                    r = (scn->diffuseX * r) >> 8;
+                                    g = (scn->diffuseY * g) >> 8;
+                                    b = (scn->diffuseZ * b) >> 8;
+                                }
 
                                 r = specularC + (r * diffuseC);
                                 g = specularC + (g * diffuseC);

@@ -61,6 +61,11 @@ static int ufoNum = 0;
 static bool lodTextureReady = false;
 static int lodTexWidth = 0;
 static int lodTexHeight = 0;
+
+// bump the tile radius a bit when checking if LOD overlaps high detail tiles
+// it was too close before and there was too much overlap
+#define LOD_RAD_OFFSET 6
+#define LOD_RAD_OFF_SQ (LOD_RAD_OFFSET * LOD_RAD_OFFSET)
 #endif
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
@@ -2638,15 +2643,15 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // if tiles are outside of the manhattan distance from origin
                 // we can skip the more expensive euclidean distance test
                 // so let's try the cheaper test first
-                if (((cx0 + cz0) < (tileRadius)) &&
-                    ((cx1 + cz1) < (tileRadius)) &&
-                    ((cx0 + cz1) < (tileRadius)) &&
-                    ((cx1 + cz1) < (tileRadius))
+                if (((cx0 + cz0) < (tileRadius + LOD_RAD_OFFSET)) &&
+                    ((cx1 + cz1) < (tileRadius + LOD_RAD_OFFSET)) &&
+                    ((cx0 + cz1) < (tileRadius + LOD_RAD_OFFSET)) &&
+                    ((cx1 + cz1) < (tileRadius + LOD_RAD_OFFSET))
                 ) {
-                    if (((cx0*cx0 + cz0*cz0) < tileRadSq) &&
-                        ((cx1*cx1 + cz0*cz0) < tileRadSq) &&
-                        ((cx0*cx0 + cz1*cz1) < tileRadSq) &&
-                        ((cx1*cx1 + cz1*cz1) < tileRadSq))
+                    if (((cx0*cx0 + cz0*cz0) < tileRadSq + LOD_RAD_OFF_SQ) &&
+                        ((cx1*cx1 + cz0*cz0) < tileRadSq + LOD_RAD_OFF_SQ) &&
+                        ((cx0*cx0 + cz1*cz1) < tileRadSq + LOD_RAD_OFF_SQ) &&
+                        ((cx1*cx1 + cz1*cz1) < tileRadSq + LOD_RAD_OFF_SQ))
                         continue;
                 }
 

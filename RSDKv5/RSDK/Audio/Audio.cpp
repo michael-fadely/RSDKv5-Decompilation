@@ -107,7 +107,8 @@ void AudioDeviceBase::ProcessAudioMixing(void *stream, int32 length)
                         //   based on sample count and frequency
                         double playTime = (double)(timer_ns_gettime64() - channel->startTimeNs) * 1e-9;
                         double freq = sfxList[channel->soundID].freq;
-                        double samplesTime = (double)channel->sampleLength / freq;
+                        // take into account playback speed for time calculation
+                        double samplesTime = ((double)channel->sampleLength / freq) * (1.0 / channel->speed);
                         // this allows us to release channels ASAP and not rely solely on the eviction logic in PlaySfx
                         if (samplesTime <= playTime) {
                                 channel->state   = CHANNEL_IDLE;
@@ -678,7 +679,7 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
     channels[slot].sampleLength = sfxList[sfx].length;
     channels[slot].volume       = 1.0f;
     channels[slot].pan          = 0.0f;
-    channels[slot].speed        = TO_FIXED(1);
+    channels[slot].speed        = 1.0f;
     channels[slot].soundID      = sfx;
     if (loopPoint >= 2)
         channels[slot].loop = loopPoint;
