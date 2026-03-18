@@ -2330,7 +2330,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
     if ((uint32)scanline->deform.y == (uint32)SCANLINE_MINOR_MAGIC_PINBALL)
         pinball = true;
     if (pinball == false)
-        if ((uint32)scanline->deform.x != (uint32)SCANLINE_MINOR_MAGIC_UFO) return;
+        if ((uint32)scanline->deform.y != (uint32)SCANLINE_MINOR_MAGIC_UFO) return;
 
     // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
     // to avoid "not consumed" RenderDevice warning when LOD quad prepares a different texture first
@@ -2775,7 +2775,6 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             // now we are going back to world coords from tile coords
             float x0 = (float)((uint32)(tx * TILE_SIZE));
             float x1 = x0 + TILE_SIZE;
-            uint32 color;
 
             // prefetch a new cache-line sized run of tiles to speed up later iterations of inner loop
             __builtin_prefetch(&layout[layout_offset + 16]);
