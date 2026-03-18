@@ -2945,10 +2945,9 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             // simulated floor distance shading, experimentally derived
             uint8 comp = (uint8)((1.0f - ((tileVerts[TILE_UR].w*250.0f) < 1.0f ? (tileVerts[TILE_UR].w*250.0f) : 1.0f)) * 84.0f);
             uint32 ocolor;
-            uint32 color;
+            uint32 color = 0xFFEEEEEE;
             if (!pinball) {
                 ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
-                color = 0xFFEEEEEE;
             } else {
                 // no additive fade for pinball stage
                 // instead, try to recreate the darkness fade at the upper end of table
