@@ -2330,7 +2330,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
     if ((uint32)scanline->deform.y == (uint32)SCANLINE_MINOR_MAGIC_PINBALL)
         pinball = true;
     if (pinball == false)
-        if ((uint32)scanline->deform.x != (uint32)SCANLINE_MINOR_MAGIC_UFO) return;
+        if ((uint32)scanline->deform.y != (uint32)SCANLINE_MINOR_MAGIC_UFO) return;
 
     // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
     // to avoid "not consumed" RenderDevice warning when LOD quad prepares a different texture first
@@ -2775,7 +2775,6 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             // now we are going back to world coords from tile coords
             float x0 = (float)((uint32)(tx * TILE_SIZE));
             float x1 = x0 + TILE_SIZE;
-            uint32 color;
 
             // prefetch a new cache-line sized run of tiles to speed up later iterations of inner loop
             __builtin_prefetch(&layout[layout_offset + 16]);
@@ -2946,10 +2945,9 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             // simulated floor distance shading, experimentally derived
             uint8 comp = (uint8)((1.0f - ((tileVerts[TILE_UR].w*250.0f) < 1.0f ? (tileVerts[TILE_UR].w*250.0f) : 1.0f)) * 84.0f);
             uint32 ocolor;
-            uint32 color;
+            uint32 color = 0xFFEEEEEE;
             if (!pinball) {
                 ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
-                color = 0xFFEEEEEE;
             } else {
                 // no additive fade for pinball stage
                 // instead, try to recreate the darkness fade at the upper end of table
