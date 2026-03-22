@@ -694,6 +694,9 @@ def main():
 
         fname = mesh_names[e['hash']]
 
+        if "Pinball" in fname:
+            continue
+
         if any(pat in fname for pat in skip_patterns):
             print(f"  SKIP (excluded): {fname}")
             continue
