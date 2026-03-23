@@ -584,6 +584,9 @@ int main(int argc, char *argv[]) {
         // don't strip itembox
         if (fname.find("ItemBox") != std::string::npos) continue;
 
+        // don't strip pinball stuff
+        if (fname.find("Pinball") != std::string::npos) continue;
+
         // don't strip the 3d special stage ring
         if (fname.find("SpecialRing") != std::string::npos) continue;
 

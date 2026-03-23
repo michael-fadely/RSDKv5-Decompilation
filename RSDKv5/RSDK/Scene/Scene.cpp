@@ -2317,6 +2317,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 {
 #if defined(KOS_HARDWARE_RENDERER)
     const GFXSurface* surface = &gfxSurface[0];
+    bool pinball = false;
 
     int32 width    = (TILE_SIZE << layer->widthShift) - 1;
     int32 height   = (TILE_SIZE << layer->heightShift) - 1;
@@ -2326,13 +2327,17 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
     ScanlineInfo *scanline = &scanlines[0];
 
     if ((uint32)scanline->deform.x != (uint32)SCANLINE_MAJOR_MAGIC_3DTILES) return;
-    //if ((uint32)scanline->deform.y != (uint32)SCANLINE_MINOR_MAGIC_UFO) return;
+    if ((uint32)scanline->deform.y == (uint32)SCANLINE_MINOR_MAGIC_PINBALL)
+        pinball = true;
+    if (pinball == false)
+        if ((uint32)scanline->deform.y != (uint32)SCANLINE_MINOR_MAGIC_UFO) return;
+
     // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
     // to avoid "not consumed" RenderDevice warning when LOD quad prepares a different texture first
 
     scanline++;
 
-    // 0.10 fixed-point yaw and pitch sin/cos pairs from UFO_Setup.c
+    // 0.10 fixed-point yaw and pitch sin/cos pairs from UFO_Setup.c, PBL_Setup.c
     int32 scsin = scanline->deform.x;
     int32 sccos = scanline->deform.y;
     int32 scsinX = scanline->position.x;
@@ -2340,7 +2345,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 
     scanline++;
 
-    // 16.16 fixed-point camera position from UFO_Setup.c
+    // 16.16 fixed-point camera position from UFO_Setup.c, PBL_Setup.c
     int32 camX = scanline->deform.x;
     int32 camY = scanline->deform.y;
     int32 camZ = scanline->position.x;
@@ -2681,11 +2686,11 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 uint8 comp = (uint8)((1.0f - ((ur.w*250.0f) < 1.0f ? (ur.w*250.0f) : 1.0f)) * 84.0f);
                 // uses vertex offset color to increase lightness (additive color)
                 uint32 ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
-
+                const uint32 color = 0xFFEEEEEE;
                 RenderDevice::DrawFloorTexturedPolyPTEx(
                     ul, ur, ll, lr,
                     iu0, iu1, iv0, iv1,
-                    &mapSurf, ocolor
+                    &mapSurf, color, ocolor
                 );
             }
         }
@@ -2770,7 +2775,6 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             // now we are going back to world coords from tile coords
             float x0 = (float)((uint32)(tx * TILE_SIZE));
             float x1 = x0 + TILE_SIZE;
-            uint32 color;
 
             // prefetch a new cache-line sized run of tiles to speed up later iterations of inner loop
             __builtin_prefetch(&layout[layout_offset + 16]);
@@ -2940,9 +2944,35 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 
             // simulated floor distance shading, experimentally derived
             uint8 comp = (uint8)((1.0f - ((tileVerts[TILE_UR].w*250.0f) < 1.0f ? (tileVerts[TILE_UR].w*250.0f) : 1.0f)) * 84.0f);
-            // uses vertex offset color to increase lightness (additive color)
-            color = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
-
+            uint32 ocolor;
+            uint32 color = 0xFFEEEEEE;
+            if (!pinball) {
+                ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+            } else {
+                // no additive fade for pinball stage
+                // instead, try to recreate the darkness fade at the upper end of table
+                // applied to vertex color
+                ocolor = 0x00000000;
+                float invW = 1.0f / tileVerts[TILE_UR].w;
+#define INVW_MAX 1000.0f
+#define INVW_SHADE_THRESHOLD 475.0f
+#define INVW_SHADE_FACTOR 478.0f
+                // the invw stuff
+                // 1/w == 475 nearing the uppermost end of the table, below the signage
+                // past that point, it quickly approaches a value of around 1000
+                // so past our invw threshold
+                // and for the color component
+                // scaling from 0xEE to black
+                // 512 because its a nice computer number
+                // ee/ff == 0.933333  * 512 == ~478
+                if (invW > INVW_SHADE_THRESHOLD) {
+                    comp = 0xEE - (((invW - INVW_SHADE_THRESHOLD) / (INVW_MAX - INVW_SHADE_THRESHOLD)) * 478.0f);
+                    // clamp to 0
+                    if (comp < 0) comp = 0;
+                    // shading light to dark from threshold to top
+                    color = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+                }
+            }
             // tile index in 32x32 square atlas
             int atlasX = (tile % KOS_ATLAS_WIDTH_TILES ) * TILE_SIZE;
             int atlasY = (tile / KOS_ATLAS_HEIGHT_TILES) * TILE_SIZE;
@@ -2983,7 +3013,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 tileVerts[TILE_LL], tileVerts[TILE_LR],
                 u0, u1,
                 v0, v1,
-                surface, color
+                surface, color, ocolor
             );
         }
     }
