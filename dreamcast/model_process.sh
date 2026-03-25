@@ -10,7 +10,7 @@ source_mesh_dir=$1/Meshes
 staged_mesh_dir=$2/Meshes
 
 if [[ -d "$staged_mesh_dir" ]]; then
-  rmdir "$staged_mesh_dir"
+  rm -r "$staged_mesh_dir"
 fi
 
 pushd ../dependencies/dreamcast/mania-mesh-optimizer
