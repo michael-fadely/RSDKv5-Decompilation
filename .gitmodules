@@ -4,3 +4,6 @@
 [submodule "dependencies/all/stb_vorbis"]
 	path = dependencies/all/stb_vorbis
 	url = https://github.com/nothings/stb
+[submodule "dependencies/dreamcast/mania-mesh-optimizer"]
+	path = dependencies/dreamcast/mania-mesh-optimizer
+	url = https://github.com/michael-fadely/mania-mesh-optimizer.git

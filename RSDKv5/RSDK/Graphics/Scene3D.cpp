@@ -671,9 +671,32 @@ uint16 RSDK::LoadMesh(const char *filename, uint8 scope)
         return -1;
 
     Model *model = &modelList[id];
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     FileInfo info;
     InitFileInfo(&info);
     if (LoadFile(&info, fullFilePath, FMODE_RB)) {
+#else
+    FileInfo info {};
+    InitFileInfo(&info);
+
+    sprintf_s(fullFilePath, sizeof(fullFilePath), "%sData/Meshes/%s", RSDK::SKU::userFileDir, filename);
+
+    info.externalFile = true;
+    auto fileOpened = LoadFile(&info, fullFilePath, FMODE_RB);
+
+    if (!fileOpened) {
+        CloseFile(&info);
+        info = {};
+        InitFileInfo(&info);
+        sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Meshes/%s", filename); // put it back lmao
+        fileOpened = LoadFile(&info, fullFilePath, FMODE_RB);
+    }
+    else {
+        printf("found replacement file: %s\n", fullFilePath);
+    }
+
+    if (fileOpened) {
+#endif
         uint32 sig = ReadInt32(&info, false);
 
         if (sig != RSDK_SIGNATURE_MDL) {
