@@ -121,6 +121,8 @@ void SKU::KallistiOSInputDevice::UpdateInput() {
 void SKU::KallistiOSInputDevice::ProcessInput(int32 controllerID) {
     auto& retro = controller[controllerID];
     auto& leftAnalog = stickL[controllerID];
+    auto& leftTrigger = triggerL[controllerID];
+    auto& rightTrigger = triggerR[controllerID];
 
     auto* dev = maple_enum_dev(Port(), 0);
     assert(dev);
@@ -153,6 +155,12 @@ void SKU::KallistiOSInputDevice::ProcessInput(int32 controllerID) {
             retro.keyZ.press |= (state.buttons & CONT_Z) != 0;
             retro.keyZ.press |= (vmu[0].Pressed(Vmu::Button::B)
                               || vmu[1].Pressed(Vmu::Button::B));
+
+            leftTrigger.triggerDelta = static_cast<float>(CLAMP(state.ltrig, 0, 255)) / 255.0f;
+            leftTrigger.keyTrigger.press = leftTrigger.triggerDelta > INPUT_DEADZONE;
+
+            rightTrigger.triggerDelta = static_cast<float>(CLAMP(state.rtrig, 0, 255)) / 255.0f;
+            rightTrigger.keyTrigger.press = rightTrigger.triggerDelta > INPUT_DEADZONE;
 
             retro.keyStart.press |= (state.buttons & CONT_START) != 0;
             retro.keySelect.press |= (state.buttons & CONT_D) != 0;
