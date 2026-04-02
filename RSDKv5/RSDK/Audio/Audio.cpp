@@ -431,12 +431,17 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     sprintf_s(fullFilePath, sizeof(fullFilePath), "%s/Data/SoundFX/%s", KOS_USER_DIR, filename);
 
+    if (sfxList[slot].handle != SFXHND_INVALID) {
+        snd_sfx_unload(sfxList[slot].handle);
+        sfxList[slot].handle = SFXHND_INVALID;
+    }
+
     // sfxhnd_t is an opaque type
     // but really is is a pointer to a `snd_effect_t` struct
     // you have to poke at some KOS internals to get at it though
     sfxhnd_t hnd = snd_sfx_load(fullFilePath);
 
-    if (hnd != (sfxhnd_t)0) {
+    if (hnd != SFXHND_INVALID) {
         snd_effect_t *t = (snd_effect_t *)hnd;
         HASH_COPY_MD5(sfxList[slot].hash, hash);
         sfxList[slot].scope              = scope;
@@ -583,7 +588,7 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
         return -1;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-    if (sfxList[sfx].handle == (sfxhnd_t)0)
+    if (sfxList[sfx].handle == SFXHND_INVALID)
         return -1;
 
     int reservedChannel = snd_sfx_chn_alloc();
@@ -887,7 +892,10 @@ void RSDK::ClearStageSfx()
     for (int32 s = 0; s < SFX_COUNT; ++s) {
         if (sfxList[s].scope >= SCOPE_STAGE) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-            snd_sfx_unload(sfxList[s].handle);
+            if (sfxList[s].handle != SFXHND_INVALID) {
+                snd_sfx_unload(sfxList[s].handle);
+                sfxList[s].handle = SFXHND_INVALID;
+            }
 #endif
             MEM_ZERO(sfxList[s]);
             sfxList[s].scope = SCOPE_NONE;
@@ -928,7 +936,10 @@ void RSDK::ClearGlobalSfx()
         // clear global sfx (do NOT clear the stream channel 0 slot)
         if (sfxList[s].scope == SCOPE_GLOBAL && s != SFX_COUNT - 1) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-            snd_sfx_unload(sfxList[s].handle);
+            if (sfxList[s].handle != SFXHND_INVALID) {
+                snd_sfx_unload(sfxList[s].handle);
+                sfxList[s].handle = SFXHND_INVALID;
+            }
 #endif
             MEM_ZERO(sfxList[s]);
             sfxList[s].scope = SCOPE_NONE;
