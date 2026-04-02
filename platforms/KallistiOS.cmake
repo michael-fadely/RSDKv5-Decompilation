@@ -26,8 +26,8 @@ set(RETRO_MOD_LOADER OFF CACHE BOOL "Disable mod loader" FORCE)
 set(GAME_INCLUDE_EDITOR OFF CACHE BOOL "Disable unused editor code" FORCE)
 
 set(RELEASE_FLAGS
-    -fno-exceptions
     -Os
+    -fno-exceptions
     -ffast-math
     -flto=auto
     -ffat-lto-objects
