@@ -1885,6 +1885,19 @@ int32 GetLayerWrappedFromFixedX(const TileLayer* layer, int32 fixed_x) {
 
     return FROM_FIXED(fixed_x);
 }
+
+int32 GetLayerWrappedFromFixedY(const TileLayer* layer, int32 fixed_y) {
+    const int32 tileY = FROM_FIXED(fixed_y);
+
+    if (tileY >= TILE_SIZE * layer->ysize) {
+        fixed_y -= TO_FIXED(TILE_SIZE * layer->ysize);
+    }
+    else if (tileY < 0) {
+        fixed_y += TO_FIXED(TILE_SIZE * layer->ysize);
+    }
+
+    return FROM_FIXED(fixed_y);
+}
 #endif
 
 void RSDK::DrawLayerHScroll(TileLayer *layer)
@@ -2123,13 +2136,90 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
 }
 void RSDK::DrawLayerVScroll(TileLayer *layer)
 {
-    // DCTODO: DrawLayerVScroll
-    // (using early return so I can still statically analyze stuff!)
-    return;
-#if !defined(KOS_HARDWARE_RENDERER)
     if (!layer->xsize || !layer->ysize)
         return;
 
+#if defined(KOS_HARDWARE_RENDERER)
+   const ScanlineInfo* leftScanline = &scanlines[currentScreen->clipBound_X1];
+
+    const int32 sheetX = FROM_FIXED(leftScanline->position.x) & 0xF;
+    int32 scanlineIncrement = TILE_SIZE - sheetX;
+
+    const int32 screenTileAligned = AlignUp(currentScreen->size.y, TILE_SIZE) / TILE_SIZE;
+
+    for (int32 cx = currentScreen->clipBound_X1 - sheetX; cx < currentScreen->clipBound_X2; cx += TILE_SIZE) {
+        const int32 xRemainder = currentScreen->clipBound_X2 - cx;
+        const int32 fromFixedLeftX = FROM_FIXED(leftScanline->position.x);
+        const ScanlineInfo* rightScanline = leftScanline + std::min<int32>(scanlineIncrement - 1, xRemainder - 1);
+
+        int32 tilesToDraw = screenTileAligned;
+        int32 leftScanlineFixedY = leftScanline->position.y;
+
+        int32 fromFixedLeftY = GetLayerWrappedFromFixedY(layer, leftScanlineFixedY + leftScanline->deform.y) % currentScreen->pitch; // WIP: pitch?
+
+        const int32 offsetDelta = FROM_FIXED(leftScanline->deform.y - rightScanline->deform.y);
+        int32 leftScreenOffsetY = -(fromFixedLeftY & 0xF);
+        int32 rightScreenOffsetY = leftScreenOffsetY + offsetDelta;
+
+        int32 extraTilesToDraw = abs(AlignUp(std::max(leftScreenOffsetY, rightScreenOffsetY), TILE_SIZE));
+
+        leftScanlineFixedY -= TO_FIXED(extraTilesToDraw);
+        leftScreenOffsetY -= extraTilesToDraw;
+        rightScreenOffsetY -= extraTilesToDraw;
+
+        extraTilesToDraw += abs(AlignDown(std::min(leftScreenOffsetY, rightScreenOffsetY), TILE_SIZE));
+
+        tilesToDraw += extraTilesToDraw / TILE_SIZE;
+
+        fromFixedLeftY = GetLayerWrappedFromFixedY(layer, leftScanlineFixedY + leftScanline->deform.y);
+
+        const int32 screenLeftX = cx;
+        const int32 screenRightX = cx + TILE_SIZE;
+
+        const int32 tx = fromFixedLeftX >> 4;
+        int32 ty = fromFixedLeftY >> 4;
+
+        for (int32 t = 0; t < tilesToDraw; ++t) {
+            const int32 cy = TILE_SIZE * t;
+            const int32 screenLeftY = cy + leftScreenOffsetY;
+            const int32 screenRightY = cy + rightScreenOffsetY;
+
+            const uint16 layout = layer->layout[tx + (ty << layer->widthShift)];
+            ty = (ty + 1) % layer->ysize;
+
+            if (layout == 0xFFFF) {
+                continue;
+            }
+
+            const Vector2 screenUpperLeft {
+                screenLeftX,
+                screenLeftY,
+            };
+
+            const Vector2 screenUpperRight {
+                screenRightX,
+                screenRightY,
+            };
+
+            const Vector2 screenLowerLeft {
+                screenLeftX,
+                screenLeftY + TILE_SIZE,
+            };
+
+            const Vector2 screenLowerRight {
+                screenRightX,
+                screenRightY + TILE_SIZE,
+            };
+
+            DrawByLayoutEx(layout,
+                           screenUpperLeft, screenUpperRight,
+                           screenLowerLeft, screenLowerRight);
+        }
+
+        leftScanline += scanlineIncrement;
+        scanlineIncrement = TILE_SIZE;
+    }
+#else
     int32 lineTileCount    = (currentScreen->size.y >> 4) - 1;
     uint16 *frameBuffer    = &currentScreen->frameBuffer[currentScreen->clipBound_X1];
     ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_X1];
