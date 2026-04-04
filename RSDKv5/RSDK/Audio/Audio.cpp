@@ -431,6 +431,28 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     sprintf_s(fullFilePath, sizeof(fullFilePath), "%s/Data/SoundFX/%s", KOS_USER_DIR, filename);
 
+    const char* scopeName = nullptr;
+
+    switch (scope) {
+        case SCOPE_NONE:
+            scopeName = "SCOPE_NONE";
+            break;
+
+        case SCOPE_GLOBAL:
+            scopeName = "SCOPE_GLOBAL";
+            break;
+
+        case SCOPE_STAGE:
+            scopeName = "SCOPE_STAGE";
+            break;
+
+        default:
+            scopeName = "WTF";
+            break;
+    }
+
+    printf("[SFX] loading SFX into slot %u with scope %s: %s\n", slot, scopeName, fullFilePath);
+
     if (sfxList[slot].handle != SFXHND_INVALID) {
         snd_sfx_unload(sfxList[slot].handle);
         sfxList[slot].handle = SFXHND_INVALID;
@@ -441,7 +463,10 @@ void RSDK::LoadSfxToSlot(char *filename, uint8 slot, uint8 plays, uint8 scope)
     // you have to poke at some KOS internals to get at it though
     sfxhnd_t hnd = snd_sfx_load(fullFilePath);
 
-    if (hnd != SFXHND_INVALID) {
+    if (hnd == SFXHND_INVALID) {
+        printf("[SFX] FAILED loading SFX into slot %u with scope %s: %s\n", slot, scopeName, fullFilePath);
+    }
+    else {
         snd_effect_t *t = (snd_effect_t *)hnd;
         HASH_COPY_MD5(sfxList[slot].hash, hash);
         sfxList[slot].scope              = scope;

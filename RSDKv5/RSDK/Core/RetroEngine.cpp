@@ -1106,11 +1106,18 @@ void RSDK::LoadGameConfig()
             }
         }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        // Other platforms initialize audio during RenderDevice::Init().
+        // We need to init audio *now* if we want to load SFX on our platform
+        // since we need to get samples into audio RAM.
+        AudioDevice::Init();
+#endif
+
         uint8 sfxCnt = ReadInt8(&info);
         for (int32 i = 0; i < sfxCnt; ++i) {
             ReadString(&info, buffer);
             uint8 maxConcurrentPlays = ReadInt8(&info);
-            //LoadSfx(buffer, maxConcurrentPlays, SCOPE_GLOBAL);
+            LoadSfx(buffer, maxConcurrentPlays, SCOPE_GLOBAL);
         }
 
         uint16 totalSceneCount = ReadInt16(&info);

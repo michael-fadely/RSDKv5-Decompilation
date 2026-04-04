@@ -118,20 +118,9 @@ inline uint16 GetSfx(const char *sfxName)
     GEN_HASH_MD5(sfxName, hash);
 
     for (int32 s = 0; s < SFX_COUNT; ++s) {
-        if (HASH_MATCH_MD5(sfxList[s].hash, hash)) {
+        if (HASH_MATCH_MD5(sfxList[s].hash, hash))
             return s;
-        }
     }
-
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-    LoadSfx((char*)sfxName, 1, 1);
-
-    for (int32 s = 0; s < SFX_COUNT; ++s) {
-        if (HASH_MATCH_MD5(sfxList[s].hash, hash)) {
-            return s;
-        }
-    }
-#endif
 
     return -1;
 }
