@@ -80,6 +80,7 @@ int main(int argc, char *argv[]) { return RSDK_main(argc, argv, (void *)LinkGame
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 #include <kos.h>
+KOS_INIT_FLAGS(INIT_IRQ | INIT_CONTROLLER | INIT_VMU | INIT_CDROM | INIT_FS_PTY);
 mutex_t io_lock;
 #endif
 int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
