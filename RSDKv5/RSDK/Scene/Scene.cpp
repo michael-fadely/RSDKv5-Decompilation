@@ -1381,6 +1381,9 @@ void RSDK::LoadStageGIF(char *filepath)
                 PVR_TXRLOAD_8BPP
             );
         }
+
+        // Don't take any chances with the GC checking stack variables.
+        RemoveStorageEntry((void**)&tilesetPixels);
 #else
         // Flip X
         uint8 *srcPixels = tilesetPixels;
