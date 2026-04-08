@@ -941,16 +941,15 @@ void RSDK::GarbageCollectStorage(StorageDataSets set)
         return;
     }
 
-    for (uint32 e = 0; e < storage->entryCount; ++e) {
-        if (storage->dataEntries[e] != nullptr && *storage->dataEntries[e] != storage->storageEntries[e]) {
-            storage->dataEntries[e] = nullptr;
-        }
-    }
-
     uint32 newEntryCount = 0;
 
     for (uint32 e = 0; e < storage->entryCount; ++e) {
         if (storage->dataEntries[e] == nullptr) {
+            continue;
+        }
+
+        if (*storage->dataEntries[e] != storage->storageEntries[e]) {
+            storage->dataEntries[e] = nullptr;
             continue;
         }
 
