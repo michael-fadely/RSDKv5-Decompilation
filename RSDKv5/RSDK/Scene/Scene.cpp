@@ -1291,16 +1291,13 @@ void RSDK::LoadStageGIF(char *filepath)
         // to make LOD map texture
         if (ufoNum) {
             if (persistTiles == nullptr) {
-                AllocateStorage(reinterpret_cast<void**>(&persistTiles), TILESET_SIZE, DATASET_STG, false);
+                AllocatePinnedStorage(reinterpret_cast<void**>(&persistTiles), TILESET_SIZE, DATASET_STG, false);
                 if (persistTiles == nullptr) {
                     printf("[NG] Failed to allocate for persistent tile set!!!: %s\n", filepath);
-                } else {
-                    PinStorage((void**)&persistTiles);
                 }
             }
         }
-        AllocateStorage(reinterpret_cast<void**>(&tilesetPixels), 2 * TILESET_SIZE, DATASET_TMP, true);
-        PinStorage(reinterpret_cast<void**>(&tilesetPixels));
+        AllocatePinnedStorage(reinterpret_cast<void**>(&tilesetPixels), 2 * TILESET_SIZE, DATASET_TMP, true);
 
         if (tilesetPixels == nullptr) {
             printf("[NG] Failed to allocate for tile set!!!: %s\n", filepath);

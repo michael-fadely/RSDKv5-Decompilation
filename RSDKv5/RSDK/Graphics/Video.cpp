@@ -49,23 +49,19 @@ static int mpegAllocIndex = 0;
 // otherwise we do not have enough RAM to play a video :-)
 #define PLM_MALLOC(sz) \
             ({ \
-            AllocateStorage((void **)&mpegAllocs[mpegAllocIndex], sz, DATASET_STG, false); \
-            PinStorage(&mpegAllocs[mpegAllocIndex]); \
+            AllocatePinnedStorage((void **)&mpegAllocs[mpegAllocIndex], sz, DATASET_STG, false); \
             mpegAllocs[mpegAllocIndex++]; \
             })
 
 #define PLM_FREE(p) \
             ({ \
-            UnPinStorage((void**)&p); \
             RemoveStorageEntry((void**)&p); \
             })
 
 #define PLM_REALLOC(p, sz) \
             ({ \
-            AllocateStorage((void **)&mpegAllocs[mpegAllocIndex], sz, DATASET_STG, false); \
-            PinStorage(&mpegAllocs[mpegAllocIndex]); \
+            AllocatePinnedStorage((void **)&mpegAllocs[mpegAllocIndex], sz, DATASET_STG, false); \
             memcpy(mpegAllocs[mpegAllocIndex], p, sz); \
-            UnPinStorage((void**)&p); \
             RemoveStorageEntry((void**)&p); \
             mpegAllocs[mpegAllocIndex++]; \
             })

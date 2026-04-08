@@ -232,11 +232,9 @@ void RSDK::UnPinStorage_(void** pVar, const char* file, size_t line) {
     auto* header = static_cast<StorageHeader*>(*pVar) - 1;
     header->flags &= ~StorageFlags::pinned;
 }
-#endif
 
-void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line)
-{
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
+namespace {
+void AllocateStorageImpl(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, bool32 pin, const char* file, size_t line) {
     if (dataPtr == nullptr) {
         return;
     }
@@ -280,13 +278,11 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
     StorageHeader* fitHeader = nullptr;
 
-    while (true)
-    {
+    while (true) {
         StorageHeader* prevHeader = nullptr;
         StorageHeader* currHeader = reinterpret_cast<StorageHeader*>(storage->memoryTable);
         const void* poolEnd = reinterpret_cast<const uint8*>(storage->memoryTable) + storage->storageLimit;
 
-        // DCTODO: account for pinning logic! push pinned objects as far to the end of memoryTable as possible
         while (currHeader < poolEnd) {
             if (!currHeader->IsUsed()) {
                 // while we're here, defragment free space
@@ -297,7 +293,10 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
 
                 if (currHeader->capacity >= size_i) {
                     fitHeader = currHeader;
-                    break;
+
+                    if (!pin) {
+                        break;
+                    }
                 }
             }
 
@@ -323,23 +322,27 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
         return; // :(
     }
 
-    auto* data = fitHeader->GetDataPtr();
-
-    fitHeader->flags = StorageFlags::used | (static_cast<uint32>(dataSet) << StorageFlags::setIDShift);
-    fitHeader->poolOffset = static_cast<uint32>(reinterpret_cast<uintptr_t>(data) - reinterpret_cast<uintptr_t>(storage->memoryTable));
-
-    fitHeader->length = size_i;
-
     // if there's enough space to partition this block, then do it.
     // otherwise, if there's any excess space, it'll be reclaimed later.
     const uint32 blockRemainder = fitHeader->capacity - size_i;
     if (blockRemainder > StorageHeader::SizeInts()) {
-        fitHeader->capacity = size_i;
+        const uint32 actualRemainder = blockRemainder - StorageHeader::SizeInts();
+        fitHeader->capacity = pin ? actualRemainder : size_i;
 
         auto* partition = fitHeader->VeryUnsafeNext();
         *partition = {};
-        partition->capacity = blockRemainder - StorageHeader::SizeInts();
+        partition->capacity = pin ? size_i : actualRemainder;
+
+        if (pin) {
+            fitHeader = partition;
+        }
     }
+
+    auto* data = fitHeader->GetDataPtr();
+
+    fitHeader->flags = ((pin) ? StorageFlags::pinned : StorageFlags::none) | StorageFlags::used | (static_cast<uint32>(dataSet) << StorageFlags::setIDShift);
+    fitHeader->poolOffset = static_cast<uint32>(reinterpret_cast<uintptr_t>(data) - reinterpret_cast<uintptr_t>(storage->memoryTable));
+    fitHeader->length = size_i;
 
     if (clear) {
         memset(data, 0, static_cast<size_t>(sizeof(uint32)) * static_cast<size_t>(fitHeader->length));
@@ -353,6 +356,18 @@ void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet
     ++storage->entryCount;
     storage->usedStorage += StorageHeader::SizeInts() + size_i;
     //PrintAllocState(dataSet, storage, *dataPtr, inputSize, file, line);
+}
+}
+
+void RSDK::AllocatePinnedStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line) {
+    AllocateStorageImpl(dataPtr, size, dataSet, clear, true, file, line);
+}
+#endif
+
+void RSDK::AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line)
+{
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    AllocateStorageImpl(dataPtr, size, dataSet, clear, false, file, line);
 #else
     uint32 inputSize = size;
     uint32 **data = (uint32 **)dataPtr;

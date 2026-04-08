@@ -119,6 +119,9 @@ void PinStorage_(void** pVar, const char* file, size_t line);
 void UnPinStorage_(void** pVar, const char* file, size_t line);
 #define PinStorage(pVar) PinStorage_(pVar, __FILE__, __LINE__)
 #define UnPinStorage(pVar) UnPinStorage_(pVar, __FILE__, __LINE__)
+
+void AllocatePinnedStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line);
+#define AllocatePinnedStorage(dataPtr, size, dataSet, clear) AllocatePinnedStorage_(dataPtr, size, dataSet, clear, __FILE__, __LINE__)
 #endif
 
 void AllocateStorage_(void **dataPtr, uint32 size, StorageDataSets dataSet, bool32 clear, const char* file, size_t line);
