@@ -679,16 +679,19 @@ uint16 RSDK::LoadMesh(const char *filename, uint8 scope)
     FileInfo info {};
     InitFileInfo(&info);
 
+    // attempt to load an optimized replacement model from the CD filesystem first.
+    // DCFIXME: a centralized file replacement system would be nice
     sprintf_s(fullFilePath, sizeof(fullFilePath), "%sData/Meshes/%s", RSDK::SKU::userFileDir, filename);
 
     info.externalFile = true;
     auto fileOpened = LoadFile(&info, fullFilePath, FMODE_RB);
 
+    // if that didn't work, just fall back to Data.rsdk
     if (!fileOpened) {
         CloseFile(&info);
         info = {};
         InitFileInfo(&info);
-        sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Meshes/%s", filename); // put it back lmao
+        sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Meshes/%s", filename);
         fileOpened = LoadFile(&info, fullFilePath, FMODE_RB);
     }
     else {
