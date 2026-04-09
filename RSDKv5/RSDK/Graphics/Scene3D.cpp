@@ -684,7 +684,7 @@ uint16 RSDK::LoadMesh(const char *filename, uint8 scope)
     sprintf_s(fullFilePath, sizeof(fullFilePath), "%sData/Meshes/%s", RSDK::SKU::userFileDir, filename);
 
     info.externalFile = true;
-    auto fileOpened = LoadFile(&info, fullFilePath, FMODE_RB);
+    bool32 fileOpened = LoadFile(&info, fullFilePath, FMODE_RB);
 
     // if that didn't work, just fall back to Data.rsdk
     if (!fileOpened) {
