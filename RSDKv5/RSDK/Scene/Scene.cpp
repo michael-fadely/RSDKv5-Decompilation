@@ -2,21 +2,7 @@
 
 #ifdef KOS_HARDWARE_RENDERER
 #include <RSDK/Graphics/KallistiOS/AniTileTracker.hpp>
-
-//! Calculates 1.0f/sqrtf( \p x ), using a fast approximation.
-__always_inline float shz_inverse_sqrtf(float x) {
-    asm("fsrra %0" : "+f" (x));
-    return x;
-}
-
-__always_inline float shz_invf(float x) {
-    float rx = shz_inverse_sqrtf(x * x);
-    return x < 0 ? -rx : rx;
-}
-
-__always_inline float shz_divf(float num, float denom) {
-    return num * shz_invf(denom);
-}
+#include <sh4zam/shz_sh4zam.h>
 #endif
 
 using namespace RSDK;

@@ -4,6 +4,8 @@
 #include <RSDK/Core/Stub.hpp>
 #include <RSDK/Core/Math.hpp>
 
+#include <sh4zam/shz_sh4zam.h>
+
 struct KOSTexture
 {
 #if !defined(KOS_HARDWARE_RENDERER)
@@ -17,26 +19,6 @@ struct KOSTexture
 };
 
 static KOSTexture screenTextures[SCREEN_COUNT] {};
-
-// ========== FAST SH4 UTILITY ROUTINES ==========
-
-//! Calculates 1.0f/sqrtf( \p x ), using a fast approximation.
-__always_inline float shz_inverse_sqrtf(float x) {
-    asm("fsrra %0" : "+f" (x));
-    return x;
-}
-
-//! Takes the inverse of \p p using a very fast approximation, returning a positive result.
-__always_inline float shz_inverse_posf(float x) {
-    return shz_inverse_sqrtf(x * x);
-}
-
-//! Divides \p num by \p denom using a very fast approximation, returning a positive result.
-__always_inline float shz_div_posf(float num, float denom) {
-    return num * shz_inverse_posf(denom);
-}
-
-// ===============================================
 
 // Global pixel scale factors based on pixel-to-screen size ratio
 static float pixelScaleX = 1.0f;
@@ -953,10 +935,10 @@ void RenderDevice::DrawTexturedQuadPT(
     const float x1 = x0 + (static_cast<float>(width) * pixelScaleX);
     const float y0 = static_cast<float>(y) * pixelScaleY;
     const float y1 = y0 + (static_cast<float>(height) * pixelScaleY);
-    const float u0 = shz_div_posf(sprX0, surface->width);
-    const float v0 = shz_div_posf(sprY0, surface->height);
-    const float u1 = shz_div_posf(sprX1, surface->width);
-    const float v1 = shz_div_posf(sprY1, surface->height);
+    const float u0 = shz_divf_fsrra(sprX0, surface->width);
+    const float v0 = shz_divf_fsrra(sprY0, surface->height);
+    const float u1 = shz_divf_fsrra(sprX1, surface->width);
+    const float v1 = shz_divf_fsrra(sprY1, surface->height);
     const float z  = GetDepth();
 
     // First 32 bytes of a `pvr_sprite_txr_t` structure mapped to a SQ.
@@ -1009,10 +991,10 @@ void RenderDevice::DrawTexturedQuadTR(
     const float x1 = x0 + (static_cast<float>(width) * pixelScaleX);
     const float y0 = static_cast<float>(y) * pixelScaleY;
     const float y1 = y0 + (static_cast<float>(height) * pixelScaleY);
-    const float u0 = shz_div_posf(sprX0, surface->width);
-    const float v0 = shz_div_posf(sprY0, surface->height);
-    const float u1 = shz_div_posf(sprX1, surface->width);
-    const float v1 = shz_div_posf(sprY1, surface->height);
+    const float u0 = shz_divf_fsrra(sprX0, surface->width);
+    const float v0 = shz_divf_fsrra(sprY0, surface->height);
+    const float u1 = shz_divf_fsrra(sprX1, surface->width);
+    const float v1 = shz_divf_fsrra(sprY1, surface->height);
     const float z  = GetDepth();
 
     pvr_sprite_txr_t *spr = (pvr_sprite_txr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
@@ -1070,10 +1052,10 @@ void RenderDevice::DrawTexturedQuadPTEx(
     };
 
     // Compute constants up-front.
-    const float u0 = shz_div_posf(sprX0, surface->width);
-    const float v0 = shz_div_posf(sprY0, surface->height);
-    const float u1 = shz_div_posf(sprX1, surface->width);
-    const float v1 = shz_div_posf(sprY1, surface->height);
+    const float u0 = shz_divf_fsrra(sprX0, surface->width);
+    const float v0 = shz_divf_fsrra(sprY0, surface->height);
+    const float u1 = shz_divf_fsrra(sprX1, surface->width);
+    const float v1 = shz_divf_fsrra(sprY1, surface->height);
     const float z  = GetDepth();
 
     // First 32 bytes of a `pvr_sprite_txr_t` structure mapped to a SQ.
@@ -1292,10 +1274,10 @@ void RenderDevice::DrawTexturedPolyPT(
     const float x1 = x0 + static_cast<float>(width);
     const float y1 = y0 + static_cast<float>(height);
     const float z  = GetDepth();
-    const float u0 = shz_div_posf(sprX0, surface->width);
-    const float v0 = shz_div_posf(sprY0, surface->height);
-    const float u1 = shz_div_posf(sprX1, surface->width);
-    const float v1 = shz_div_posf(sprY1, surface->height);
+    const float u0 = shz_divf_fsrra(sprX0, surface->width);
+    const float v0 = shz_divf_fsrra(sprY0, surface->height);
+    const float u1 = shz_divf_fsrra(sprX1, surface->width);
+    const float v1 = shz_divf_fsrra(sprY1, surface->height);
     // alpha is irrelevant for PT
     const uint32 argb = 0xFFFFFFFFu;
 
@@ -1415,10 +1397,10 @@ void RenderDevice::DrawTexturedPolyPTEx(
     };
 
     const float z  = GetDepth();
-    const float u0 = shz_div_posf(sprX0, surface->width);
-    const float v0 = shz_div_posf(sprY0, surface->height);
-    const float u1 = shz_div_posf(sprX1, surface->width);
-    const float v1 = shz_div_posf(sprY1, surface->height);
+    const float u0 = shz_divf_fsrra(sprX0, surface->width);
+    const float v0 = shz_divf_fsrra(sprY0, surface->height);
+    const float u1 = shz_divf_fsrra(sprX1, surface->width);
+    const float v1 = shz_divf_fsrra(sprY1, surface->height);
 
     pvr_vertex_t verts[4] = {
         {
@@ -1480,10 +1462,10 @@ void RenderDevice::DrawFloorTexturedPolyPTEx(
 
     lastPrimitiveWasConsumed = true;
 
-    const float u0 = shz_div_posf(sprX0, surface->width);
-    const float v0 = shz_div_posf(sprY0, surface->height);
-    const float u1 = shz_div_posf(sprX1, surface->width);
-    const float v1 = shz_div_posf(sprY1, surface->height);
+    const float u0 = shz_divf_fsrra(sprX0, surface->width);
+    const float v0 = shz_divf_fsrra(sprY0, surface->height);
+    const float u1 = shz_divf_fsrra(sprX1, surface->width);
+    const float v1 = shz_divf_fsrra(sprY1, surface->height);
 
     pvr_vertex_t verts[4] = {
         {
@@ -1561,10 +1543,10 @@ void RenderDevice::DrawTexturedPolyTR(
     const float x1 = x0 + static_cast<float>(width);
     const float y1 = y0 + static_cast<float>(height);
     const float z  = GetDepth();
-    const float u0 = shz_div_posf(sprX0, surface->width);
-    const float v0 = shz_div_posf(sprY0, surface->height);
-    const float u1 = shz_div_posf(sprX1, surface->width);
-    const float v1 = shz_div_posf(sprY1, surface->height);
+    const float u0 = shz_divf_fsrra(sprX0, surface->width);
+    const float v0 = shz_divf_fsrra(sprY0, surface->height);
+    const float u1 = shz_divf_fsrra(sprX1, surface->width);
+    const float v1 = shz_divf_fsrra(sprY1, surface->height);
     const uint32 argb = 0x00FFFFFFu | (alpha << 24);
 
     /* Since we have to potentially modify the vertex stream later on to apply
