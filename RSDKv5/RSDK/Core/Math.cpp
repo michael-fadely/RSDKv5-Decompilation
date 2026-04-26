@@ -4,16 +4,7 @@
 using namespace RSDK;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && !RETRO_USE_ORIGINAL_CODE
-//! Calculates 1.0f/sqrtf( \p x ), using a fast approximation.
-__always_inline float shz_inverse_sqrtf(float x) {
-    asm("fsrra %0" : "+f" (x));
-    return x;
-}
-
-__always_inline float shz_invf(float x) {
-    float rx = shz_inverse_sqrtf(x * x);
-    return x < 0 ? -rx : rx;
-}
+#include <sh4zam/shz_sh4zam.h>
 #endif
 
 #if RETRO_PLATFORM != RETRO_KALLISTIOS || RETRO_USE_ORIGINAL_CODE
