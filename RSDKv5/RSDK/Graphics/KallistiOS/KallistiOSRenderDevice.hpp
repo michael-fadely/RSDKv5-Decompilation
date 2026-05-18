@@ -132,6 +132,11 @@ public:
             int32 width, int32 height,
             uint32 color
     );
+    static void DrawColoredPolyPTEx(
+            const Vector2& upperLeft, const Vector2& upperRight,
+            const Vector2& lowerLeft, const Vector2& lowerRight,
+            uint32 color
+    );
 
     static void PrepareColoredPolyTR(int32 y, int inkEffect);
     static void DrawColoredPolyTR(
