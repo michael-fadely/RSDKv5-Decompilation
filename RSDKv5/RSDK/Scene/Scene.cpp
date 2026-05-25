@@ -2136,6 +2136,12 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
                 continue;
             }
 
+            const int32 tileLeft  = std::min(screenUpperX, screenLowerX);
+            const int32 tileRight = std::max(screenUpperX, screenLowerX) + TILE_SIZE;
+            if (tileRight <= currentScreen->clipBound_X1 || tileLeft >= currentScreen->clipBound_X2) {
+                continue;
+            }
+
             const Vector2 screenUpperLeft {
                 screenUpperX,
                 screenUpperY,
@@ -2319,7 +2325,7 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
         return;
 
 #if defined(KOS_HARDWARE_RENDERER)
-   const ScanlineInfo* leftScanline = &scanlines[currentScreen->clipBound_X1];
+    const ScanlineInfo* leftScanline = &scanlines[currentScreen->clipBound_X1];
 
     const int32 sheetX = FROM_FIXED(leftScanline->position.x) & 0xF;
     int32 scanlineIncrement = TILE_SIZE - sheetX;
@@ -2367,6 +2373,12 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
             ty = (ty + 1) % layer->ysize;
 
             if (layout == 0xFFFF) {
+                continue;
+            }
+
+            const int32 tileTop = std::min(screenLeftY, screenRightY);
+            const int32 tileBot = std::max(screenLeftY, screenRightY) + TILE_SIZE;
+            if (tileBot <= currentScreen->clipBound_Y1 || tileTop >= currentScreen->clipBound_Y2) {
                 continue;
             }
 
