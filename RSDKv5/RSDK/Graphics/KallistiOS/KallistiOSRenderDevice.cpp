@@ -1588,8 +1588,8 @@ void RenderDevice::DrawFloorTexturedPolyPTExUV(
 
     lastPrimitiveWasConsumed = true;
 
-    const float invW = shz_inverse_posf(surface->width);
-    const float invH = shz_inverse_posf(surface->height);
+    const float invW = shz_invf(surface->width);
+    const float invH = shz_invf(surface->height);
 
     pvr_vertex_t verts[4] = {
         {
