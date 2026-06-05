@@ -61,7 +61,7 @@ while IFS= read -r -d '' file <&3; do
   mkdir -p -- "$outdir/$dir"
   out1="$outdir/$dir/resample_$base"
 
-  if [[ "$base" == *Continue.wav ]]; then
+  if [[ "$base" == *Continue.wav ]] || [[ "$rel" == *Global/Teleport* ]]; then
     # convert u8 -> s16 temp then stretch + resample to 22050
     ffmpeg -nostdin -v error -y -f wav -c:a pcm_u8 -i "$file" \
       -f wav -c:a pcm_s16le -- "$tmp_wav"
