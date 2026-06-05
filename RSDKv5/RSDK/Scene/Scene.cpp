@@ -3979,6 +3979,16 @@ static void DrawRotozoomPinballBG(TileLayer *layer)
     }
 }
 
+// Tiles with magenta pixels in the tileset should NOT have plasma drawn under them.
+// this is a set of bitfields covering all 1024 tile numbers
+// a bit set to 1 means magenta pixels exist in that tile
+static const uint32 ufo7PlasmaSkip[32] = {
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF700000, 0x87EAA930, 0x5C2AB499, 0xFC000011, 0xFFFFFFFF, 0x1FFFFFFF, 0x8080C1DC, 0xC0603803,
+    0xE000BFE0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+};
+
 static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
 {
     const GFXSurface *surface = &gfxSurface[0];
@@ -4278,6 +4288,99 @@ static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
                     iu0, iu1, iv0, iv1,
                     &mapSurf, color, ocolor
                 );
+            }
+        }
+    }
+
+    // "INK_MASKED" plasma pass on stage 7 / stage 1+
+    if (ufoNum == 7 && !pinball) {
+        uint16 plasmaSheetID = (uint16)scanlines[0].position.x;
+        int32 plasmaTimer    = scanlines[0].position.y;
+
+        if (plasmaSheetID > 0 && plasmaSheetID < SURFACE_COUNT) {
+            const GFXSurface *plasmaSurface = &gfxSurface[plasmaSheetID];
+            if (plasmaSurface->texture) {
+                RenderDevice::PrepareTexturedPolyPTEX(currentScreen->clipBound_Y1, INK_NONE, plasmaSurface);
+
+                // this is a loose recreation of the original scanline deformation effect
+                // looks decent visually, is not necessarily accurate
+                float scrollU = 0.0f;
+                float scrollV = (float)plasmaTimer * 1.0f;
+
+                const float waveFreq   = 12.0f;
+                const float waveAmp    = 48.0f;
+                const float phaseScale = 2.0f * RSDK_PI / 256.0f;
+
+                int pfirstZ = firstNonEmptyRow > minTileZ ? firstNonEmptyRow : minTileZ;
+                int plastZ  = lastNonEmptyRow < maxTileZ ? lastNonEmptyRow : maxTileZ;
+
+                float wavePhaseTop = (float)(((int)(pfirstZ * waveFreq) + plasmaTimer * 2) & 0xFF) * phaseScale;
+                float waveOffTop   = sinf(wavePhaseTop) * waveAmp;
+
+                for (int tz = pfirstZ; tz <= plastZ; tz++) {
+                    float wavePhaseBot = (float)(((int)((tz + 1) * waveFreq) + plasmaTimer * 2) & 0xFF) * phaseScale;
+                    float waveOffBot   = sinf(wavePhaseBot) * waveAmp;
+
+                    float z0    = (float)((uint32)(tz * TILE_SIZE));
+                    float z1    = z0 + TILE_SIZE;
+                    float zdiff = (float)(originTZ - tz);
+
+                    int firstX = (minTileX < firstNonemptyTileInRow[tz]) ? firstNonemptyTileInRow[tz] : minTileX;
+                    int lastX  = (maxTileX > lastNonemptyTileInRow[tz]) ? lastNonemptyTileInRow[tz] : maxTileX;
+
+                    for (int tx = firstX; tx <= lastX; tx++) {
+                        float xdiff  = (float)(originTX - tx);
+                        float xzdist = (xdiff * xdiff) + (zdiff * zdiff);
+                        if (xzdist > tileRadSq)
+                            continue;
+
+                        uint16 tile = layout[tx + (tz << layer->widthShift)] & 0xFFF;
+                        if (tile == 0xFFF)
+                            continue;
+                        if (tile < 1024 && (ufo7PlasmaSkip[tile >> 5] & (1u << (tile & 31))))
+                            continue;
+
+                        float x0 = (float)((uint32)(tx * TILE_SIZE));
+                        float x1 = x0 + TILE_SIZE;
+
+                        VERTS(x0, x1, 0.0f, z0, z1);
+                        XFORM_WTEST({});
+
+                        for (int32 i = 0; i < 4; i++) {
+                            float invW    = shz_invf(tileVerts[i].w);
+                            tileVerts[i].x *= invW;
+                            tileVerts[i].y *= invW;
+                            tileVerts[i].z *= invW;
+                            tileVerts[i].z += baseZ - 0.0001f;
+                            tileVerts[i].w = invW;
+                        }
+
+                        CULL(x, <, 0);
+                        CULL(x, >, DEFAULT_PIXWIDTH);
+                        CULL(y, <, 0);
+                        CULL(y, >, 240);
+
+                        uint8 comp   = (uint8)((1.0f - ((tileVerts[TILE_UR].w * 250.0f) < 1.0f ? (tileVerts[TILE_UR].w * 250.0f) : 1.0f)) * 84.0f);
+                        uint8 bright = 0xEE - comp;
+                        uint32 color  = 0xFF000000 | (bright << 16) | (bright << 8) | bright;
+                        uint32 ocolor = 0x00000000;
+
+                        float baseU0 = (float)(tx * TILE_SIZE) + scrollU;
+                        float baseU1 = baseU0 + TILE_SIZE;
+                        float baseV0 = (float)(tz * TILE_SIZE) + scrollV;
+                        float baseV1 = baseV0 + TILE_SIZE;
+
+                        RenderDevice::DrawFloorTexturedPolyPTExUV(
+                            tileVerts[TILE_UL], tileVerts[TILE_UR],
+                            tileVerts[TILE_LL], tileVerts[TILE_LR],
+                            baseU0 + waveOffTop, baseV0, baseU1 + waveOffTop, baseV0,
+                            baseU0 + waveOffBot, baseV1, baseU1 + waveOffBot, baseV1,
+                            plasmaSurface, color, ocolor
+                        );
+                    }
+
+                    waveOffTop = waveOffBot;
+                }
             }
         }
     }
