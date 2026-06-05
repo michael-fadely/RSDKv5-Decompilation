@@ -1089,7 +1089,6 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
 uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-    // now adding "Global" to compressed as well. hit some more PVR OOMs without it
     if ((strncmp("TMZ1/Portal", filename, 11) == 0) || (strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("Global/", filename, 7) == 0) || (strncmp("UI/", filename, 3) == 0)) {
         uint16_t id = LoadVQSpriteSheet(filename, scope);
         if (id != (uint16_t)-1) {
