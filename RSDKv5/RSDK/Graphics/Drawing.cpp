@@ -1542,6 +1542,206 @@ static void DrawCircleOutlineWithLines(int cx, int cy, int radius, int width, ui
 
     RenderDevice::SetLinePolyThickness(2);
 }
+
+static void DrawFilledCircleClippedToTriangle(int cx, int cy, int radius, uint32 color, int32 alpha, int32 inkEffect,
+                                              int32 triTopX, int32 triTopY, int32 triBotLeftX, int32 triBotY, int32 triBotRightX)
+{
+    int32 red   = (color >> 16) & 0xFF;
+    int32 green = (color >> 8) & 0xFF;
+    int32 blue  = color & 0xFF;
+
+    int32 yTop    = cy - radius;
+    int32 yBottom = cy + radius;
+    if (yTop < triTopY)
+        yTop = triTopY;
+    if (yBottom > triBotY)
+        yBottom = triBotY;
+
+    int32 triHeight = triBotY - triTopY;
+    if (triHeight <= 0)
+        return;
+
+    for (int32 scanY = yTop; scanY <= yBottom; ++scanY) {
+        int32 dy    = scanY - cy;
+        int32 r2    = radius * radius;
+        int32 dy2   = dy * dy;
+        if (dy2 >= r2)
+            continue;
+
+        float dx    = sqrtf((float)(r2 - dy2));
+        int32 cLeft  = cx - (int32)dx;
+        int32 cRight = cx + (int32)dx;
+
+        int32 t_num  = scanY - triTopY;
+        int32 diagX  = triTopX + (triBotLeftX - triTopX) * t_num / triHeight;
+
+        int32 clipLeft  = diagX;
+        int32 clipRight = triBotRightX;
+
+        if (cLeft < clipLeft)
+            cLeft = clipLeft;
+        if (cRight > clipRight)
+            cRight = clipRight;
+
+        if (cLeft >= cRight)
+            continue;
+
+        Vector2 verts[4];
+        verts[0].x = cLeft << 16;
+        verts[0].y = scanY << 16;
+        verts[1].x = cRight << 16;
+        verts[1].y = scanY << 16;
+        verts[2].x = cRight << 16;
+        verts[2].y = (scanY + 1) << 16;
+        verts[3].x = cLeft << 16;
+        verts[3].y = (scanY + 1) << 16;
+
+        DrawFace(verts, 4, red, green, blue, alpha, inkEffect);
+    }
+}
+
+static bool ClipLineToTriangle(int *lx0, int *ly0, int *lx1, int *ly1,
+                               int32 triTopX, int32 triTopY, int32 triBotLeftX, int32 triBotY, int32 triBotRightX)
+{
+    float x0 = (float)*lx0, y0 = (float)*ly0;
+    float x1 = (float)*lx1, y1 = (float)*ly1;
+    float dx = x1 - x0, dy = y1 - y0;
+    float tMin = 0.0f, tMax = 1.0f;
+
+    if (fabsf(dx) > 0.001f) {
+        float t = ((float)triBotRightX - x0) / dx;
+        if (dx > 0) { if (t < tMax) tMax = t; } else { if (t > tMin) tMin = t; }
+    }
+    else if (x0 > (float)triBotRightX) return false;
+
+    if (fabsf(dy) > 0.001f) {
+        float t = ((float)triBotY - y0) / dy;
+        if (dy > 0) { if (t < tMax) tMax = t; } else { if (t > tMin) tMin = t; }
+    }
+    else if (y0 > (float)triBotY) return false;
+
+    if (fabsf(dy) > 0.001f) {
+        float t = ((float)triTopY - y0) / dy;
+        if (dy < 0) { if (t < tMax) tMax = t; } else { if (t > tMin) tMin = t; }
+    }
+    else if (y0 < (float)triTopY) return false;
+
+    {
+        float A = (float)(triBotY - triTopY);
+        float B = (float)(triBotLeftX - triTopX);
+        float d0 = (x0 - (float)triTopX) * A - (y0 - (float)triTopY) * B;
+        float d1 = (x1 - (float)triTopX) * A - (y1 - (float)triTopY) * B;
+        float dd = d1 - d0;
+        if (fabsf(dd) > 0.001f) {
+            float t = -d0 / dd;
+            if (dd < 0) { if (t < tMax) tMax = t; } else { if (t > tMin) tMin = t; }
+        }
+        else if (d0 < 0) return false;
+    }
+
+    if (tMin >= tMax)
+        return false;
+
+    *lx0 = (int)(x0 + tMin * dx);
+    *ly0 = (int)(y0 + tMin * dy);
+    *lx1 = (int)(x0 + tMax * dx);
+    *ly1 = (int)(y0 + tMax * dy);
+    return true;
+}
+
+static void DrawCircleOutlineClippedToTriangle(int cx, int cy, int innerRadius, int outerRadius, uint32 color, int32 alpha, int32 inkEffect,
+                                               int32 triTopX, int32 triTopY, int32 triBotLeftX, int32 triBotY, int32 triBotRightX)
+{
+    int32 width = outerRadius - innerRadius;
+    RenderDevice::SetLinePolyThickness(width);
+
+    const int segs = 64;
+    const float step = 2.0f * (float)M_PI / (float)segs;
+
+    if (inkEffect == INK_BLEND) {
+        inkEffect = INK_NONE;
+        alpha = 0xFF;
+    }
+
+    int x0 = cx + outerRadius;
+    int y0 = cy;
+
+    float angle = step;
+    for (int i = 1; i <= segs; i++) {
+        int x1 = cx + (int)((float)outerRadius * cosf(angle));
+        int y1 = cy + (int)((float)outerRadius * sinf(angle));
+
+        int cx0 = x0, cy0 = y0, cx1 = x1, cy1 = y1;
+        if (ClipLineToTriangle(&cx0, &cy0, &cx1, &cy1, triTopX, triTopY, triBotLeftX, triBotY, triBotRightX))
+            DrawLine(cx0, cy0, cx1, cy1, color, alpha, inkEffect, true);
+
+        x0 = x1;
+        y0 = y1;
+        angle += step;
+    }
+
+    RenderDevice::SetLinePolyThickness(2);
+}
+
+void RSDK::DrawCircleClipped(int32 x, int32 y, int32 radius, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative,
+                             int32 triTopX, int32 triTopY, int32 triBotLeftX, int32 triBotY, int32 triBotRightX)
+{
+    if (radius <= 0)
+        return;
+
+    switch (inkEffect) {
+        default: break;
+        case INK_ALPHA:
+            if (alpha > 0xFF) inkEffect = INK_NONE;
+            else if (alpha <= 0) return;
+            break;
+        case INK_ADD:
+        case INK_SUB:
+            if (alpha > 0xFF) alpha = 0xFF;
+            else if (alpha <= 0) return;
+            break;
+    }
+
+    if (!screenRelative) {
+        x = FROM_FIXED(x) - currentScreen->position.x;
+        y = FROM_FIXED(y) - currentScreen->position.y;
+    }
+
+    DrawFilledCircleClippedToTriangle(x, y, radius, color, alpha, inkEffect,
+                                     triTopX, triTopY, triBotLeftX, triBotY, triBotRightX);
+}
+
+void RSDK::DrawCircleOutlineClipped(int32 x, int32 y, int32 innerRadius, int32 outerRadius, uint32 color, int32 alpha, int32 inkEffect,
+                                    bool32 screenRelative, int32 triTopX, int32 triTopY, int32 triBotLeftX, int32 triBotY, int32 triBotRightX)
+{
+    if (outerRadius <= 0)
+        return;
+
+    switch (inkEffect) {
+        default: break;
+        case INK_ALPHA:
+            if (alpha > 0xFF) inkEffect = INK_NONE;
+            else if (alpha <= 0) return;
+            break;
+        case INK_ADD:
+        case INK_SUB:
+            if (alpha > 0xFF) alpha = 0xFF;
+            else if (alpha <= 0) return;
+            break;
+    }
+
+    if (!screenRelative) {
+        x = FROM_FIXED(x) - currentScreen->position.x;
+        y = FROM_FIXED(y) - currentScreen->position.y;
+    }
+
+    DrawCircleOutlineClippedToTriangle(x, y, innerRadius, outerRadius, color, alpha, inkEffect,
+                                      triTopX, triTopY, triBotLeftX, triBotY, triBotRightX);
+}
+
+float RSDK::DepthGet(void) { return RenderDevice::GetDepth(); }
+
+void RSDK::DepthSet(float depth) { RenderDevice::SetDepth(depth); }
 #endif
 void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
