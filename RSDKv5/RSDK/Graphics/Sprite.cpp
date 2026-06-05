@@ -949,8 +949,6 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
 
     surface->isVq = 1;
 
-    memcpy(surface->hash, hash, 4 * sizeof(int32));
-
     int32 w = surface->width;
     if (w > 1) {
         int32 ls = 0;
@@ -1080,6 +1078,7 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
     surface->pixels = NULL;
 
     fClose(vqTexFile);
+    memcpy(surface->hash, hash, 4 * sizeof(int32));
 
     return id;
 }
@@ -1088,12 +1087,11 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
 uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-#if DO_480
-    if ((strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("Global/", filename, 7) == 0) || (strncmp("UI/", filename, 3) == 0)) {
-#else
-    if ((strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("UI/", filename, 3) == 0)) {
-#endif
-        return LoadVQSpriteSheet(filename, scope);
+    if ((strncmp("TMZ1/Portal", filename, 11) == 0) || (strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("Global/", filename, 7) == 0) || (strncmp("UI/", filename, 3) == 0)) {
+        uint16_t id = LoadVQSpriteSheet(filename, scope);
+        if (id != (uint16_t)-1) {
+            return id;
+        }
     }
 #endif
     char fullFilePath[0x100];
