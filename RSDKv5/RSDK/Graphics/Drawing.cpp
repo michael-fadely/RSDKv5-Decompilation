@@ -4704,8 +4704,64 @@ void RSDK::DrawDeformedSprite(uint16 sheetID, int32 inkEffect, int32 alpha)
     }
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-    // DCTODO: DrawDeformedSprite
     validDraw = true;
+
+    if (inkEffect == INK_MASKED)
+        return;
+
+    GFXSurface *surface = &gfxSurface[sheetID];
+    if (!surface->texture)
+        return;
+
+    int32 clipY1  = currentScreen->clipBound_Y1;
+    int32 clipY2  = currentScreen->clipBound_Y2;
+    int32 screenW = currentScreen->pitch;
+
+    uint32 argb = ((uint32)alpha << 24) | 0x00FFFFFF;
+
+    RenderDevice::PrepareTexturedPolyTREX(clipY1, inkEffect, surface);
+
+    float z      = RenderDevice::GetDepth();
+    int32 stripH = 4;
+    float texW   = (float)surface->width;
+    float texH   = (float)surface->height;
+
+    float baseV = fmodf((float)scanlines[clipY1].position.y / 65536.0f, texH);
+    if (baseV < 0.0f)
+        baseV += texH;
+
+    for (int32 y = clipY1; y < clipY2; y += stripH) {
+        int32 botY = y + stripH;
+        if (botY > clipY2)
+            botY = clipY2;
+
+        int32 midY = (y + botY) >> 1;
+        ScanlineInfo *midScan = &scanlines[midY];
+
+        float rawX0 = (float)midScan->position.x / 65536.0f;
+        float scale = (float)midScan->deform.x / 65536.0f;
+        float span  = (float)screenW * scale;
+        float sprX0 = fmodf(rawX0, texW);
+        if (sprX0 < 0.0f)
+            sprX0 += texW;
+        float sprX1 = sprX0 + span;
+
+        float sprY0 = fmodf(baseV + (float)(y - clipY1), texH);
+        if (sprY0 < 0.0f)
+            sprY0 += texH;
+        float sprY1 = sprY0 + (float)(botY - y);
+
+        Vector4f ul = { 0.0f, (float)y, z, 1.0f };
+        Vector4f ur = { (float)screenW, (float)y, z, 1.0f };
+        Vector4f ll = { 0.0f, (float)botY, z, 1.0f };
+        Vector4f lr = { (float)screenW, (float)botY, z, 1.0f };
+
+        RenderDevice::DrawFloorTexturedPolyTREx(
+            ul, ur, ll, lr,
+            sprX0, sprX1, sprY0, sprY1,
+            surface, argb, 0x00000000
+        );
+    }
 #else
     validDraw              = true;
     GFXSurface *surface    = &gfxSurface[sheetID];
