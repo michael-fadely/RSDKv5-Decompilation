@@ -2067,6 +2067,30 @@ void RSDK::Draw3DScene(uint16 sceneID)
                     Draw3DLine(z, drawVert[vertCount - 1].x << 8, drawVert[vertCount - 1].y << 8, drawVert[0].x << 8, drawVert[0].y << 8, color,
                         entity->alpha, entity->inkEffect, false);
 
+                    // DC_SILHOUETTE: re-draw wireframe as purple if overlapping a silhouette region
+                    if (silhouetteRegionCount > 0) {
+                        float testX = (float)(drawVert[0].x << 8) - screenx;
+                        float testY = (float)(drawVert[0].y << 8) - screeny;
+                        for (int32 r = 0; r < silhouetteRegionCount; ++r) {
+                            SilhouetteRegion *region = &silhouetteRegions[r];
+                            float rx1 = ((float)region->x1 - (float)currentScreen->position.x) * 65536.0f;
+                            float ry1 = ((float)region->y1 - (float)currentScreen->position.y) * 65536.0f;
+                            float rx2 = ((float)region->x2 - (float)currentScreen->position.x) * 65536.0f;
+                            float ry2 = ((float)region->y2 - (float)currentScreen->position.y) * 65536.0f;
+                            if (testX >= rx1 && testX < rx2 && testY >= ry1 && testY < ry2) {
+                                for (int32 v = 0; v < vertCount - 1; v++) {
+                                    float zs = isBaked ? shz_divf(65536.0f, (float)drawVert[v].z) + 0.01f : 0.01f;
+                                    Draw3DLine(zs, drawVert[v + 0].x << 8, drawVert[v + 0].y << 8, drawVert[v + 1].x << 8, drawVert[v + 1].y << 8,
+                                               0x100068, 0xFF, INK_NONE, false);
+                                }
+                                float zs = isBaked ? shz_divf(65536.0f, (float)drawVert[vertCount - 1].z) + 0.01f : 0.01f;
+                                Draw3DLine(zs, drawVert[vertCount - 1].x << 8, drawVert[vertCount - 1].y << 8, drawVert[0].x << 8, drawVert[0].y << 8,
+                                           0x100068, 0xFF, INK_NONE, false);
+                                break;
+                            }
+                        }
+                    }
+
                     vertCnt++;
                 }
                 break;
@@ -2157,6 +2181,26 @@ void RSDK::Draw3DScene(uint16 sceneID)
                     }
                     if (!degenerate) {
                         Draw3DBlendedFace(vert3DPos, vertClrs, vertCount, entity->alpha, entity->inkEffect);
+
+                        // DC_SILHOUETTE: re-draw as solid purple if overlapping a silhouette region
+                        if (silhouetteRegionCount > 0) {
+                            for (int32 r = 0; r < silhouetteRegionCount; ++r) {
+                                SilhouetteRegion *region = &silhouetteRegions[r];
+                                float rx1 = ((float)region->x1 - (float)currentScreen->position.x) * 65536.0f;
+                                float ry1 = ((float)region->y1 - (float)currentScreen->position.y) * 65536.0f;
+                                float rx2 = ((float)region->x2 - (float)currentScreen->position.x) * 65536.0f;
+                                float ry2 = ((float)region->y2 - (float)currentScreen->position.y) * 65536.0f;
+                                if (vert3DPos[0].x >= rx1 && vert3DPos[0].x < rx2
+                                    && vert3DPos[0].y >= ry1 && vert3DPos[0].y < ry2) {
+                                    for (int32 v = 0; v < vertCount; ++v) {
+                                        vert3DPos[v].z += 0.01f;
+                                        vertClrs[v] = 0x100068;
+                                    }
+                                    Draw3DBlendedFace(vert3DPos, vertClrs, vertCount, 0xFF, INK_NONE);
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
                 break;

@@ -763,7 +763,7 @@ bool RenderDevice::SupportedInk(int inkEffect)
             return false;
 
         case INK_UNMASKED:
-            return false;
+            return true; // DC_SILHOUETTE
 
         default:
             return false;
@@ -1132,6 +1132,10 @@ void RenderDevice::PrepareTexturedPolyPT(int32 y, int inkEffect, const GFXSurfac
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
 
+        // DC_SILHOUETTE: enable offset color so tex*black + purple = solid purple silhouette
+        if (inkEffect == INK_UNMASKED)
+            context.gen.specular = 1;
+
         // Compile polygon header directly into SQ to avoid having to copy it.
         auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
         pvr_poly_compile(header, &context);
@@ -1335,8 +1339,9 @@ void RenderDevice::DrawTexturedPolyPT(
     const float v0 = shz_divf_fsrra(sprY0, surface->height);
     const float u1 = shz_divf_fsrra(sprX1, surface->width);
     const float v1 = shz_divf_fsrra(sprY1, surface->height);
-    // alpha is irrelevant for PT
-    const uint32 argb = 0xFFFFFFFFu;
+    // DC_SILHOUETTE: near-black base + purple offset = solid purple; normal PT = white
+    const uint32 argb  = (lastInkEffect == INK_UNMASKED) ? 0xFF010101u : 0xFFFFFFFFu;
+    const uint32 oargb = (lastInkEffect == INK_UNMASKED) ? 0xFF100068u : 0x00000000u;
 
     /* Since we have to potentially modify the vertex stream later on to apply
        rotation to it, we're better off constructing it in RAM rather than
@@ -1349,7 +1354,8 @@ void RenderDevice::DrawTexturedPolyPT(
             .z = z,
             .u = u0,
             .v = v0,
-            .argb = argb
+            .argb = argb,
+            .oargb = oargb
         },
         {
             .flags = PVR_CMD_VERTEX,
@@ -1358,7 +1364,8 @@ void RenderDevice::DrawTexturedPolyPT(
             .z = z,
             .u = u1,
             .v = v0,
-            .argb = argb
+            .argb = argb,
+            .oargb = oargb
         },
         {
             .flags = PVR_CMD_VERTEX,
@@ -1367,7 +1374,8 @@ void RenderDevice::DrawTexturedPolyPT(
             .z = z,
             .u = u0,
             .v = v1,
-            .argb = argb
+            .argb = argb,
+            .oargb = oargb
         },
         {
             .flags = PVR_CMD_VERTEX_EOL,
@@ -1376,7 +1384,8 @@ void RenderDevice::DrawTexturedPolyPT(
             .z = z,
             .u = u1,
             .v = v1,
-            .argb = argb
+            .argb = argb,
+            .oargb = oargb
         }
     };
 
