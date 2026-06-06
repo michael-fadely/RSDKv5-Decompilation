@@ -68,6 +68,8 @@ rm -f -- "$stagedir/Sprites/UI/Achievements.gif"
 
 # fix for the main menu backgrounds
 rm -f -- "$stagedir/Sprites/UI/Diorama2.gif"
+# fix for the save select zone icons
+rm -f -- "$stagedir/Sprites/UI/Zones.gif"
 
 "$script_dir/model_process.sh"              "$sourcedir" "$stagedir"
 
