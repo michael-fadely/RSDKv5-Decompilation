@@ -413,6 +413,9 @@ void RSDK::SetupFunctionTables()
 
     // Sprite Animations & Frames
     ADD_RSDK_FUNCTION(FunctionTable_LoadSpriteAnimation, LoadSpriteAnimation);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    ADD_RSDK_FUNCTION(FunctionTable_FreeSpriteAnimation, FreeSpriteAnimation);
+#endif
     ADD_RSDK_FUNCTION(FunctionTable_CreateSpriteAnimation, CreateSpriteAnimation);
     ADD_RSDK_FUNCTION(FunctionTable_SetSpriteAnimation, SetSpriteAnimation);
     ADD_RSDK_FUNCTION(FunctionTable_EditSpriteAnimation, EditSpriteAnimation);

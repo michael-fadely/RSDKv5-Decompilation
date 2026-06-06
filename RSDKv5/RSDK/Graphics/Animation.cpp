@@ -115,6 +115,45 @@ uint16 RSDK::LoadSpriteAnimation(const char *filePath, uint8 scope)
     return -1;
 }
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+void RSDK::FreeSpriteAnimation(uint16 aniFrames)
+{
+    if (aniFrames >= SPRFILE_COUNT)
+        return;
+
+    SpriteAnimation *spr = &spriteAnimationList[aniFrames];
+    if (spr->scope == SCOPE_NONE)
+        return;
+
+    uint8 freedSheets[SURFACE_COUNT];
+    memset(freedSheets, 0, sizeof(freedSheets));
+
+    int32 totalFrames = 0;
+    for (int32 a = 0; a < spr->animCount; ++a)
+        totalFrames += spr->animations[a].frameCount;
+
+    for (int32 f = 0; f < totalFrames; ++f) {
+        uint8 sheetID = spr->frames[f].sheetID;
+        if (sheetID >= SURFACE_COUNT || freedSheets[sheetID])
+            continue;
+
+        freedSheets[sheetID] = 1;
+        GFXSurface *surface  = &gfxSurface[sheetID];
+
+        if (surface->texture != nullptr) {
+            pvr_mem_free(surface->texture);
+            surface->texture = nullptr;
+        }
+
+        MEM_ZERO(*surface);
+        surface->scope = SCOPE_NONE;
+    }
+
+    MEM_ZERO(*spr);
+    spr->scope = SCOPE_NONE;
+}
+#endif
+
 uint16 RSDK::CreateSpriteAnimation(const char *filename, uint32 frameCount, uint32 animCount, uint8 scope)
 {
     if (!scope || scope > SCOPE_STAGE)

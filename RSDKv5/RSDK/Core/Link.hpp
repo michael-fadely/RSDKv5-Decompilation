@@ -226,6 +226,9 @@ enum FunctionTableIDs {
     FunctionTable_AddMeshFrameToScene,
     FunctionTable_Draw3DScene,
     FunctionTable_LoadSpriteAnimation,
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    FunctionTable_FreeSpriteAnimation,
+#endif
     FunctionTable_CreateSpriteAnimation,
     FunctionTable_SetSpriteAnimation,
     FunctionTable_EditSpriteAnimation,
