@@ -292,7 +292,7 @@ extern GFXSurface gfxSurface[SURFACE_COUNT];
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
 // DC_SILHOUETTE
-#define MAX_SILHOUETTE_REGIONS 128
+#define MAX_SILHOUETTE_REGIONS 256
 struct SilhouetteRegion {
     int32 x1, y1, x2, y2;
     int32 drawGroup;
