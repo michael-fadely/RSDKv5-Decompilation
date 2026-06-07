@@ -2236,6 +2236,126 @@ void RenderDevice::DrawColoredPolyTR(
     }
 }
 
+void RenderDevice::DrawTintedFillScreen(int32 alphaR, int32 alphaG, int32 alphaB, uint32 color) {
+    lastPrimitiveWasConsumed = true;
+
+    // Invalidate cached state so next draw re-emits its header
+    lastPrimitiveType       = PrimitiveTypes_None;
+
+    if (IsTrExhausted())
+        return;
+
+    const float x0 = 0.0f;
+    const float y0 = 0.0f;
+    const float x1 = static_cast<float>(currentScreen->size.x) * pixelScaleX;
+    const float y1 = static_cast<float>(currentScreen->size.y) * pixelScaleY;
+    const float z  = GetDepth();
+
+    // Pass 1: darken framebuffer per-channel
+    // DESTCOLOR * src + ZERO * dst = src_color * framebuffer per channel
+    // vertex color = (1-alphaR, 1-alphaG, 1-alphaB) so each channel scales independently
+    pvr_poly_cxt_t context;
+    pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+    context.gen.alpha   = 1;
+    context.gen.culling = PVR_CULLING_NONE;
+    context.blend.src   = PVR_BLEND_DESTCOLOR;
+    context.blend.dst   = PVR_BLEND_ZERO;
+
+    pvr_poly_hdr_t *hdr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+    if (hdr == nullptr)
+        return;
+    pvr_poly_compile(hdr, &context);
+    safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+
+    uint32 invColor = 0xFF000000 | ((255 - alphaR) << 16) | ((255 - alphaG) << 8) | (255 - alphaB);
+
+    pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = x0;
+    vert->y = y0;
+    vert->z = z;
+    vert->argb = invColor;
+    vert++;
+
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = x1;
+    vert->y = y0;
+    vert->z = z;
+    vert->argb = invColor;
+    vert++;
+
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = x0;
+    vert->y = y1;
+    vert->z = z;
+    vert->argb = invColor;
+    vert++;
+
+    vert->flags = PVR_CMD_VERTEX_EOL;
+    vert->x = x1;
+    vert->y = y1;
+    vert->z = z;
+    vert->argb = invColor;
+
+    safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+
+    // Pass 2: add pre-multiplied fill color (skip when fill is black)
+    if (color != 0) {
+        if (IsTrExhausted())
+            return;
+
+        pvr_poly_cxt_t context;
+        pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+        context.gen.alpha   = 1;
+        context.gen.culling = PVR_CULLING_NONE;
+        context.blend.src   = PVR_BLEND_ONE;
+        context.blend.dst   = PVR_BLEND_ONE;
+
+        pvr_poly_hdr_t *hdr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        if (hdr == nullptr)
+            return;
+        pvr_poly_compile(hdr, &context);
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+
+        uint8 colorR    = (color >> 16) & 0xFF;
+        uint8 colorG    = (color >> 8) & 0xFF;
+        uint8 colorB    = color & 0xFF;
+        uint32 tintColor = 0xFF000000 | (((colorR * alphaR) / 255) << 16) | (((colorG * alphaG) / 255) << 8) | ((colorB * alphaB) / 255);
+
+        pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+
+        vert->flags = PVR_CMD_VERTEX;
+        vert->x = x0;
+        vert->y = y0;
+        vert->z = z;
+        vert->argb = tintColor;
+        vert++;
+
+        vert->flags = PVR_CMD_VERTEX;
+        vert->x = x1;
+        vert->y = y0;
+        vert->z = z;
+        vert->argb = tintColor;
+        vert++;
+
+        vert->flags = PVR_CMD_VERTEX;
+        vert->x = x0;
+        vert->y = y1;
+        vert->z = z;
+        vert->argb = tintColor;
+        vert++;
+
+        vert->flags = PVR_CMD_VERTEX_EOL;
+        vert->x = x1;
+        vert->y = y1;
+        vert->z = z;
+        vert->argb = tintColor;
+
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+    }
+}
+
 // static
 void RenderDevice::SetLinePolyThickness(int thickness) {
     currentLineThickness = (float)thickness / (float)((640 / displayWidth[0]) * 2.0f);

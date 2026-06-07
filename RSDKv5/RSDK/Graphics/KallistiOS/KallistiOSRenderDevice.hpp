@@ -61,6 +61,7 @@ public:
     static void PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPaletteBankIndex);
     static void SetPaletteDesaturation(uint8 amount);
     static uint8 GetPaletteDesaturation();
+    static void DrawTintedFillScreen(int32 alphaR, int32 alphaG, int32 alphaB, uint32 color);
     static bool SupportedInk(int inkEffect);
     static bool InkToBlendModes(int inkEffect, pvr_blend_mode_t* srcBlend, pvr_blend_mode_t* dstBlend);
 

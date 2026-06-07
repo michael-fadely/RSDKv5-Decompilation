@@ -641,20 +641,11 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
         #if RETRO_PLATFORM == RETRO_KALLISTIOS
         validDraw = true;
 
-        // DCFIXME: this is a very bad approximation of the alpha used for software rendering
-        uint32 badAlpha = (alphaR + alphaG + alphaB) / 3;
-        badAlpha = CLAMP(badAlpha, 0x00, 0xFF);
-
-        const auto width = currentScreen->size.x;
-        const auto height = currentScreen->size.y;
-
-        // color poly is only ever used for fill
-        if ((badAlpha == 0xFF)) {
+        if (alphaR == 0xFF && alphaG == 0xFF && alphaB == 0xFF) {
             RenderDevice::PrepareColoredPolyPT(0, INK_NONE);
-            RenderDevice::DrawColoredPolyPT(0, 0, width, height, color | (badAlpha << 24));
+            RenderDevice::DrawColoredPolyPT(0, 0, currentScreen->size.x, currentScreen->size.y, 0xFF000000 | color);
         } else {
-            RenderDevice::PrepareColoredPolyTR(0, INK_NONE);
-            RenderDevice::DrawColoredPolyTR(0, 0, width, height, color | (badAlpha << 24));
+            RenderDevice::DrawTintedFillScreen(alphaR, alphaG, alphaB, color);
         }
         #else
         validDraw        = true;
