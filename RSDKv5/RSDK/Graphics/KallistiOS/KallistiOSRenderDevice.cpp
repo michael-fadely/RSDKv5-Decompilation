@@ -634,6 +634,15 @@ void RenderDevice::BeginScene() {
     pvr_scene_begin();
     pvr_set_bg_color(0.0f, 0.0f, 0.0f);
 
+    // Upload all dirty palettes before any draw calls (PVR deferred rendering —
+    // mid-frame palette writes cause glitches since hardware reads palette at render time)
+    for (uint32 bank = 0; bank < 4; ++bank) {
+        if (PaletteFlags::GetDirtyNoCheck(bank)) {
+            PopulatePvrPalette(bank, bank);
+            PaletteFlags::ClearDirtyNoCheck(bank);
+        }
+    }
+
     // direct render to punch-through list anything that doesn't need to blend
     if (pvr_list_begin(PVR_LIST_PT_POLY) == -1) {
         printf("[pvr] [NG] pvr_list_begin(PVR_LIST_PT_POLY) returned -1 (%s:%zu -> %s)\n", __FILE__, static_cast<size_t>(__LINE__), __PRETTY_FUNCTION__);
@@ -824,12 +833,6 @@ bool RenderDevice::PreparePrimitive(int primitiveType,
                                     uint32 pvrPaletteBankIndex,
                                     int inkEffect,
                                     pvr_ptr_t texture) {
-    if (PaletteFlags::GetDirty(gamePaletteBankIndex)
-        || pvrPaletteBankIndex != gamePaletteBankIndex) {
-        PopulatePvrPalette(gamePaletteBankIndex, pvrPaletteBankIndex);
-        PaletteFlags::ClearDirty(gamePaletteBankIndex);
-    }
-
     if (lastPrimitiveType != primitiveType
         || !PaletteFlags::BankIsSame(gamePaletteBankIndex)
         || inkEffect != lastInkEffect
