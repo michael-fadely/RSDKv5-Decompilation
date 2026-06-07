@@ -3969,6 +3969,13 @@ static void DrawRotozoomPinballBG(TileLayer *layer)
             uint8 oB = (uint8)(fadeMix * 75.0f);
             uint32 pblBgOColor = 0xFF000000 | (oR << 16) | (oG << 8) | oB;
 
+            // DC_DESATURATE
+            uint8 pblDesat = RenderDevice::GetPaletteDesaturation();
+            if (pblDesat > 0) {
+                pblBgColor = 0xFF000000 | DesaturateColor32(pblBgColor & 0x00FFFFFF, pblDesat);
+                pblBgOColor = 0xFF000000 | DesaturateColor32(pblBgOColor & 0x00FFFFFF, pblDesat);
+            }
+
             RenderDevice::DrawFloorTexturedPolyPTEx(
                 tileVerts[TILE_UL], tileVerts[TILE_UR],
                 tileVerts[TILE_LL], tileVerts[TILE_LR],
@@ -4167,7 +4174,7 @@ static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
     // real tiles render on top within the smaller tileRadius region
     // uses a shared vertex grid so adjacent cells have identical edge positions
     // only draw LOD quads when camera is not pitched down toward the floor (jumps)
-    if (sp == 0.0f && lodTextureReady)  {
+    if (sp == 0.0f && lodTextureReady && RenderDevice::GetPaletteDesaturation() == 0)  { // DC_DESATURATE: skip LOD when paused
         bool lodPrepared = false;
         const int wrapMaskX = width >> 4;
         const int wrapMaskZ = height >> 4;

@@ -178,6 +178,9 @@ void RSDK::SetSilhouetteRegion(int32 x1, int32 y1, int32 x2, int32 y2, int32 dra
 }
 
 void RSDK::ClearSilhouetteRegions() { silhouetteRegionCount = 0; }
+
+// DC_DESATURATE
+void RSDK::SetPaletteDesaturation(uint8 amount) { RenderDevice::SetPaletteDesaturation(amount); }
 #endif
 
 float RSDK::dpi         = 1;
@@ -882,6 +885,11 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
         alpha = 0xFF;
     }
 
+    // DC_DESATURATE: desaturate line color when paused, but not for the pause menu's own draw group
+    uint8 desat = RenderDevice::GetPaletteDesaturation();
+    if (desat > 0 && sceneInfo.currentDrawGroup < DRAWGROUP_COUNT - 1)
+        color = DesaturateColor32(color, desat);
+
     uint32 color32      = (alpha << 24) | color;
 
     if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
@@ -1249,9 +1257,6 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
 }
 void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
-#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-    bool darkenTint = true;
-#endif
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -1272,11 +1277,6 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         case INK_TINT:
             if (!tintLookupTable)
                 return;
-#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-            // distinguish between INVERT tint and alpha tint
-            if (tintLookupTable[0] == 0xFFFF)
-                darkenTint = false;
-#endif
             break;
     }
 
@@ -1315,9 +1315,10 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         alpha = 0xFF;
     }
 
-    if (inkEffect == INK_TINT) {
-        alpha = 0x80;
-    }
+    // DC_DESATURATE: desaturate rect color when paused, but not for the pause menu's own draw group
+    uint8 desat = RenderDevice::GetPaletteDesaturation();
+    if (desat > 0 && sceneInfo.currentDrawGroup < DRAWGROUP_COUNT - 1)
+        color = DesaturateColor32(color, desat);
 
     // water pools in GHZ Act 2 use INK_SUB with solid colored rectangles
     // we don't have any special handling for this in KallistiOSRenderDevice
@@ -1354,13 +1355,6 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         RenderDevice::PrepareColoredPolyPT(y, inkEffect);
         RenderDevice::DrawColoredPolyPT(x, y, width, height, color | (alpha << 24));
     } else {
-        // distinguish between INVERT tint and alpha tint
-        // when it is an alpha tint and not an invert tint,
-        // set high bit of inkEffect word to 1
-        // we check for this in KallistiOSRenderDevice
-        if ((inkEffect == INK_TINT) && darkenTint) {
-            inkEffect |= 0x80000000;
-        }
         RenderDevice::PrepareColoredPolyTR(y, inkEffect);
         RenderDevice::DrawColoredPolyTR(x, y, width, height, color | (alpha << 24));
     }
@@ -2477,6 +2471,13 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
     }
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    // DC_DESATURATE: desaturate face colors when paused, but not for the pause menu's own draw group
+    uint8 desat = RenderDevice::GetPaletteDesaturation();
+    if (desat > 0 && sceneInfo.currentDrawGroup < DRAWGROUP_COUNT - 1) {
+        uint32 dc = DesaturateColor32((r << 16) | (g << 8) | b, desat);
+        r = (dc >> 16) & 0xFF; g = (dc >> 8) & 0xFF; b = dc & 0xFF;
+    }
+
     if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
         RenderDevice::PrepareFacePolyPT(inkEffect);
         RenderDevice::DrawFacePolyPT(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
@@ -2801,6 +2802,15 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
     }
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    // DC_DESATURATE: desaturate per-vertex colors when paused, but not for the pause menu's own draw group
+    uint8 desat = RenderDevice::GetPaletteDesaturation();
+    uint32 localColors[256];
+    if (desat > 0 && sceneInfo.currentDrawGroup < DRAWGROUP_COUNT - 1) {
+        for (int32 v = 0; v < vertCount; ++v)
+            localColors[v] = DesaturateColor32(colors[v], desat);
+        colors = localColors;
+    }
+
     if ((inkEffect != INK_ADD) && (alpha == 0xFF)) {
         RenderDevice::PrepareFacePolyPT(inkEffect);
         RenderDevice::DrawFacePolyPT(vertices, vertCount, 0, alpha, colors);
