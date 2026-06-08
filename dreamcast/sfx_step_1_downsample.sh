@@ -61,52 +61,63 @@ while IFS= read -r -d '' file <&3; do
   mkdir -p -- "$outdir/$dir"
   out1="$outdir/$dir/resample_$base"
 
-  if [[ "$base" == *Continue.wav ]]; then
-    # convert u8 -> s16 temp then stretch + resample to 22050
-    ffmpeg -nostdin -v error -y -f wav -c:a pcm_u8 -i "$file" \
+  # Stereo files: the original game reads interleaved L/R samples as sequential
+  # mono, so each sample appears twice (L=R). Reinterpret the raw PCM as mono.
+  channels=$(ffprobe -v error -select_streams a:0 \
+    -show_entries stream=channels \
+    -of default=nokey=1:noprint_wrappers=1 -- "$file" | head -n1)
+  input="$file"
+  if [[ "$channels" -gt 1 ]]; then
+    sr=$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate \
+      -of default=nokey=1:noprint_wrappers=1 -- "$file" | head -n1)
+    codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name \
+      -of default=nokey=1:noprint_wrappers=1 -- "$file" | head -n1)
+    if [[ "$codec" == "pcm_u8" ]]; then
+      ffmpeg -nostdin -v error -y -i "$file" -f u8 -acodec pcm_u8 pipe: | \
+        ffmpeg -nostdin -v error -y -f u8 -ar "$sr" -ac 1 -i pipe: \
+          -c:a pcm_u8 -- "$tmp_wav"
+    else
+      ffmpeg -nostdin -v error -y -i "$file" -f s16le -acodec pcm_s16le pipe: | \
+        ffmpeg -nostdin -v error -y -f s16le -ar "$sr" -ac 1 -i pipe: \
+          -c:a pcm_s16le -- "$tmp_wav"
+    fi
+    input="$tmp_wav"
+  fi
+
+  bits=$(ffprobe -v error -select_streams a:0 \
+    -show_entries stream=bits_per_sample \
+    -of default=nokey=1:noprint_wrappers=1 -- "$input" | head -n1)
+
+  if [[ "$bits" == "8" ]]; then
+    # 8-bit file: convert u8 -> s16 temp, then stretch + resample
+    ffmpeg -nostdin -v error -y -f wav -c:a pcm_u8 -i "$input" \
       -f wav -c:a pcm_s16le -- "$tmp_wav"
+
+    if tsamples=$(get_samples "$tmp_wav"); then
+      if (( tsamples > 65534 )); then
+        ffmpeg -nostdin -v error -y -f wav -c:a pcm_u8 -i "$input" \
+          -f wav -c:a pcm_s16le -ar 22050 -- "$tmp_wav"
+      fi
+    fi
 
     ffmpeg -nostdin -v error -y -f wav -c:a pcm_s16le -i "$tmp_wav" \
       -filter:a "rubberband=tempo=2.0:pitch=2.0" \
-      -c:a pcm_s16le -ar 22050 -ac 1 -- "$out1"
+      -c:a pcm_s16le -ac 1 -- "$out1"
   else
-    # First attempt as s16le input, capture stderr in case this was a u8 file
-    fferr="$(
-      ffmpeg -nostdin -v error -y -f wav -c:a pcm_s16le -i "$file" \
-        -filter:a "rubberband=tempo=2.0:pitch=2.0" \
-        -c:a pcm_s16le -ar 44100 -ac 1 -- "$out1" 2>&1 >/dev/null || true
-    )"
+    # 16-bit file: stretch + resample directly
+    ffmpeg -nostdin -v error -y -f wav -c:a pcm_s16le -i "$input" \
+      -filter:a "rubberband=tempo=2.0:pitch=2.0" \
+      -c:a pcm_s16le -ar 44100 -ac 1 -- "$out1"
 
-    # If we produced out1, check sample count and downsample if too big
     if [[ -f "$out1" ]]; then
       if samples=$(get_samples "$out1"); then
         if (( samples > 65534 )); then
           rm -f -- "$out1"
-          ffmpeg -nostdin -v error -y -f wav -c:a pcm_s16le -i "$file" \
+          ffmpeg -nostdin -v error -y -f wav -c:a pcm_s16le -i "$input" \
             -filter:a "rubberband=tempo=2.0:pitch=2.0" \
             -c:a pcm_s16le -ar 22050 -ac 1 -- "$out1"
         fi
       fi
-    fi
-
-    # if we end up in here it was a u8 file, retry
-    if printf '%s' "$fferr" | grep -q "data has size 1"; then
-      rm -f -- "$out1"
-
-      ffmpeg -nostdin -v error -y -f wav -c:a pcm_u8 -i "$file" \
-        -f wav -c:a pcm_s16le -- "$tmp_wav"
-
-      # If tmp would be too long, resample to 22050 during conversion
-      if tsamples=$(get_samples "$tmp_wav"); then
-        if (( tsamples > 65534 )); then
-          ffmpeg -nostdin -v error -y -f wav -c:a pcm_u8 -i "$file" \
-            -f wav -c:a pcm_s16le -ar 22050 -- "$tmp_wav"
-        fi
-      fi
-
-      ffmpeg -nostdin -v error -y -f wav -c:a pcm_s16le -i "$tmp_wav" \
-        -filter:a "rubberband=tempo=2.0:pitch=2.0" \
-        -c:a pcm_s16le -- "$out1"
     fi
   fi
 done 3< <(find . -type f -iname "*.wav" -print0)
