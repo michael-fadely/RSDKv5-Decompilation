@@ -1339,9 +1339,13 @@ void RenderDevice::DrawTexturedPolyPT(
     const float v0 = shz_divf_fsrra(sprY0, surface->height);
     const float u1 = shz_divf_fsrra(sprX1, surface->width);
     const float v1 = shz_divf_fsrra(sprY1, surface->height);
-    // DC_SILHOUETTE: near-black base + purple offset = solid purple; normal PT = white
+    // DC_SILHOUETTE: black base + purple offset = solid purple; normal PT = white
     const uint32 argb  = (lastInkEffect == INK_UNMASKED) ? 0xFF010101u : 0xFFFFFFFFu;
     const uint32 oargb = (lastInkEffect == INK_UNMASKED) ? 0xFF100068u : 0x00000000u;
+
+    // DC_SILHOUETTE: prevent unrelated polys from being impacted by the effect when headers would otherwise match
+    if (lastInkEffect == INK_UNMASKED)
+        lastInkEffect = 0xFFFFFFFF;
 
     /* Since we have to potentially modify the vertex stream later on to apply
        rotation to it, we're better off constructing it in RAM rather than
