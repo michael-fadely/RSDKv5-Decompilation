@@ -59,19 +59,20 @@ cp -R -- "$sourcedir/SoundFX"               "$stagedir/"
 cp -R -- "$sourcedir/Video"                 "$stagedir/"
 
 mkdir -p -- "$stagedir/Sprites"
-cp -R -- "$sourcedir/Sprites/Global"        "$stagedir/Sprites/"
 cp -R -- "$sourcedir/Sprites/TMZ1"          "$stagedir/Sprites/"
 cp -R -- "$sourcedir/Sprites/UI"            "$stagedir/Sprites/"
 
 # one non-pow2 file -_-
 rm -f -- "$stagedir/Sprites/UI/Achievements.gif"
-
 # fix for the main menu backgrounds
 rm -f -- "$stagedir/Sprites/UI/Diorama2.gif"
 # fix for the save select zone icons
 rm -f -- "$stagedir/Sprites/UI/Zones.gif"
 
 "$script_dir/model_process.sh"              "$sourcedir" "$stagedir"
+
+# get rid of eggtower and monarchplans 
+rm -rf -- "$stagedir/Meshes/SSZ"
 
 "$script_dir/video_script.sh"               "$sourcedir" "$stagedir"
 
@@ -85,6 +86,13 @@ rm -f -- "$stagedir/Sprites/UI/Zones.gif"
 
 "$script_dir/gfx_step_1_toalphapng.sh"      "$stagedir"
 "$script_dir/gfx_step_2_todtex.sh"          "$stagedir"
+
+# if we had up-to-date Controllers.gif, Buttons.gif and SuperButtons.gif,
+# this is where they would get copied
+#cp Controllers.gif "$stagedir/Sprites/UI"
+#cp Buttons.gif "$stagedir/Sprites/UI"
+#mkdir -p "$stagedir/Sprites/Global"
+#cp SuperButtons.gif "$stagedir/Sprites/Global"
 
 "$script_dir/img_step_1_todtex.sh"          "$stagedir"
 
