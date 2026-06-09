@@ -89,10 +89,11 @@ rm -rf -- "$stagedir/Meshes/SSZ"
 
 # if we had up-to-date Controllers.gif, Buttons.gif and SuperButtons.gif,
 # this is where they would get copied
-#cp Controllers.gif "$stagedir/Sprites/UI"
-#cp Buttons.gif "$stagedir/Sprites/UI"
-#mkdir -p "$stagedir/Sprites/Global"
-#cp SuperButtons.gif "$stagedir/Sprites/Global"
+cp Controllers.tex "$stagedir/Sprites/UI/Controllers.gif"
+cp Buttons.tex "$stagedir/Sprites/UI/Buttons.gif"
+mkdir -p "$stagedir/Sprites/Global"
+# this is not a typo
+cp Buttons.tex "$stagedir/Sprites/Global/SuperButtons.gif"
 
 "$script_dir/img_step_1_todtex.sh"          "$stagedir"
 
