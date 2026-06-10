@@ -1886,12 +1886,185 @@ int32 GetLayerWrappedFromFixedY(const TileLayer* layer, int32 fixed_y) {
 }
 #endif
 
+// Toggle between tile-row (16px) and sub-row deform granularity for HScroll.
+// Set to 1 to use finer deform sampling (strip height = HSCROLL_DEFORM_STRIP_HEIGHT).
+// Set to 0 to use the original tile-row deform (faster, coarser).
+#define HSCROLL_FINE_DEFORM 1
+#define HSCROLL_DEFORM_STRIP_HEIGHT 4
+
+#if defined(KOS_HARDWARE_RENDERER) && HSCROLL_FINE_DEFORM
+// Fine-grained HScroll: subdivides each tile row into strips of HSCROLL_DEFORM_STRIP_HEIGHT
+// pixels, sampling the deform at each strip boundary. This makes per-scanline effects
+// like FXRuby wave distortion look smooth instead of stepped at 16px intervals.
+//
+// For each strip within a tile row, the deform is sampled at the strip's top and bottom
+// scanlines. The strip draws the same tile as the enclosing row, but with UV coordinates
+// covering only that strip's vertical slice of the tile. The upper/lower X positions
+// differ based on the deform at each edge, creating a per-strip skew.
+static void DrawLayerHScrollFineDeform(TileLayer *layer)
+{
+    if (HSCROLL_DEFORM_STRIP_HEIGHT < 2)
+        return;
+    constexpr int32 STRIP_H = HSCROLL_DEFORM_STRIP_HEIGHT;
+    const int32 pixelWidth = TILE_SIZE * layer->xsize;
+
+    const int32 clipY1 = currentScreen->clipBound_Y1;
+    const int32 clipY2 = currentScreen->clipBound_Y2;
+    const int32 clipX1 = currentScreen->clipBound_X1;
+    const int32 clipX2 = currentScreen->clipBound_X2;
+
+    const ScanlineInfo *firstScanline = &scanlines[clipY1];
+    const int32 sheetY = FROM_FIXED(firstScanline->position.y) & 0xF;
+
+    const int32 screenTileAligned = AlignUp(currentScreen->size.x, TILE_SIZE) / TILE_SIZE;
+    const GFXSurface *surface = &gfxSurface[0];
+
+    // Outer loop: tile rows (16px), same as original — determines which tile row in the tilemap
+    const ScanlineInfo *rowScanline = firstScanline;
+    int32 rowIncrement = TILE_SIZE - sheetY;
+
+    for (int32 tileRowY = clipY1 - sheetY; tileRowY < clipY2; tileRowY += TILE_SIZE) {
+        const int32 fromFixedRowY = FROM_FIXED(rowScanline->position.y);
+        const int32 ty = fromFixedRowY >> 4;
+        const int32 subTileY = fromFixedRowY & 0xF;
+
+        // Inner loop: subdivide this tile row into strips of STRIP_H pixels
+        for (int32 stripOffY = 0; stripOffY < TILE_SIZE; stripOffY += STRIP_H) {
+            const int32 screenTopY = tileRowY + stripOffY;
+            const int32 screenBotY = screenTopY + STRIP_H;
+
+            if (screenBotY <= clipY1 || screenTopY >= clipY2)
+                continue;
+
+            // Clamp scanline indices to valid range
+            const int32 topIdx = CLAMP(screenTopY, clipY1, clipY2 - 1);
+            const int32 botIdx = CLAMP(screenBotY - 1, clipY1, clipY2 - 1);
+            const ScanlineInfo *topScan = &scanlines[topIdx];
+            const ScanlineInfo *botScan = &scanlines[botIdx];
+
+            // Deform-based X offsets at the top and bottom of this strip
+            int32 topFixedX = topScan->position.x;
+            int32 topFromFixedX = GetLayerWrappedFromFixedX(layer, topFixedX + topScan->deform.x) % currentScreen->pitch;
+            int32 botFromFixedX = GetLayerWrappedFromFixedX(layer, botScan->position.x + botScan->deform.x) % currentScreen->pitch;
+
+            const int32 offsetDelta = FROM_FIXED(topScan->deform.x - botScan->deform.x);
+            int32 topScreenOffsetX = -(topFromFixedX & 0xF);
+            int32 botScreenOffsetX = topScreenOffsetX + offsetDelta;
+
+            int32 tilesToDraw = screenTileAligned;
+            int32 extraTiles = abs(AlignUp(std::max(topScreenOffsetX, botScreenOffsetX), TILE_SIZE));
+            topFixedX -= TO_FIXED(extraTiles);
+            topScreenOffsetX -= extraTiles;
+            botScreenOffsetX -= extraTiles;
+            extraTiles += abs(AlignDown(std::min(topScreenOffsetX, botScreenOffsetX), TILE_SIZE));
+            tilesToDraw += extraTiles / TILE_SIZE;
+
+            topFromFixedX = GetLayerWrappedFromFixedX(layer, topFixedX + topScan->deform.x);
+            int32 tx = topFromFixedX >> 4;
+
+            // UV Y range: this strip covers [subTileY + stripOffY .. + STRIP_H] within the tile
+            const int32 uvSubY0 = subTileY + stripOffY;
+            const int32 uvSubY1 = uvSubY0 + STRIP_H;
+
+            for (int32 t = 0; t < tilesToDraw; ++t) {
+                const int32 cx = TILE_SIZE * t;
+                const int32 screenTopX = cx + topScreenOffsetX;
+                const int32 screenBotX = cx + botScreenOffsetX;
+
+                const uint16 rawLayout = layer->layout[tx + (ty << layer->widthShift)];
+                tx = (tx + 1) % layer->xsize;
+
+                if (rawLayout == 0xFFFF)
+                    continue;
+
+                const int32 tileLeft  = std::min(screenTopX, screenBotX);
+                const int32 tileRight = std::max(screenTopX, screenBotX) + TILE_SIZE;
+                if (tileRight <= clipX1 || tileLeft >= clipX2)
+                    continue;
+
+                uint16 layoutIdx = rawLayout & 0xFFF;
+                const int32 flip = layoutIdx / TILE_COUNT;
+                layoutIdx %= TILE_COUNT;
+
+                const AniTileState *aniTileState = AniTileTracker::GetAniTile(layoutIdx);
+
+                const GFXSurface *tileSurface;
+                int32 sprX0, sprY0;
+
+                if (aniTileState != nullptr && aniTileState->sheetID != 0) {
+                    tileSurface = &gfxSurface[aniTileState->sheetID];
+                    sprX0 = aniTileState->u;
+                    sprY0 = aniTileState->v;
+                } else {
+                    tileSurface = surface;
+                    sprX0 = TILE_SIZE * (static_cast<int32>(layoutIdx) % KOS_ATLAS_WIDTH_TILES);
+                    sprY0 = TILE_SIZE * (static_cast<int32>(layoutIdx) / KOS_ATLAS_WIDTH_TILES);
+                }
+
+                int32 srcX0 = sprX0;
+                int32 srcX1 = sprX0 + TILE_SIZE;
+                int32 srcY0 = sprY0 + uvSubY0;
+                int32 srcY1 = sprY0 + uvSubY1;
+
+                if (flip & FLIP_X) {
+                    int32 tmp = srcX0;
+                    srcX0 = srcX1;
+                    srcX1 = tmp;
+                }
+                if (flip & FLIP_Y) {
+                    srcY0 = sprY0 + (TILE_SIZE - uvSubY1);
+                    srcY1 = sprY0 + (TILE_SIZE - uvSubY0);
+                }
+
+                // Top-left and top-right share screenTopX; bottom-left and bottom-right share screenBotX
+                // This creates the per-strip skew from the deform
+                const Vector2 ul { screenTopX,              screenTopY };
+                const Vector2 ur { screenTopX + TILE_SIZE,  screenTopY };
+                const Vector2 ll { screenBotX,              screenBotY };
+                const Vector2 lr { screenBotX + TILE_SIZE,  screenBotY };
+
+                RenderDevice::PrepareTexturedPolyPT(screenTopY, INK_NONE, tileSurface);
+                RenderDevice::DrawTexturedPolyPTEx(
+                    ul, ur, ll, lr,
+                    srcX0, srcX1, srcY0, srcY1,
+                    tileSurface);
+            }
+        }
+
+        rowScanline += rowIncrement;
+        rowIncrement = TILE_SIZE;
+    }
+}
+#endif
+
 void RSDK::DrawLayerHScroll(TileLayer *layer)
 {
     if (!layer->xsize || !layer->ysize)
         return;
 
 #if defined(KOS_HARDWARE_RENDERER)
+#if HSCROLL_FINE_DEFORM
+    // Auto-detect high-frequency deform (e.g. FXRuby wave) by checking whether
+    // adjacent scanlines have large deform differences. Normal parallax changes
+    // slowly; FXRuby oscillates by several pixels per scanline.
+    {
+        bool highFreqDeform = false;
+        const int32 y1 = currentScreen->clipBound_Y1;
+        const int32 y2 = currentScreen->clipBound_Y2;
+        for (int32 y = y1; y < y2 - 1; y += 8) {
+            int32 diff = abs(scanlines[y].deform.x - scanlines[y + 1].deform.x);
+            if (diff > TO_FIXED(2)) {
+                highFreqDeform = true;
+                break;
+            }
+        }
+        if (highFreqDeform) {
+            DrawLayerHScrollFineDeform(layer);
+            return;
+        }
+    }
+#endif
+
     const ScanlineInfo* upperScanline = &scanlines[currentScreen->clipBound_Y1];
 
     const int32 sheetY = FROM_FIXED(upperScanline->position.y) & 0xF;
