@@ -4302,14 +4302,15 @@ static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
             if (plasmaSurface->texture) {
                 RenderDevice::PrepareTexturedPolyPTEX(currentScreen->clipBound_Y1, INK_NONE, plasmaSurface);
 
-                // this is a loose recreation of the original scanline deformation effect
-                // looks decent visually, is not necessarily accurate
                 float scrollU = 0.0f;
                 float scrollV = (float)plasmaTimer * 1.0f;
 
                 const float waveFreq   = 12.0f;
                 const float waveAmp    = 48.0f;
                 const float phaseScale = 2.0f * RSDK_PI / 256.0f;
+                const float plasmaBaseZ = baseZ - 0.0001f;
+                const int plasmaRadius = 33;
+                const float plasmaRadSq = (float)(plasmaRadius * plasmaRadius);
 
                 int pfirstZ = firstNonEmptyRow > minTileZ ? firstNonEmptyRow : minTileZ;
                 int plastZ  = lastNonEmptyRow < maxTileZ ? lastNonEmptyRow : maxTileZ;
@@ -4328,31 +4329,90 @@ static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
                     int firstX = (minTileX < firstNonemptyTileInRow[tz]) ? firstNonemptyTileInRow[tz] : minTileX;
                     int lastX  = (maxTileX > lastNonemptyTileInRow[tz]) ? lastNonemptyTileInRow[tz] : maxTileX;
 
+                    bool cantReuse = true;
+                    size_t layout_offset = firstX + (tz << layer->widthShift) - 1;
+
                     for (int tx = firstX; tx <= lastX; tx++) {
+                        bool reuseRights = false;
+                        layout_offset++;
+
                         float xdiff  = (float)(originTX - tx);
                         float xzdist = (xdiff * xdiff) + (zdiff * zdiff);
-                        if (xzdist > tileRadSq)
+                        if (xzdist > plasmaRadSq) {
+                            cantReuse = true;
                             continue;
+                        }
 
-                        uint16 tile = layout[tx + (tz << layer->widthShift)] & 0xFFF;
-                        if (tile == 0xFFF)
+                        uint16 tile = layout[layout_offset] & 0xFFF;
+                        if (tile == 0xFFF) {
+                            cantReuse = true;
                             continue;
-                        if (tile < 1024 && (ufo7PlasmaSkip[tile >> 5] & (1u << (tile & 31))))
+                        }
+                        if (tile < 1024 && (ufo7PlasmaSkip[tile >> 5] & (1u << (tile & 31)))) {
+                            cantReuse = true;
                             continue;
+                        }
+
+                        if (!cantReuse)
+                            reuseRights = true;
+                        cantReuse = false;
 
                         float x0 = (float)((uint32)(tx * TILE_SIZE));
                         float x1 = x0 + TILE_SIZE;
 
-                        VERTS(x0, x1, 0.0f, z0, z1);
-                        XFORM_WTEST({});
+                        __builtin_prefetch(&layout[layout_offset + 16]);
 
-                        for (int32 i = 0; i < 4; i++) {
-                            float invW    = shz_invf(tileVerts[i].w);
-                            tileVerts[i].x *= invW;
-                            tileVerts[i].y *= invW;
-                            tileVerts[i].z *= invW;
-                            tileVerts[i].z += baseZ - 0.0001f;
-                            tileVerts[i].w = invW;
+                        if (reuseRights) {
+                            float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
+                                                x1, 0.0f, z1, 1.0f);
+                            if (wTest <= EPS) {
+                                cantReuse = true;
+                                continue;
+                            }
+
+                            VERTS_LCOPY(x1, 0.0f, z0, z1);
+
+                            mat_trans_nodiv(tileVerts[TILE_UR].x, tileVerts[TILE_UR].y, tileVerts[TILE_UR].z, tileVerts[TILE_UR].w);
+                            if (tileVerts[TILE_UR].w <= EPS) {
+                                cantReuse = true;
+                                continue;
+                            }
+
+                            mat_trans_nodiv(tileVerts[TILE_LR].x, tileVerts[TILE_LR].y, tileVerts[TILE_LR].z, tileVerts[TILE_LR].w);
+
+                            float wUR = tileVerts[TILE_UR].w;
+                            float wLR = tileVerts[TILE_LR].w;
+                            tileVerts[TILE_UR].w = shz_invf(wUR);
+                            tileVerts[TILE_LR].w = shz_invf(wLR);
+
+                            tileVerts[TILE_UR].x *= tileVerts[TILE_UR].w;
+                            tileVerts[TILE_UR].y *= tileVerts[TILE_UR].w;
+                            tileVerts[TILE_UR].z *= tileVerts[TILE_UR].w;
+                            tileVerts[TILE_UR].z += plasmaBaseZ;
+
+                            tileVerts[TILE_LR].x *= tileVerts[TILE_LR].w;
+                            tileVerts[TILE_LR].y *= tileVerts[TILE_LR].w;
+                            tileVerts[TILE_LR].z *= tileVerts[TILE_LR].w;
+                            tileVerts[TILE_LR].z += plasmaBaseZ;
+                        } else {
+                            float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
+                                                x1, 0.0f, z0, 1.0f);
+                            if (wTest < EPS) {
+                                cantReuse = true;
+                                continue;
+                            }
+
+                            VERTS(x0, x1, 0.0f, z0, z1);
+                            XFORM_WTEST(cantReuse = true);
+
+                            for (int32 i = 0; i < 4; i++) {
+                                float invW    = shz_invf(tileVerts[i].w);
+                                tileVerts[i].x *= invW;
+                                tileVerts[i].y *= invW;
+                                tileVerts[i].z *= invW;
+                                tileVerts[i].z += plasmaBaseZ;
+                                tileVerts[i].w = invW;
+                            }
                         }
 
                         CULL(x, <, 0);
