@@ -3475,10 +3475,19 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
             int32 camX = currentScreen->position.x;
             int32 camY = currentScreen->position.y;
 
-            int32 sprLeft   = pos.x - frame->width - abs(frame->pivotX);
-            int32 sprTop    = pos.y - frame->height - abs(frame->pivotY);
-            int32 sprRight  = pos.x + frame->width + abs(frame->pivotX);
-            int32 sprBottom = pos.y + frame->height + abs(frame->pivotY);
+            int32 sprLeft, sprTop, sprRight, sprBottom;
+            if (drawFX & FX_ROTATE) {
+                int32 maxExt = MAX(frame->width + abs(frame->pivotX), frame->height + abs(frame->pivotY));
+                sprLeft   = pos.x - maxExt;
+                sprTop    = pos.y - maxExt;
+                sprRight  = pos.x + maxExt;
+                sprBottom = pos.y + maxExt;
+            } else {
+                sprLeft   = pos.x - frame->width - abs(frame->pivotX);
+                sprTop    = pos.y - frame->height - abs(frame->pivotY);
+                sprRight  = pos.x + frame->width + abs(frame->pivotX);
+                sprBottom = pos.y + frame->height + abs(frame->pivotY);
+            }
 
             for (int32 r = 0; r < silhouetteRegionCount; ++r) {
                 SilhouetteRegion *region = &silhouetteRegions[r];
