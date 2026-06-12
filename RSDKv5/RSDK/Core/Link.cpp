@@ -383,6 +383,10 @@ void RSDK::SetupFunctionTables()
     ADD_RSDK_FUNCTION(FunctionTable_DrawBlendedFace, DrawBlendedFace);
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     ADD_RSDK_FUNCTION(FunctionTable_Draw3DSprite, Draw3DSprite);
+    ADD_RSDK_FUNCTION(FunctionTable_GetDepth, DepthGet);
+    ADD_RSDK_FUNCTION(FunctionTable_SetDepth, DepthSet);
+    ADD_RSDK_FUNCTION(FunctionTable_DrawCircleClipped, DrawCircleClipped);
+    ADD_RSDK_FUNCTION(FunctionTable_DrawCircleOutlineClipped, DrawCircleOutlineClipped);
 #endif
     ADD_RSDK_FUNCTION(FunctionTable_DrawSprite, DrawSprite);
     ADD_RSDK_FUNCTION(FunctionTable_DrawDeformedSprite, DrawDeformedSprite);

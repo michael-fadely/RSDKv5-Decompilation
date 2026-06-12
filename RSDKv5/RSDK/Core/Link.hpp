@@ -200,6 +200,10 @@ enum FunctionTableIDs {
     FunctionTable_DrawBlendedFace,
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     FunctionTable_Draw3DSprite,
+    FunctionTable_GetDepth,
+    FunctionTable_SetDepth,
+    FunctionTable_DrawCircleClipped,
+    FunctionTable_DrawCircleOutlineClipped,
 #endif
     FunctionTable_DrawSprite,
     FunctionTable_DrawDeformedSprite,
