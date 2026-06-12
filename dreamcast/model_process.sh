@@ -37,14 +37,14 @@ popd
 "$optimizer" -i "$source_mesh_dir/Continue/Count8.bin" -o "$staged_mesh_dir/Continue/Count8.bin"
 "$optimizer" -i "$source_mesh_dir/Continue/Count9.bin" -o "$staged_mesh_dir/Continue/Count9.bin"
 
-"$optimizer" -i "$source_mesh_dir/Decoration/Bird.bin" -o "$staged_mesh_dir/Decoration/Bird.bin" --simplify --stripify --bake-lighting
-"$optimizer" -i "$source_mesh_dir/Decoration/Fish.bin" -o "$staged_mesh_dir/Decoration/Fish.bin" --simplify --stripify --bake-lighting
-"$optimizer" -i "$source_mesh_dir/Decoration/Flower1.bin" -o "$staged_mesh_dir/Decoration/Flower1.bin" --simplify --stripify --bake-lighting
-"$optimizer" -i "$source_mesh_dir/Decoration/Flower2.bin" -o "$staged_mesh_dir/Decoration/Flower2.bin" --simplify --stripify --bake-lighting
-"$optimizer" -i "$source_mesh_dir/Decoration/Flower3.bin" -o "$staged_mesh_dir/Decoration/Flower3.bin" --simplify --stripify --bake-lighting
-"$optimizer" -i "$source_mesh_dir/Decoration/Pillar1.bin" -o "$staged_mesh_dir/Decoration/Pillar1.bin" --simplify --stripify --bake-lighting
-"$optimizer" -i "$source_mesh_dir/Decoration/Pillar2.bin" -o "$staged_mesh_dir/Decoration/Pillar2.bin" --simplify --stripify --bake-lighting
-"$optimizer" -i "$source_mesh_dir/Decoration/Tree.bin" -o "$staged_mesh_dir/Decoration/Tree.bin" --simplify --stripify --bake-lighting
+"$optimizer" -i "$source_mesh_dir/Decoration/Bird.bin" -o "$staged_mesh_dir/Decoration/Bird.bin" --simplify --stripify --bake-lighting --simplify-index-threshold 0.015 --simplify-target-error 0.0225
+"$optimizer" -i "$source_mesh_dir/Decoration/Fish.bin" -o "$staged_mesh_dir/Decoration/Fish.bin" --simplify --stripify --bake-lighting --simplify-index-threshold 0.015 --simplify-target-error 0.0225
+"$optimizer" -i "$source_mesh_dir/Decoration/Flower1.bin" -o "$staged_mesh_dir/Decoration/Flower1.bin" --simplify --stripify --bake-lighting --simplify-index-threshold 0.005 --simplify-target-error 0.1
+"$optimizer" -i "$source_mesh_dir/Decoration/Flower2.bin" -o "$staged_mesh_dir/Decoration/Flower2.bin" --simplify --stripify --bake-lighting --simplify-index-threshold 0.005 --simplify-target-error 0.1
+"$optimizer" -i "$source_mesh_dir/Decoration/Flower3.bin" -o "$staged_mesh_dir/Decoration/Flower3.bin" --simplify --stripify --bake-lighting --simplify-index-threshold 0.005 --simplify-target-error 0.1
+"$optimizer" -i "$source_mesh_dir/Decoration/Pillar1.bin" -o "$staged_mesh_dir/Decoration/Pillar1.bin" --simplify --stripify --bake-lighting --simplify-index-threshold 0.005 --simplify-target-error 0.1
+"$optimizer" -i "$source_mesh_dir/Decoration/Pillar2.bin" -o "$staged_mesh_dir/Decoration/Pillar2.bin" --simplify --stripify --bake-lighting --simplify-index-threshold 0.005 --simplify-target-error 0.1
+"$optimizer" -i "$source_mesh_dir/Decoration/Tree.bin" -o "$staged_mesh_dir/Decoration/Tree.bin" --simplify --stripify --bake-lighting --simplify-index-threshold 0.005 --simplify-target-error 0.1
 
 # just removing any duplicate & unused vertices
 "$optimizer" -i "$source_mesh_dir/GHZ/DDWBall.bin" -o "$staged_mesh_dir/GHZ/DDWBall.bin"
@@ -101,8 +101,11 @@ popd
 "$optimizer" -i "$source_mesh_dir/Special/TailsTumble.bin" -o "$staged_mesh_dir/Special/TailsTumble.bin" --simplify --stripify --bake-lighting
 "$optimizer" -i "$source_mesh_dir/Special/UFOChase.bin" -o "$staged_mesh_dir/Special/UFOChase.bin" --simplify --stripify --bake-lighting
 
-"$optimizer" -i "$source_mesh_dir/SSZ/EggTower.bin" -o "$staged_mesh_dir/SSZ/EggTower.bin" --simplify --bake-lighting
-"$optimizer" -i "$source_mesh_dir/SSZ/MonarchPlans.bin" -o "$staged_mesh_dir/SSZ/MonarchPlans.bin" --simplify --stripify --bake-lighting
+"$optimizer" -i "$source_mesh_dir/SSZ/EggTower.bin" -o "$staged_mesh_dir/SSZ/EggTower.bin" --simplify --simplify-index-threshold 0.05 --simplify-target-error 0.05
+# turning this into strips blows up the entire game, guaranteed crash
+"$optimizer" -i "$source_mesh_dir/SSZ/MonarchPlans.bin" -o "$staged_mesh_dir/SSZ/MonarchPlans.bin" --simplify --simplify-index-threshold 0.05 --simplify-target-error 0.2
+# --bake-lighting
 
-"$optimizer" -i "$source_mesh_dir/TMZ/MonarchBG.bin" -o "$staged_mesh_dir/TMZ/MonarchBG.bin" --simplify --stripify --bake-lighting
+# unused
+#"$optimizer" -i "$source_mesh_dir/TMZ/MonarchBG.bin" -o "$staged_mesh_dir/TMZ/MonarchBG.bin" --simplify --stripify --bake-lighting
 "$optimizer" -i "$source_mesh_dir/TMZ/OrbNet.bin" -o "$staged_mesh_dir/TMZ/OrbNet.bin"
