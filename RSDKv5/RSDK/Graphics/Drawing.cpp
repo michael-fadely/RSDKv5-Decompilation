@@ -8,6 +8,7 @@ using namespace RSDK;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
 #include <RSDK/Graphics/KallistiOS/AniTileTracker.hpp>
+extern uint8 lastFlashGigaAlpha;
 #endif
 
 // all render devices need to access the initial vertex buffer :skull:
@@ -4139,8 +4140,12 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
         int32 drawX = newX + marginLeft;
         int32 drawY = newY + marginTop;
 
-        if (inkEffect == INK_NONE)
+        if (inkEffect == INK_NONE || inkEffect == INK_FLASH)
             alpha = 0xFF;
+        if (inkEffect == INK_FLASH_GIGA) {
+            lastFlashGigaAlpha = (uint8)alpha;
+            alpha = 0xFF;
+        }
 
         if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
             RenderDevice::PrepareTexturedPolyPT(drawY, inkEffect, surface);
@@ -4183,8 +4188,12 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
             sprY1 = sprY + height;
         }
 
-        if (inkEffect == INK_NONE)
+        if (inkEffect == INK_NONE || inkEffect == INK_FLASH)
             alpha = 0xFF;
+        if (inkEffect == INK_FLASH_GIGA) {
+            lastFlashGigaAlpha = (uint8)alpha;
+            alpha = 0xFF;
+        }
 
         if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
             RenderDevice::PrepareTexturedPolyPT(newY + marginTop, inkEffect, surface);
