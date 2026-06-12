@@ -421,6 +421,8 @@ void RSDK::LoadSceneFolder()
     sceneInfo.milliseconds = 0;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // DC_SILHOUETTE: remove regions before each level
+    ClearSilhouetteRegions();
     ReleaseLODTexture();
     ReleaseFloorTexture();
     ReleaseRoofTextures();
