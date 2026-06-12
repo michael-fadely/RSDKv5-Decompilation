@@ -160,6 +160,29 @@ uint16 RSDK::subtractLookupTable[0x20 * 0x100];
 
 GFXSurface RSDK::gfxSurface[SURFACE_COUNT];
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+// DC_SILHOUETTE
+int32 RSDK::silhouetteRegionCount = 0;
+SilhouetteRegion RSDK::silhouetteRegions[MAX_SILHOUETTE_REGIONS];
+
+void RSDK::SetSilhouetteRegion(int32 x1, int32 y1, int32 x2, int32 y2, int32 drawGroup)
+{
+    if (silhouetteRegionCount < MAX_SILHOUETTE_REGIONS) {
+        SilhouetteRegion *r = &silhouetteRegions[silhouetteRegionCount++];
+        r->x1        = x1;
+        r->y1        = y1;
+        r->x2        = x2;
+        r->y2        = y2;
+        r->drawGroup = drawGroup;
+    }
+}
+
+void RSDK::ClearSilhouetteRegions() { silhouetteRegionCount = 0; }
+
+// DC_DESATURATE
+void RSDK::SetPaletteDesaturation(uint8 amount) { RenderDevice::SetPaletteDesaturation(amount); }
+#endif
+
 float RSDK::dpi         = 1;
 int32 RSDK::cameraCount = 0;
 ScreenInfo RSDK::screens[SCREEN_COUNT];
@@ -618,20 +641,11 @@ void RSDK::FillScreen(uint32 color, int32 alphaR, int32 alphaG, int32 alphaB)
         #if RETRO_PLATFORM == RETRO_KALLISTIOS
         validDraw = true;
 
-        // DCFIXME: this is a very bad approximation of the alpha used for software rendering
-        uint32 badAlpha = (alphaR + alphaG + alphaB) / 3;
-        badAlpha = CLAMP(badAlpha, 0x00, 0xFF);
-
-        const auto width = currentScreen->size.x;
-        const auto height = currentScreen->size.y;
-
-        // color poly is only ever used for fill
-        if ((badAlpha == 0xFF)) {
+        if (alphaR == 0xFF && alphaG == 0xFF && alphaB == 0xFF) {
             RenderDevice::PrepareColoredPolyPT(0, INK_NONE);
-            RenderDevice::DrawColoredPolyPT(0, 0, width, height, color | (badAlpha << 24));
+            RenderDevice::DrawColoredPolyPT(0, 0, currentScreen->size.x, currentScreen->size.y, 0xFF000000 | color);
         } else {
-            RenderDevice::PrepareColoredPolyTR(0, INK_NONE);
-            RenderDevice::DrawColoredPolyTR(0, 0, width, height, color | (badAlpha << 24));
+            RenderDevice::DrawTintedFillScreen(alphaR, alphaG, alphaB, color);
         }
         #else
         validDraw        = true;
@@ -861,6 +875,11 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
     if (inkEffect == INK_NONE) {
         alpha = 0xFF;
     }
+
+    // DC_DESATURATE: desaturate line color when paused, but not for the pause menu's own draw group
+    uint8 desat = RenderDevice::GetPaletteDesaturation();
+    if (desat > 0 && sceneInfo.currentDrawGroup < DRAWGROUP_COUNT - 1)
+        color = DesaturateColor32(color, desat);
 
     uint32 color32      = (alpha << 24) | color;
 
@@ -1229,9 +1248,6 @@ void RSDK::DrawLine(int32 x1, int32 y1, int32 x2, int32 y2, uint32 color, int32 
 }
 void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
-#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-    bool darkenTint = true;
-#endif
     switch (inkEffect) {
         default: break;
         case INK_ALPHA:
@@ -1252,11 +1268,6 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         case INK_TINT:
             if (!tintLookupTable)
                 return;
-#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-            // distinguish between INVERT tint and alpha tint
-            if (tintLookupTable[0] == 0xFFFF)
-                darkenTint = false;
-#endif
             break;
     }
 
@@ -1295,9 +1306,10 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         alpha = 0xFF;
     }
 
-    if (inkEffect == INK_TINT) {
-        alpha = 0x80;
-    }
+    // DC_DESATURATE: desaturate rect color when paused, but not for the pause menu's own draw group
+    uint8 desat = RenderDevice::GetPaletteDesaturation();
+    if (desat > 0 && sceneInfo.currentDrawGroup < DRAWGROUP_COUNT - 1)
+        color = DesaturateColor32(color, desat);
 
     // water pools in GHZ Act 2 use INK_SUB with solid colored rectangles
     // we don't have any special handling for this in KallistiOSRenderDevice
@@ -1334,13 +1346,6 @@ void RSDK::DrawRectangle(int32 x, int32 y, int32 width, int32 height, uint32 col
         RenderDevice::PrepareColoredPolyPT(y, inkEffect);
         RenderDevice::DrawColoredPolyPT(x, y, width, height, color | (alpha << 24));
     } else {
-        // distinguish between INVERT tint and alpha tint
-        // when it is an alpha tint and not an invert tint,
-        // set high bit of inkEffect word to 1
-        // we check for this in KallistiOSRenderDevice
-        if ((inkEffect == INK_TINT) && darkenTint) {
-            inkEffect |= 0x80000000;
-        }
         RenderDevice::PrepareColoredPolyTR(y, inkEffect);
         RenderDevice::DrawColoredPolyTR(x, y, width, height, color | (alpha << 24));
     }
@@ -1542,6 +1547,206 @@ static void DrawCircleOutlineWithLines(int cx, int cy, int radius, int width, ui
 
     RenderDevice::SetLinePolyThickness(2);
 }
+
+static void DrawFilledCircleClippedToTriangle(int cx, int cy, int radius, uint32 color, int32 alpha, int32 inkEffect,
+                                              int32 triTopX, int32 triTopY, int32 triBotLeftX, int32 triBotY, int32 triBotRightX)
+{
+    int32 red   = (color >> 16) & 0xFF;
+    int32 green = (color >> 8) & 0xFF;
+    int32 blue  = color & 0xFF;
+
+    int32 yTop    = cy - radius;
+    int32 yBottom = cy + radius;
+    if (yTop < triTopY)
+        yTop = triTopY;
+    if (yBottom > triBotY)
+        yBottom = triBotY;
+
+    int32 triHeight = triBotY - triTopY;
+    if (triHeight <= 0)
+        return;
+
+    for (int32 scanY = yTop; scanY <= yBottom; ++scanY) {
+        int32 dy    = scanY - cy;
+        int32 r2    = radius * radius;
+        int32 dy2   = dy * dy;
+        if (dy2 >= r2)
+            continue;
+
+        float dx    = sqrtf((float)(r2 - dy2));
+        int32 cLeft  = cx - (int32)dx;
+        int32 cRight = cx + (int32)dx;
+
+        int32 t_num  = scanY - triTopY;
+        int32 diagX  = triTopX + (triBotLeftX - triTopX) * t_num / triHeight;
+
+        int32 clipLeft  = diagX;
+        int32 clipRight = triBotRightX;
+
+        if (cLeft < clipLeft)
+            cLeft = clipLeft;
+        if (cRight > clipRight)
+            cRight = clipRight;
+
+        if (cLeft >= cRight)
+            continue;
+
+        Vector2 verts[4];
+        verts[0].x = cLeft << 16;
+        verts[0].y = scanY << 16;
+        verts[1].x = cRight << 16;
+        verts[1].y = scanY << 16;
+        verts[2].x = cRight << 16;
+        verts[2].y = (scanY + 1) << 16;
+        verts[3].x = cLeft << 16;
+        verts[3].y = (scanY + 1) << 16;
+
+        DrawFace(verts, 4, red, green, blue, alpha, inkEffect);
+    }
+}
+
+static bool ClipLineToTriangle(int *lx0, int *ly0, int *lx1, int *ly1,
+                               int32 triTopX, int32 triTopY, int32 triBotLeftX, int32 triBotY, int32 triBotRightX)
+{
+    float x0 = (float)*lx0, y0 = (float)*ly0;
+    float x1 = (float)*lx1, y1 = (float)*ly1;
+    float dx = x1 - x0, dy = y1 - y0;
+    float tMin = 0.0f, tMax = 1.0f;
+
+    if (fabsf(dx) > 0.001f) {
+        float t = ((float)triBotRightX - x0) / dx;
+        if (dx > 0) { if (t < tMax) tMax = t; } else { if (t > tMin) tMin = t; }
+    }
+    else if (x0 > (float)triBotRightX) return false;
+
+    if (fabsf(dy) > 0.001f) {
+        float t = ((float)triBotY - y0) / dy;
+        if (dy > 0) { if (t < tMax) tMax = t; } else { if (t > tMin) tMin = t; }
+    }
+    else if (y0 > (float)triBotY) return false;
+
+    if (fabsf(dy) > 0.001f) {
+        float t = ((float)triTopY - y0) / dy;
+        if (dy < 0) { if (t < tMax) tMax = t; } else { if (t > tMin) tMin = t; }
+    }
+    else if (y0 < (float)triTopY) return false;
+
+    {
+        float A = (float)(triBotY - triTopY);
+        float B = (float)(triBotLeftX - triTopX);
+        float d0 = (x0 - (float)triTopX) * A - (y0 - (float)triTopY) * B;
+        float d1 = (x1 - (float)triTopX) * A - (y1 - (float)triTopY) * B;
+        float dd = d1 - d0;
+        if (fabsf(dd) > 0.001f) {
+            float t = -d0 / dd;
+            if (dd < 0) { if (t < tMax) tMax = t; } else { if (t > tMin) tMin = t; }
+        }
+        else if (d0 < 0) return false;
+    }
+
+    if (tMin >= tMax)
+        return false;
+
+    *lx0 = (int)(x0 + tMin * dx);
+    *ly0 = (int)(y0 + tMin * dy);
+    *lx1 = (int)(x0 + tMax * dx);
+    *ly1 = (int)(y0 + tMax * dy);
+    return true;
+}
+
+static void DrawCircleOutlineClippedToTriangle(int cx, int cy, int innerRadius, int outerRadius, uint32 color, int32 alpha, int32 inkEffect,
+                                               int32 triTopX, int32 triTopY, int32 triBotLeftX, int32 triBotY, int32 triBotRightX)
+{
+    int32 width = outerRadius - innerRadius;
+    RenderDevice::SetLinePolyThickness(width);
+
+    const int segs = 64;
+    const float step = 2.0f * (float)M_PI / (float)segs;
+
+    if (inkEffect == INK_BLEND) {
+        inkEffect = INK_NONE;
+        alpha = 0xFF;
+    }
+
+    int x0 = cx + outerRadius;
+    int y0 = cy;
+
+    float angle = step;
+    for (int i = 1; i <= segs; i++) {
+        int x1 = cx + (int)((float)outerRadius * cosf(angle));
+        int y1 = cy + (int)((float)outerRadius * sinf(angle));
+
+        int cx0 = x0, cy0 = y0, cx1 = x1, cy1 = y1;
+        if (ClipLineToTriangle(&cx0, &cy0, &cx1, &cy1, triTopX, triTopY, triBotLeftX, triBotY, triBotRightX))
+            DrawLine(cx0, cy0, cx1, cy1, color, alpha, inkEffect, true);
+
+        x0 = x1;
+        y0 = y1;
+        angle += step;
+    }
+
+    RenderDevice::SetLinePolyThickness(2);
+}
+
+void RSDK::DrawCircleClipped(int32 x, int32 y, int32 radius, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative,
+                             int32 triTopX, int32 triTopY, int32 triBotLeftX, int32 triBotY, int32 triBotRightX)
+{
+    if (radius <= 0)
+        return;
+
+    switch (inkEffect) {
+        default: break;
+        case INK_ALPHA:
+            if (alpha > 0xFF) inkEffect = INK_NONE;
+            else if (alpha <= 0) return;
+            break;
+        case INK_ADD:
+        case INK_SUB:
+            if (alpha > 0xFF) alpha = 0xFF;
+            else if (alpha <= 0) return;
+            break;
+    }
+
+    if (!screenRelative) {
+        x = FROM_FIXED(x) - currentScreen->position.x;
+        y = FROM_FIXED(y) - currentScreen->position.y;
+    }
+
+    DrawFilledCircleClippedToTriangle(x, y, radius, color, alpha, inkEffect,
+                                     triTopX, triTopY, triBotLeftX, triBotY, triBotRightX);
+}
+
+void RSDK::DrawCircleOutlineClipped(int32 x, int32 y, int32 innerRadius, int32 outerRadius, uint32 color, int32 alpha, int32 inkEffect,
+                                    bool32 screenRelative, int32 triTopX, int32 triTopY, int32 triBotLeftX, int32 triBotY, int32 triBotRightX)
+{
+    if (outerRadius <= 0)
+        return;
+
+    switch (inkEffect) {
+        default: break;
+        case INK_ALPHA:
+            if (alpha > 0xFF) inkEffect = INK_NONE;
+            else if (alpha <= 0) return;
+            break;
+        case INK_ADD:
+        case INK_SUB:
+            if (alpha > 0xFF) alpha = 0xFF;
+            else if (alpha <= 0) return;
+            break;
+    }
+
+    if (!screenRelative) {
+        x = FROM_FIXED(x) - currentScreen->position.x;
+        y = FROM_FIXED(y) - currentScreen->position.y;
+    }
+
+    DrawCircleOutlineClippedToTriangle(x, y, innerRadius, outerRadius, color, alpha, inkEffect,
+                                      triTopX, triTopY, triBotLeftX, triBotY, triBotRightX);
+}
+
+float RSDK::DepthGet(void) { return RenderDevice::GetDepth(); }
+
+void RSDK::DepthSet(float depth) { RenderDevice::SetDepth(depth); }
 #endif
 void RSDK::DrawCircle(int32 x, int32 y, int32 radius, uint32 color, int32 alpha, int32 inkEffect, bool32 screenRelative)
 {
@@ -2257,6 +2462,13 @@ void RSDK::DrawFace(Vector2 *vertices, int32 vertCount, int32 r, int32 g, int32 
     }
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    // DC_DESATURATE: desaturate face colors when paused, but not for the pause menu's own draw group
+    uint8 desat = RenderDevice::GetPaletteDesaturation();
+    if (desat > 0 && sceneInfo.currentDrawGroup < DRAWGROUP_COUNT - 1) {
+        uint32 dc = DesaturateColor32((r << 16) | (g << 8) | b, desat);
+        r = (dc >> 16) & 0xFF; g = (dc >> 8) & 0xFF; b = dc & 0xFF;
+    }
+
     if ((inkEffect != INK_TINT) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
         RenderDevice::PrepareFacePolyPT(inkEffect);
         RenderDevice::DrawFacePolyPT(vertices, vertCount, ((r << 16) | (g << 8) | b), alpha, NULL);
@@ -2581,6 +2793,15 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
     }
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    // DC_DESATURATE: desaturate per-vertex colors when paused, but not for the pause menu's own draw group
+    uint8 desat = RenderDevice::GetPaletteDesaturation();
+    uint32 localColors[4];
+    if (desat > 0 && sceneInfo.currentDrawGroup < DRAWGROUP_COUNT - 1) {
+        for (int32 v = 0; v < vertCount; ++v)
+            localColors[v] = DesaturateColor32(colors[v], desat);
+        colors = localColors;
+    }
+
     if ((inkEffect != INK_ADD) && (alpha == 0xFF)) {
         RenderDevice::PrepareFacePolyPT(inkEffect);
         RenderDevice::DrawFacePolyPT(vertices, vertCount, 0, alpha, colors);
@@ -3061,7 +3282,7 @@ void RSDK::Draw3DSprite(Animator *animator, Vector4f *position, bool32 screenRel
     pos.y = (int)position->y;
     float oldDepth = RenderDevice::GetDepth();
 
-    RenderDevice::SetDepth(oldDepth + position->z + 0.125f);
+    RenderDevice::SetDepth(oldDepth + position->z);
     DrawSprite(animator, &pos, screenRelative);
     RenderDevice::SetDepth(oldDepth);
 }
@@ -3248,6 +3469,104 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
 
             default: break;
         }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        // DC_SILHOUETTE: re-draw as solid purple silhouette clipped to each overlapping region
+        if (silhouetteRegionCount > 0) {
+            int32 camX = currentScreen->position.x;
+            int32 camY = currentScreen->position.y;
+
+            int32 sprLeft, sprTop, sprRight, sprBottom;
+            if (drawFX & FX_ROTATE) {
+                int32 maxExt = MAX(frame->width + abs(frame->pivotX), frame->height + abs(frame->pivotY));
+                sprLeft   = pos.x - maxExt;
+                sprTop    = pos.y - maxExt;
+                sprRight  = pos.x + maxExt;
+                sprBottom = pos.y + maxExt;
+            } else {
+                sprLeft   = pos.x - frame->width - abs(frame->pivotX);
+                sprTop    = pos.y - frame->height - abs(frame->pivotY);
+                sprRight  = pos.x + frame->width + abs(frame->pivotX);
+                sprBottom = pos.y + frame->height + abs(frame->pivotY);
+            }
+
+            for (int32 r = 0; r < silhouetteRegionCount; ++r) {
+                SilhouetteRegion *region = &silhouetteRegions[r];
+                if (sceneInfo.entity->drawGroup >= region->drawGroup)
+                    continue;
+
+                int32 rgnX1 = region->x1 - camX;
+                int32 rgnY1 = region->y1 - camY;
+                int32 rgnX2 = region->x2 - camX;
+                int32 rgnY2 = region->y2 - camY;
+
+                if (sprRight <= rgnX1 || sprLeft >= rgnX2 || sprBottom <= rgnY1 || sprTop >= rgnY2)
+                    continue;
+
+                int32 saveX1 = currentScreen->clipBound_X1;
+                int32 saveY1 = currentScreen->clipBound_Y1;
+                int32 saveX2 = currentScreen->clipBound_X2;
+                int32 saveY2 = currentScreen->clipBound_Y2;
+
+                currentScreen->clipBound_X1 = MAX(saveX1, rgnX1);
+                currentScreen->clipBound_Y1 = MAX(saveY1, rgnY1);
+                currentScreen->clipBound_X2 = MIN(saveX2, rgnX2);
+                currentScreen->clipBound_Y2 = MIN(saveY2, rgnY2);
+
+                switch (drawFX) {
+                    case FX_NONE:
+                        DrawSpriteFlipped(pos.x + frame->pivotX, pos.y + frame->pivotY, frame->width, frame->height, frame->sprX, frame->sprY,
+                                          FLIP_NONE, INK_UNMASKED, 0xFF, frame->sheetID);
+                        break;
+
+                    case FX_FLIP:
+                        switch (sceneInfo.entity->direction) {
+                            case FLIP_NONE:
+                                DrawSpriteFlipped(pos.x + frame->pivotX, pos.y + frame->pivotY, frame->width, frame->height, frame->sprX,
+                                                  frame->sprY, FLIP_NONE, INK_UNMASKED, 0xFF, frame->sheetID);
+                                break;
+                            case FLIP_X:
+                                DrawSpriteFlipped(pos.x - frame->width - frame->pivotX, pos.y + frame->pivotY, frame->width, frame->height,
+                                                  frame->sprX, frame->sprY, FLIP_X, INK_UNMASKED, 0xFF, frame->sheetID);
+                                break;
+                            case FLIP_Y:
+                                DrawSpriteFlipped(pos.x + frame->pivotX, pos.y - frame->height - frame->pivotY, frame->width, frame->height,
+                                                  frame->sprX, frame->sprY, FLIP_Y, INK_UNMASKED, 0xFF, frame->sheetID);
+                                break;
+                            case FLIP_XY:
+                                DrawSpriteFlipped(pos.x - frame->width - frame->pivotX, pos.y - frame->height - frame->pivotY, frame->width,
+                                                  frame->height, frame->sprX, frame->sprY, FLIP_XY, INK_UNMASKED, 0xFF, frame->sheetID);
+                                break;
+                            default: break;
+                        }
+                        break;
+
+                    case FX_ROTATE:
+                    case FX_ROTATE | FX_FLIP:
+                    case FX_SCALE:
+                    case FX_SCALE | FX_FLIP:
+                    case FX_SCALE | FX_ROTATE:
+                    case FX_SCALE | FX_ROTATE | FX_FLIP:
+                        // DC_SILHOUETTE: rotated sprites can't be clipped to region bounds,
+                        // so only silhouette if left edge is inside the region
+                        if (pos.x >= rgnX1 && pos.x < rgnX2 && sprLeft >= rgnX1 && sprBottom > rgnY1 && pos.y < rgnY2)
+                            DrawSpriteRotozoom(pos.x, pos.y, frame->pivotX, frame->pivotY, frame->width, frame->height, frame->sprX, frame->sprY,
+                                               (drawFX & FX_SCALE) ? sceneInfo.entity->scale.x : 0x200,
+                                               (drawFX & FX_SCALE) ? sceneInfo.entity->scale.y : 0x200,
+                                               (drawFX & FX_FLIP) ? (sceneInfo.entity->direction & FLIP_X) : FLIP_NONE,
+                                               (drawFX & FX_ROTATE) ? rotation : 0, INK_UNMASKED, 0xFF, frame->sheetID);
+                        break;
+
+                    default: break;
+                }
+
+                currentScreen->clipBound_X1 = saveX1;
+                currentScreen->clipBound_Y1 = saveY1;
+                currentScreen->clipBound_X2 = saveX2;
+                currentScreen->clipBound_Y2 = saveY2;
+            }
+        }
+#endif
     }
 }
 void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 sprX, int32 sprY, int32 direction, int32 inkEffect, int32 alpha,
@@ -4504,8 +4823,64 @@ void RSDK::DrawDeformedSprite(uint16 sheetID, int32 inkEffect, int32 alpha)
     }
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-    // DCTODO: DrawDeformedSprite
     validDraw = true;
+
+    if (inkEffect == INK_MASKED)
+        return;
+
+    GFXSurface *surface = &gfxSurface[sheetID];
+    if (!surface->texture)
+        return;
+
+    int32 clipY1  = currentScreen->clipBound_Y1;
+    int32 clipY2  = currentScreen->clipBound_Y2;
+    int32 screenW = currentScreen->pitch;
+
+    uint32 argb = ((uint32)alpha << 24) | 0x00FFFFFF;
+
+    RenderDevice::PrepareTexturedPolyTREX(clipY1, inkEffect, surface);
+
+    float z      = RenderDevice::GetDepth();
+    int32 stripH = 4;
+    float texW   = (float)surface->width;
+    float texH   = (float)surface->height;
+
+    float baseV = fmodf((float)scanlines[clipY1].position.y / 65536.0f, texH);
+    if (baseV < 0.0f)
+        baseV += texH;
+
+    for (int32 y = clipY1; y < clipY2; y += stripH) {
+        int32 botY = y + stripH;
+        if (botY > clipY2)
+            botY = clipY2;
+
+        int32 midY = (y + botY) >> 1;
+        ScanlineInfo *midScan = &scanlines[midY];
+
+        float rawX0 = (float)midScan->position.x / 65536.0f;
+        float scale = (float)midScan->deform.x / 65536.0f;
+        float span  = (float)screenW * scale;
+        float sprX0 = fmodf(rawX0, texW);
+        if (sprX0 < 0.0f)
+            sprX0 += texW;
+        float sprX1 = sprX0 + span;
+
+        float sprY0 = fmodf(baseV + (float)(y - clipY1), texH);
+        if (sprY0 < 0.0f)
+            sprY0 += texH;
+        float sprY1 = sprY0 + (float)(botY - y);
+
+        Vector4f ul = { 0.0f, (float)y, z, 1.0f };
+        Vector4f ur = { (float)screenW, (float)y, z, 1.0f };
+        Vector4f ll = { 0.0f, (float)botY, z, 1.0f };
+        Vector4f lr = { (float)screenW, (float)botY, z, 1.0f };
+
+        RenderDevice::DrawFloorTexturedPolyTREx(
+            ul, ur, ll, lr,
+            sprX0, sprX1, sprY0, sprY1,
+            surface, argb, 0x00000000
+        );
+    }
 #else
     validDraw              = true;
     GFXSurface *surface    = &gfxSurface[sheetID];

@@ -59,8 +59,11 @@ public:
     static uint32 GetGamePaletteBankIndex(int32 y);
     static uint32 GameToPvrPaletteBankIndex(uint32 gamePaletteBankIndex);
     static void PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPaletteBankIndex);
+    static void SetPaletteDesaturation(uint8 amount);
+    static uint8 GetPaletteDesaturation();
+    static void DrawTintedFillScreen(int32 alphaR, int32 alphaG, int32 alphaB, uint32 color);
     static bool SupportedInk(int inkEffect);
-    static bool InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend);
+    static bool InkToBlendModes(int inkEffect, pvr_blend_mode_t* srcBlend, pvr_blend_mode_t* dstBlend);
 
 private:
     static bool PreparePrimitive(int primitiveType,
@@ -114,7 +117,15 @@ public:
         float sprY0, float sprY1,
         const GFXSurface* surface, uint32 color, uint32 addcolor
     );
+    static void DrawFloorTexturedPolyPTExUV(
+        const Vector4f& upperLeft, const Vector4f& upperRight,
+        const Vector4f& lowerLeft, const Vector4f& lowerRight,
+        float ulU, float ulV, float urU, float urV,
+        float llU, float llV, float lrU, float lrV,
+        const GFXSurface* surface, uint32 color, uint32 addcolor
+    );
     static void PrepareTexturedPolyTR(int32 y, int inkEffect, const GFXSurface* surface);
+    static void PrepareTexturedPolyTREX(int32 y, int inkEffect, const GFXSurface* surface);
     static void DrawTexturedPolyTR(
             int32 x, int32 y,
             int32 ox, int32 oy,
@@ -124,6 +135,13 @@ public:
             int32 rotation,
             int32 alpha,
             const GFXSurface *surface
+    );
+    static void DrawFloorTexturedPolyTREx(
+        const Vector4f& upperLeft, const Vector4f& upperRight,
+        const Vector4f& lowerLeft, const Vector4f& lowerRight,
+        float sprX0, float sprX1,
+        float sprY0, float sprY1,
+        const GFXSurface* surface, uint32 color, uint32 addcolor
     );
 
     static void PrepareColoredPolyPT(int32 y, int inkEffect);

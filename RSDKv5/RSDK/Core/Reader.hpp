@@ -96,7 +96,12 @@ namespace RSDK
 #define RSDK_SIGNATURE_DATA (0x61746144) // "Data"
 #endif
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+// a desperate attempt to reclaim some RAM
+#define DATAFILE_COUNT (0x1000/2)
+#else
 #define DATAFILE_COUNT (0x1000)
+#endif
 #define DATAPACK_COUNT (4)
 
 enum Scopes {
