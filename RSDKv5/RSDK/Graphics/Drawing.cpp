@@ -2795,7 +2795,7 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     // DC_DESATURATE: desaturate per-vertex colors when paused, but not for the pause menu's own draw group
     uint8 desat = RenderDevice::GetPaletteDesaturation();
-    uint32 localColors[256];
+    uint32 localColors[4];
     if (desat > 0 && sceneInfo.currentDrawGroup < DRAWGROUP_COUNT - 1) {
         for (int32 v = 0; v < vertCount; ++v)
             localColors[v] = DesaturateColor32(colors[v], desat);
