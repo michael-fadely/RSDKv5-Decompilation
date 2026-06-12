@@ -66,6 +66,9 @@ cp -R -- "$sourcedir/Sprites/UI"            "$stagedir/Sprites/"
 # one non-pow2 file -_-
 rm -f -- "$stagedir/Sprites/UI/Achievements.gif"
 
+# fix for the main menu backgrounds
+rm -f -- "$stagedir/Sprites/UI/Diorama2.gif"
+
 "$script_dir/model_process.sh"              "$sourcedir" "$stagedir"
 
 "$script_dir/video_script.sh"               "$sourcedir" "$stagedir"
