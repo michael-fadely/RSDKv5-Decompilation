@@ -711,10 +711,7 @@ int32 RSDK::PlaySfx(uint16 sfx, uint32 loopPoint, uint32 priority)
     channels[slot].pan          = 0.0f;
     channels[slot].speed        = 1.0f;
     channels[slot].soundID      = sfx;
-    if (loopPoint >= 2)
-        channels[slot].loop = loopPoint;
-    else
-        channels[slot].loop = 0;
+    channels[slot].loop = loopPoint;
     channels[slot].priority  = priority;
     channels[slot].playIndex = sfxList[sfx].playCount++;
     channels[slot].aicaChannel = data.chn;
