@@ -42,11 +42,26 @@ uint16 __attribute__((aligned(32))) lastNonemptyTileInRow[512];
 
 // are we in a ufo stage and if so, which one
 static int ufoNum = 0;
+static bool isMMZ1 = false;
 
 // LOD background quad state
 static bool lodTextureReady = false;
 static int lodTexWidth = 0;
 static int lodTexHeight = 0;
+
+// 3D Floor composite texture: the entire 16x16 tilemap baked into a single 256x256 PAL8
+// texture at scene load. Rendered as a grid of large quads with PVR UV repeat instead of
+// hundreds of individual tile quads, giving the appearance of an infinite tiled plane.
+static GFXSurface floorSurf{};
+static bool floorTextureReady = false;
+static int floorTilesW = 0;
+static int floorTilesH = 0;
+
+// 3D Roof: 16 pre-baked 128×128 PAL8 animation frames, one quad per frame with UV repeat.
+#define ROOF_FRAME_COUNT 16
+#define ROOF_TEX_SIZE    128
+static GFXSurface roofFrames[ROOF_FRAME_COUNT]{};
+static bool roofTextureReady = false;
 
 // bump the tile radius a bit when checking if LOD overlaps high detail tiles
 // it was too close before and there was too much overlap
@@ -61,6 +76,27 @@ static void ReleaseLODTexture()
         pvr_mem_free(mapSurf.texture);
         mapSurf.texture = nullptr;
     }
+}
+
+// Free the composite floor texture VRAM when leaving a UFO stage
+static void ReleaseFloorTexture()
+{
+    if (floorSurf.texture != nullptr) {
+        pvr_mem_free(floorSurf.texture);
+        floorSurf.texture = nullptr;
+    }
+    floorTextureReady = false;
+}
+
+static void ReleaseRoofTextures()
+{
+    for (int i = 0; i < ROOF_FRAME_COUNT; i++) {
+        if (roofFrames[i].texture != nullptr) {
+            pvr_mem_free(roofFrames[i].texture);
+            roofFrames[i].texture = nullptr;
+        }
+    }
+    roofTextureReady = false;
 }
 
 static void GenerateLODTexture()
@@ -215,6 +251,157 @@ static void GenerateLODTexture()
         persistTiles = nullptr;
     }
 }
+
+// Build a single composite texture from the "3D Floor" tilemap at scene load.
+// The floor layer is a small wrapping tilemap (typically 16x16 tiles = 256x256 px).
+// On KOS, raw tile pixels only exist temporarily during GIF loading (persistTiles),
+// so this must run before GenerateLODTexture which frees that buffer.
+// The result is a PAL8 texture in VRAM that can be drawn with a few large quads
+// instead of the hundreds of individual tile draws the old renderer required.
+// Stages without a "3D Floor" layer (not all UFO stages have one) bail out early,
+// and the renderer checks floorTextureReady before drawing.
+static void GenerateFloorTexture()
+{
+    floorTextureReady = false;
+
+    if (persistTiles == nullptr)
+        return;
+
+    ReleaseFloorTexture();
+
+    // find the "3D Floor" layer by name hash
+    const char *layerName = "3D Floor";
+    RETRO_HASH_MD5(hash);
+    GEN_HASH_MD5(layerName, hash);
+
+    TileLayer *floorLayer = nullptr;
+    for (int l = 0; l < LAYER_COUNT; l++) {
+        if (tileLayers[l].layout && HASH_MATCH_MD5(tileLayers[l].name, hash)) {
+            floorLayer = &tileLayers[l];
+            break;
+        }
+    }
+
+    if (!floorLayer)
+        return;
+
+    floorTilesW = floorLayer->xsize;
+    floorTilesH = floorLayer->ysize;
+    int texW    = floorTilesW * TILE_SIZE;
+    int texH    = floorTilesH * TILE_SIZE;
+
+    if (texW == 0 || texH == 0)
+        return;
+
+    // temp RAM buffer to assemble the composite before uploading to VRAM
+    uint8 *composite = nullptr;
+    AllocateStorage(reinterpret_cast<void **>(&composite), texW * texH, DATASET_TMP, true);
+    if (!composite)
+        return;
+
+    uint16 *layout   = floorLayer->layout;
+    int widthShift   = floorLayer->widthShift;
+
+    // blit each tile from persistTiles into its position in the composite,
+    // applying horizontal (uf) and vertical (vf) flip flags from the layout
+    for (int ty = 0; ty < floorTilesH; ty++) {
+        for (int tx = 0; tx < floorTilesW; tx++) {
+            uint16 tileVal = layout[tx + (ty << widthShift)];
+            if (tileVal == 0xFFFF)
+                continue;
+
+            uint16 tile = tileVal & 0x3FF;
+            int uf      = (tileVal >> 10) & 1;
+            int vf      = (tileVal >> 11) & 1;
+
+            uint8 *src    = &persistTiles[tile * TILE_DATASIZE];
+            int dstBaseX  = tx * TILE_SIZE;
+            int dstBaseY  = ty * TILE_SIZE;
+
+            for (int py = 0; py < TILE_SIZE; py++) {
+                int srcY      = vf ? (TILE_SIZE - 1 - py) : py;
+                uint8 *srcRow = &src[srcY * TILE_SIZE];
+                uint8 *dstRow = &composite[(dstBaseY + py) * texW + dstBaseX];
+
+                if (uf) {
+                    for (int px = 0; px < TILE_SIZE; px++)
+                        dstRow[px] = srcRow[TILE_SIZE - 1 - px];
+                } else {
+                    memcpy(dstRow, srcRow, TILE_SIZE);
+                }
+            }
+        }
+    }
+
+    // upload as a PAL8 (8bpp palettized) texture; pvr_txr_load_ex auto-twiddles
+    floorSurf.isARGB = 0;
+    floorSurf.isVq   = 0;
+    floorSurf.width   = texW;
+    floorSurf.height  = texH;
+    floorSurf.pixels  = nullptr;
+
+    pvr_ptr_t texture = pvr_mem_malloc(texW * texH);
+    if (!texture) {
+        RemoveStorageEntry(reinterpret_cast<void **>(&composite));
+        return;
+    }
+
+    floorSurf.texture = texture;
+    pvr_txr_load_ex(composite, texture, texW, texH, PVR_TXRLOAD_8BPP);
+
+    RemoveStorageEntry(reinterpret_cast<void **>(&composite));
+
+    floorTextureReady = true;
+    printf("[FLOOR] Generated %dx%d composite floor texture (%d bytes VRAM)\n", texW, texH, texW * texH);
+}
+
+// Called from LoadSpriteSheet when Water.gif is loaded, before pixels are freed.
+void BuildRoofTexturesFromSheet(uint8 *pixels, int32 width, int32 height)
+{
+    roofTextureReady = false;
+    ReleaseRoofTextures();
+
+    if (!pixels || width < 512 || height < 512)
+        return;
+
+    // 16 animation frames in a 4×4 grid of 128×128 regions on the 512×512 sheet
+    // turn each frame into a dedicated 8bpp texture for PVR
+    int32 frame = 0;
+    for (int32 fy = 0; fy < 4; fy++) {
+        for (int32 fx = 0; fx < 4; fx++) {
+            int32 srcBaseX = fx * ROOF_TEX_SIZE;
+            int32 srcBaseY = fy * ROOF_TEX_SIZE;
+
+            uint8 composite[ROOF_TEX_SIZE * ROOF_TEX_SIZE];
+            for (int32 py = 0; py < ROOF_TEX_SIZE; py++) {
+                memcpy(&composite[py * ROOF_TEX_SIZE],
+                       &pixels[(srcBaseY + py) * width + srcBaseX],
+                       ROOF_TEX_SIZE);
+            }
+
+            pvr_ptr_t texture = pvr_mem_malloc(ROOF_TEX_SIZE * ROOF_TEX_SIZE);
+            if (!texture) {
+                printf("[ROOF] VRAM alloc failed for frame %d\n", frame);
+                return;
+            }
+
+            roofFrames[frame].isARGB  = 0;
+            roofFrames[frame].isVq    = 0;
+            roofFrames[frame].width   = ROOF_TEX_SIZE;
+            roofFrames[frame].height  = ROOF_TEX_SIZE;
+            roofFrames[frame].pixels  = nullptr;
+            roofFrames[frame].texture = texture;
+
+            pvr_txr_load_ex(composite, texture, ROOF_TEX_SIZE, ROOF_TEX_SIZE, PVR_TXRLOAD_8BPP);
+            frame++;
+        }
+    }
+
+    roofTextureReady = true;
+    printf("[ROOF] Generated %d x %dx%d PAL8 textures (%d bytes VRAM)\n",
+           ROOF_FRAME_COUNT, ROOF_TEX_SIZE, ROOF_TEX_SIZE,
+           ROOF_FRAME_COUNT * ROOF_TEX_SIZE * ROOF_TEX_SIZE);
+}
 #endif
 
 void RSDK::LoadSceneFolder()
@@ -235,8 +422,11 @@ void RSDK::LoadSceneFolder()
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     ReleaseLODTexture();
+    ReleaseFloorTexture();
+    ReleaseRoofTextures();
     // book-keeping, are we in a ufo stage
     ufoNum = 0;
+
     if (strstr(sceneInfo.listData[sceneInfo.listPos].folder, "UFO1")) {
         ufoNum = 1;
     }
@@ -527,6 +717,7 @@ void RSDK::LoadSceneAssets()
 
     char fullFilePath[0x40];
     sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Stages/%s/Scene%s.bin", currentSceneFolder, sceneEntry->id);
+    isMMZ1 = strcmp(currentSceneFolder, "MMZ") == 0 && sceneEntry->id[0] == '1';
 
     dataStorage[DATASET_TMP].usedStorage = 0;
 
@@ -1020,8 +1211,10 @@ void RSDK::LoadSceneAssets()
 #endif
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-    if (ufoNum)
+    if (ufoNum) {
+        GenerateFloorTexture();
         GenerateLODTexture();
+    }
 #endif
 
 }
@@ -1943,6 +2136,12 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
                 continue;
             }
 
+            const int32 tileLeft  = std::min(screenUpperX, screenLowerX);
+            const int32 tileRight = std::max(screenUpperX, screenLowerX) + TILE_SIZE;
+            if (tileRight <= currentScreen->clipBound_X1 || tileLeft >= currentScreen->clipBound_X2) {
+                continue;
+            }
+
             const Vector2 screenUpperLeft {
                 screenUpperX,
                 screenUpperY,
@@ -2126,7 +2325,7 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
         return;
 
 #if defined(KOS_HARDWARE_RENDERER)
-   const ScanlineInfo* leftScanline = &scanlines[currentScreen->clipBound_X1];
+    const ScanlineInfo* leftScanline = &scanlines[currentScreen->clipBound_X1];
 
     const int32 sheetX = FROM_FIXED(leftScanline->position.x) & 0xF;
     int32 scanlineIncrement = TILE_SIZE - sheetX;
@@ -2174,6 +2373,12 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
             ty = (ty + 1) % layer->ysize;
 
             if (layout == 0xFFFF) {
+                continue;
+            }
+
+            const int32 tileTop = std::min(screenLeftY, screenRightY);
+            const int32 tileBot = std::max(screenLeftY, screenRightY) + TILE_SIZE;
+            if (tileBot <= currentScreen->clipBound_Y1 || tileTop >= currentScreen->clipBound_Y2) {
                 continue;
             }
 
@@ -2389,112 +2594,1420 @@ static Vector4f __attribute__((aligned(32))) tileVerts[4];
 #define TILE_LR 3
 #endif
 
-void RSDK::DrawLayerRotozoom(TileLayer *layer)
-{
 #if defined(KOS_HARDWARE_RENDERER)
-    const GFXSurface* surface = &gfxSurface[0];
-    bool pinball = false;
+static void DrawRotozoomIsland(TileLayer *layer);
+static void DrawLayerRotozoom2D(TileLayer *layer);
+static void DrawLayerRotozoomAffine(TileLayer *layer);
+static void DrawRotozoom3DRoof(TileLayer *layer);
+static void DrawRotozoom3DFloor(TileLayer *layer);
+static void DrawRotozoomPinballBG(TileLayer *layer);
+static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball);
 
-    int32 width    = (TILE_SIZE << layer->widthShift) - 1;
-    int32 height   = (TILE_SIZE << layer->heightShift) - 1;
-
-    uint16 *layout         = layer->layout;
-    // hijacked scanlineinfo to store camera pos and orientation info
-    ScanlineInfo *scanline = &scanlines[0];
-
-    if ((uint32)scanline->deform.x != (uint32)SCANLINE_MAJOR_MAGIC_3DTILES) return;
-    if ((uint32)scanline->deform.y == (uint32)SCANLINE_MINOR_MAGIC_PINBALL)
-        pinball = true;
-    if (pinball == false)
-        if ((uint32)scanline->deform.y != (uint32)SCANLINE_MINOR_MAGIC_UFO) return;
-
-    // NOTE: tileset PrepareTexturedPolyPTEX moved to just before tile loop
-    // to avoid "not consumed" RenderDevice warning when LOD quad prepares a different texture first
-
-    scanline++;
-
-    // 0.10 fixed-point yaw and pitch sin/cos pairs from UFO_Setup.c, PBL_Setup.c
-    int32 scsin = scanline->deform.x;
-    int32 sccos = scanline->deform.y;
-    int32 scsinX = scanline->position.x;
-    int32 sccosX = scanline->position.y;
-
-    scanline++;
-
-    // 16.16 fixed-point camera position from UFO_Setup.c, PBL_Setup.c
-    int32 camX = scanline->deform.x;
-    int32 camY = scanline->deform.y;
-    int32 camZ = scanline->position.x;
-
-    // convert all of the camera stuff to float
+// Shared camera state unpacked from hijacked scanline data and converted to floats.
+// Used by Roof, Floor, PinballBG, and Playfield handlers.
+struct RotozoomCamera {
     Vector4f cam;
-    cam.x = (float)camX * recip64k;
-    cam.y = (float)camY * recip64k;
-    cam.z = (float)camZ * recip64k;
+    Vector4f forward, right, up;
+    float drc, duc, dfc;
+    float f, foa;
+    float sp;
+};
 
-    float sy = (float)scsin * recip1k;
-    float cy = (float)sccos * recip1k;
-    float sp = (float)scsinX * recip1k;
-    float cp = (float)sccosX * recip1k;
+// Unpack camera orientation and position from scanline entries 1+2, build orthonormal
+// basis vectors, and compute the view-projection dot products and FOV scalars.
+// Advances scanline past the consumed entries.
+static RotozoomCamera UnpackRotozoomCamera(ScanlineInfo *&scanline)
+{
+    RotozoomCamera rc;
 
-    // build the camera basis
-    Vector4f forward;
-    Vector4f right;
-    Vector4f up;
+    scanline++;
+    float sy = (float)scanline->deform.x * recip1k;
+    float cy = (float)scanline->deform.y * recip1k;
+    float sp = (float)scanline->position.x * recip1k;
+    float cp = (float)scanline->position.y * recip1k;
+    rc.sp = sp;
 
-    forward.x = sy * cp;
-    forward.y = -sp;
-    forward.z = cy * cp;
+    scanline++;
+    rc.cam.x = (float)scanline->deform.x * recip64k;
+    rc.cam.y = (float)scanline->deform.y * recip64k;
+    rc.cam.z = (float)scanline->position.x * recip64k;
 
-    right.x = cy;
-    right.y = 0.0f;
-    right.z = -sy;
+    rc.forward = { sy * cp, -sp, cy * cp };
+    rc.right   = { cy, 0.0f, -sy };
+    rc.up      = { sy * sp, cp, cy * sp };
 
-    // derived, orthonormal up vector
-    up.x = sy * sp;
-    up.y = cp;
-    up.z = cy * sp;
+    vec3f_normalize(rc.forward.x, rc.forward.y, rc.forward.z);
+    vec3f_normalize(rc.right.x, rc.right.y, rc.right.z);
+    vec3f_normalize(rc.up.x, rc.up.y, rc.up.z);
 
-    // normalize camera basis for next computations
-    vec3f_normalize(forward.x, forward.y, forward.z);
-    vec3f_normalize(right.x, right.y, right.z);
-    vec3f_normalize(up.x, up.y, up.z);
+    rc.drc = fipr(rc.right.x,   rc.right.y,   rc.right.z,   0, rc.cam.x, rc.cam.y, rc.cam.z, 0);
+    rc.duc = fipr(rc.up.x,      rc.up.y,      rc.up.z,      0, rc.cam.x, rc.cam.y, rc.cam.z, 0);
+    rc.dfc = fipr(rc.forward.x, rc.forward.y, rc.forward.z, 0, rc.cam.x, rc.cam.y, rc.cam.z, 0);
 
-    // dot the basis vectors with camera position
-    // this is to build the translation row
-    float drc = fipr(right.x,   right.y,   right.z,   0, cam.x, cam.y, cam.z, 0);
-    float duc = fipr(up.x,      up.y,      up.z,      0, cam.x, cam.y, cam.z, 0);
-    float dfc = fipr(forward.x, forward.y, forward.z, 0, cam.x, cam.y, cam.z, 0);
-
-    // leaving this here to show how f and foa were derived
     const float aspect = (float)DEFAULT_PIXWIDTH / 240.0f;
     const float fovy   = 47.5f * RSDK_PI / 180.0f;
-    const float f      = 1.0f / tanf(fovy * 0.5f);
-    const float foa    = f / aspect;
+    rc.f   = 1.0f / tanf(fovy * 0.5f);
+    rc.foa = rc.f / aspect;
 
-    // projection matrix
+    return rc;
+}
+
+// Build the combined screenspace * viewproj matrix and load it into the SH4 XMTRX
+// for use with mat_trans_nodiv. Optionally stores a copy in finalmat (pass nullptr to skip).
+// fHoriz/fVert allow per-handler FOV overrides (pass rc.foa/rc.f for the standard projection).
+static void LoadRotozoomMatrix(const RotozoomCamera &rc, float fHoriz, float fVert,
+                               void *finalmat)
+{
     const float __attribute__((aligned(32))) viewproj[4][4] = {
-        {   -right.x * foa,     up.x * f,    forward.x,  forward.x },
-        {   -right.y * foa,     up.y * f,    forward.y,  forward.y },
-        {   -right.z * foa,     up.z * f,    forward.z,  forward.z },
-        {      drc   * foa,   -duc   * f,       -dfc  ,     -dfc   },
+        { -rc.right.x * fHoriz,  rc.up.x * fVert,  rc.forward.x, rc.forward.x },
+        { -rc.right.y * fHoriz,  rc.up.y * fVert,  rc.forward.y, rc.forward.y },
+        { -rc.right.z * fHoriz,  rc.up.z * fVert,  rc.forward.z, rc.forward.z },
+        {  rc.drc     * fHoriz, -rc.duc  * fVert,  -rc.dfc,      -rc.dfc      },
     };
 
-    // ndc to screenspace matrix
     const float __attribute__((aligned(32))) screenspace[4][4] = {
-        {  ((float)DEFAULT_PIXWIDTH*0.5f),    0.0f, 0.0f, 0.0f },
-        {                            0.0f, -120.0f, 0.0f, 0.0f, },
-        {                            0.0f,    0.0f, 0.5f, 0.0f, },
-        {  ((float)DEFAULT_PIXWIDTH*0.5f),  120.0f, 0.5f, 1.0f, },
+        { (float)DEFAULT_PIXWIDTH * 0.5f,    0.0f, 0.0f, 0.0f },
+        {                           0.0f, -120.0f, 0.0f, 0.0f },
+        {                           0.0f,    0.0f, 0.5f, 0.0f },
+        { (float)DEFAULT_PIXWIDTH * 0.5f,  120.0f, 0.5f, 1.0f },
     };
 
-    // store result of load/apply to use for early-out -w test
-    float __attribute__((aligned(32))) finalmat[4][4];
-
-    // put combined matrices into XMTRX
     mat_load(&screenspace);
     mat_apply(&viewproj);
-    mat_store(&finalmat);
+    if (finalmat)
+        mat_store(reinterpret_cast<float (*)[4][4]>(finalmat));
+}
+
+// Compute atlas UVs for a tile, applying horizontal/vertical flip and 1-texel edge pull.
+// Checks AniTileTracker for animated tile overrides; returns the surface to use.
+static const GFXSurface *TileAtlasUV(uint16 tile, int32 uf, int32 vf,
+                                      int32 &u0, int32 &u1, int32 &v0, int32 &v1,
+                                      const GFXSurface *defaultSurface)
+{
+    const AniTileState *aniState = AniTileTracker::GetAniTile(tile);
+    const GFXSurface *tileSurface;
+
+    if (aniState != nullptr && aniState->sheetID != 0) {
+        tileSurface = &gfxSurface[aniState->sheetID];
+        u0 = aniState->u;
+        u1 = aniState->u;
+        v0 = aniState->v;
+        v1 = aniState->v;
+    } else {
+        tileSurface = defaultSurface;
+        u0 = (tile % KOS_ATLAS_WIDTH_TILES) * TILE_SIZE;
+        u1 = u0;
+        v0 = (tile / KOS_ATLAS_HEIGHT_TILES) * TILE_SIZE;
+        v1 = v0;
+    }
+
+    if (uf) {
+        u0 += TILE_SIZE;
+    } else {
+        u1 += TILE_SIZE;
+    }
+
+    if (vf) {
+        v0 += TILE_SIZE;
+    } else {
+        v1 += TILE_SIZE;
+    }
+
+    if (u0 < u1) {
+        u0++;
+        u1--;
+    } else {
+        u0--;
+        u1++;
+    }
+
+    if (v0 < v1) {
+        v0++;
+        v1--;
+    } else {
+        v0--;
+        v1++;
+    }
+
+    return tileSurface;
+}
+
+// MMZ1 far plane rendering
+// this does not require looking for tile crossings across scanlines,
+// this is literally just a 50% scaled tile layer offset from origin
+static void DrawRotozoomMMZ1(TileLayer *layer)
+{
+    ScanlineInfo *scanline = &scanlines[currentScreen->clipBound_Y1];
+
+    int32 ty = FROM_FIXED(scanline->position.y) >> 4;
+
+    const int32 offsetY = FROM_FIXED(scanline->position.y) & 0xF;
+    int32 scanlineIncrement = (16 - offsetY)/2;
+
+    const int32 clipX2w = currentScreen->clipBound_X2 << 1;
+    const int32 clipY2w = currentScreen->clipBound_Y2 << 1;
+
+    for (int32 screenY = currentScreen->clipBound_Y1 - offsetY; screenY < clipY2w; screenY += TILE_SIZE) {
+        int32 tx = (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x)) >> 4;
+
+        uint16* layout = &layer->layout[tx + (ty << layer->widthShift)];
+
+        const int32 offsetX = (currentScreen->clipBound_X1 + FROM_FIXED(scanline->position.x)) & 0xF;
+
+        for (int32 screenX = currentScreen->clipBound_X1 - offsetX; screenX < clipX2w; screenX += TILE_SIZE) {
+            if (*layout != 0xFFFF) {
+                Vector2 ul;
+                Vector2 ur;
+                Vector2 ll;
+                Vector2 lr;
+
+                ul.x = (screenX * 0.5f);
+                ll.x = ul.x;
+                ur.x = ul.x + 8;
+                lr.x = ur.x;
+                ul.y = (screenY* 0.5f);
+                ll.y = ul.y + 8;
+                ur.y = ul.y;
+                lr.y = ur.y + 8;
+
+                DrawByLayoutEx(*layout, ul, ur, ll, lr);
+            }
+
+            ++layout;
+
+            if (++tx == layer->xsize) {
+                tx = 0;
+                layout -= layer->xsize;
+            }
+        }
+
+        ty = (ty + 1) % layer->ysize;
+
+        scanline += scanlineIncrement;
+        scanlineIncrement = TILE_SIZE / 2;
+    }
+    return;
+}
+
+// most rotozoom layers only deform in the x dimension
+// some (the clouds) deform in in the y dimension also
+// for the x-only deforms, we have a simplified function
+// for others, we call out to something that can handle y deform
+static void DrawLayerRotozoom2D(TileLayer *layer)
+{
+    if (!layer->xsize || !layer->ysize)
+        return;
+
+    const int32 clipY1 = currentScreen->clipBound_Y1;
+    const int32 clipY2 = currentScreen->clipBound_Y2;
+    if (clipY1 >= clipY2)
+        return;
+    const int32 lineSize = currentScreen->clipBound_X2 - currentScreen->clipBound_X1;
+    if (lineSize <= 0)
+        return;
+
+    // if any visible scanline has deform.y != 0, use the general affine renderer
+    for (int32 cy = clipY1; cy < clipY2; cy++) {
+        if (scanlines[cy].deform.y != 0) {
+            DrawLayerRotozoomAffine(layer);
+            return;
+        }
+    }
+
+    // All source coordinates in scanline data are 16.16 fixed-point.
+    // Tiles are TILE_SIZE (16) pixels, so one tile = 16 << 16 = 1 << 20 source units.
+    // widthMask/heightMask wrap in pixel space; >> 4 gives tile-index masks.
+    const int32 widthMask  = (TILE_SIZE << layer->widthShift) - 1;
+    const int32 heightMask = (TILE_SIZE << layer->heightShift) - 1;
+    const int32 txMask     = widthMask >> 4;
+    const int32 tyMask     = heightMask >> 4;
+    uint16 *layout         = layer->layout;
+    const int32 widthShift = layer->widthShift;
+
+    const GFXSurface *atlasSurface = &gfxSurface[0];
+    const float baseZ              = RenderDevice::GetDepth();
+    const float fLineSize          = (float)lineSize;
+
+    RenderDevice::PrepareTexturedPolyPTEX(clipY1, INK_NONE, atlasSurface);
+    const GFXSurface *preparedSurface = atlasSurface;
+
+    // Detect scanline discontinuities (deform.x jumps from AddDynamicBG overlays)
+    // and build a list of band boundaries that avoids interpolating across them.
+    // 16 slots: clipY1 + clipY2 + up to 10 overlay boundaries (5 overlays × enter/exit)
+    // those overlays only exist on the FBZ1 rotozoom background layer
+    int32 bandEdges[16];
+    int32 bandEdgeCount = 0;
+    bandEdges[bandEdgeCount++] = clipY1;
+
+    // 0x1000 (16.16 fixed) = 1/16 pixel step difference per screen pixel.
+    // Smooth zoom changes less than this between scanlines; overlay seams jump more.
+    const int32 DEFORM_DISC_THRESH = 0x1000;
+    // 0x30000 (16.16 fixed) = 3.0 source pixels. Normal vertical scroll advances
+    // ~1 pixel per scanline; a 3+ pixel jump means an overlay boundary.
+    const int32 POSY_DISC_THRESH   = 0x30000;
+    for (int32 cy = clipY1 + 1; cy < clipY2; cy++) {
+        int32 dxDiff  = scanlines[cy].deform.x - scanlines[cy - 1].deform.x;
+        int32 pyDiff  = scanlines[cy].position.y - scanlines[cy - 1].position.y;
+        if (dxDiff < 0) dxDiff = -dxDiff;
+        if (pyDiff < 0) pyDiff = -pyDiff;
+        if (dxDiff > DEFORM_DISC_THRESH || pyDiff > POSY_DISC_THRESH) {
+            if (bandEdgeCount < 14) // 16 - 2: reserve slots for initial clipY1 and final clipY2
+                bandEdges[bandEdgeCount++] = cy;
+        }
+    }
+    bandEdges[bandEdgeCount++] = clipY2;
+
+    // Subdivide each segment into uniform bands
+    // balance quad count vs interpolation accuracy
+    // 48 slots: variable-deform segments only (overlays take fast path)
+    int32 allBands[48];
+    int32 allBandCount = 0;
+
+    for (int32 seg = 0; seg < bandEdgeCount - 1; seg++) {
+        int32 segTop    = bandEdges[seg];
+        int32 segBot    = bandEdges[seg + 1];
+        int32 segHeight = segBot - segTop;
+        if (segHeight <= 0)
+            continue;
+
+        // Fast path: deform.x == 0x10000 with constant posX (AddDynamicBG overlays on FBZ1)
+        // 1:1 pixel mapping — tiles are axis-aligned screen rectangles
+        // Eliminates shz_invf(), band subdivision, and per-tile affine math
+        if (scanlines[segTop].deform.x == 0x10000 && scanlines[segBot - 1].deform.x == 0x10000
+            && scanlines[segTop].position.x == scanlines[segBot - 1].position.x) {
+            const int32 posX      = scanlines[segTop].position.x;
+            const int32 posYStart = scanlines[segTop].position.y;
+            const float screenOffX = (float)posX * (1.0f / 65536.0f);
+
+            const float recipTF = 1.0f / (float)(1 << 20);
+            float uStart        = (float)posX;
+            float uEnd          = uStart + fLineSize * 65536.0f;
+            int32 txStart       = (int32)floorf(uStart * recipTF);
+            int32 txEnd         = (int32)floorf(uEnd * recipTF);
+
+            int32 scanY = segTop;
+            while (scanY < segBot) {
+                int32 curPosY   = posYStart + ((scanY - segTop) << 16);
+                int32 tyTop     = (curPosY >> 20) & tyMask;
+                int32 vFracTop  = (curPosY >> 16) & 0xF;
+                int32 subBot    = scanY + (TILE_SIZE - vFracTop);
+                if (subBot > segBot)
+                    subBot = segBot;
+
+                int32 subPosYBot  = posYStart + ((subBot - 1 - segTop) << 16);
+                int32 vFracBotEnd = (subBot < segBot) ? TILE_SIZE : (((subPosYBot >> 16) & 0xF) + 1);
+
+                float fSubTop = (float)scanY;
+                float fSubBot = (float)subBot;
+
+                for (int32 tx = txStart; tx <= txEnd; tx++) {
+                    int32 wrappedTx = tx & txMask;
+                    uint16 tileVal  = layout[wrappedTx + (tyTop << widthShift)];
+                    if (tileVal == 0xFFFF)
+                        continue;
+
+                    uint16 rawTile = tileVal & 0xFFF;
+                    int32 flipBits = rawTile / TILE_COUNT;
+                    uint16 tileIdx = rawTile % TILE_COUNT;
+
+                    float leftX  = (float)(tx * TILE_SIZE) - screenOffX;
+                    float rightX = leftX + (float)TILE_SIZE;
+                    if (leftX >= fLineSize || rightX < 0.0f)
+                        continue;
+
+                    int32 u0, u1, v0, v1;
+                    const GFXSurface *tileSurface = TileAtlasUV(
+                        tileIdx,
+                        flipBits & FLIP_X, flipBits & FLIP_Y,
+                        u0, u1, v0, v1,
+                        atlasSurface);
+
+                    Vector4f ul = {  leftX, fSubTop, baseZ, 0.0f };
+                    Vector4f ur = { rightX, fSubTop, baseZ, 0.0f };
+                    Vector4f ll = {  leftX, fSubBot, baseZ, 0.0f };
+                    Vector4f lr = { rightX, fSubBot, baseZ, 0.0f };
+
+                    RenderDevice::DrawFloorTexturedPolyPTEx(
+                        ul, ur, ll, lr,
+                        u0, u1, v0, v1,
+                        tileSurface, 0xFFFFFFFF, 0x00000000
+                    );
+                }
+                scanY = subBot;
+            }
+            continue;
+        } // end DynamicBg fast path
+
+        int32 numBands = (segHeight + 31) / 32;
+        if (numBands < 1)
+            numBands = 1;
+        for (int32 b = 0; b < numBands; b++) {
+            int32 bTop = segTop + (segHeight * b) / numBands;
+            int32 bBot = segTop + (segHeight * (b + 1)) / numBands;
+            if (bBot > segBot) bBot = segBot;
+            if (bTop >= bBot) continue;
+            if (allBandCount < 46) { // 48 - 2: room for one more top+bot pair
+                allBands[allBandCount++] = bTop;
+                allBands[allBandCount++] = bBot;
+            }
+        }
+    }
+
+    for (int32 bi = 0; bi < allBandCount; bi += 2) {
+        const int32 bandTop = allBands[bi];
+        const int32 bandBot = allBands[bi + 1];
+
+        int32 subTop = bandTop;
+        while (subTop < bandBot) {
+            ScanlineInfo *slTop = &scanlines[subTop];
+            int32 posYTop       = slTop->position.y;
+            int32 tyTop         = (posYTop >> 20) & tyMask; // >> 20 = >> 16 (fixed-to-pixel) >> 4 (pixel-to-tile)
+
+            // find end of sub-band: where tile row changes or band ends
+            int32 subBot = bandBot;
+            for (int32 cy = subTop + 1; cy < bandBot; cy++) {
+                int32 ty = (scanlines[cy].position.y >> 20) & tyMask;
+                if (ty != tyTop) {
+                    subBot = cy;
+                    break;
+                }
+            }
+
+            ScanlineInfo *slBot = &scanlines[subBot - 1];
+            int32 deformTopI    = slTop->deform.x;
+            int32 deformBotI    = slBot->deform.x;
+            if (deformTopI == 0 || deformBotI == 0) {
+                subTop = subBot;
+                continue;
+            }
+
+            float fDeformTop = (float)deformTopI;
+            float fDeformBot = (float)deformBotI;
+            float xPositionTop   = (float)slTop->position.x;
+            float xPositionBottom   = (float)slBot->position.x;
+
+            // V fractional offset within the tile for UV mapping.
+            // >> 16 = 16.16 fixed to integer pixels; & 0xF = pixel offset within 16px tile (0 to 15).
+            int32 vFracTop    = (posYTop >> 16) & 0xF;
+            int32 posYBotVal  = slBot->position.y;
+            // If sub-band ends at a tile row boundary, use full TILE_SIZE; otherwise use actual pixel + 1
+            int32 vFracBotEnd = (subBot < bandBot) ? TILE_SIZE : (((posYBotVal >> 16) & 0xF) + 1);
+
+            // visible source U range across both top and bottom scanlines
+            float uStartTop = xPositionTop;
+            float uEndTop   = xPositionTop + fLineSize * fDeformTop;
+            float uStartBot = xPositionBottom;
+            float uEndBot   = xPositionBottom + fLineSize * fDeformBot;
+
+            float uMin = uStartTop;
+            if (uStartBot < uMin)
+                uMin = uStartBot;
+            if (uEndTop < uMin)
+                uMin = uEndTop;
+            if (uEndBot < uMin)
+                uMin = uEndBot;
+
+            float uMax = uStartTop;
+            if (uStartBot > uMax)
+                uMax = uStartBot;
+            if (uEndTop > uMax)
+                uMax = uEndTop;
+            if (uEndBot > uMax)
+                uMax = uEndBot;
+
+            // tile column range: 1 << 20 = TILE_SIZE << 16, one tile in 16.16 source units
+            const float recipTileFixed = 1.0f / (float)(1 << 20);
+            int32 txStart = (int32)floorf(uMin * recipTileFixed);
+            int32 txEnd   = (int32)floorf(uMax * recipTileFixed);
+
+            float fSubTop = (float)subTop;
+            float fSubBot = (float)subBot;
+            float invDeformTop = shz_invf(fDeformTop);
+            float invDeformBot = shz_invf(fDeformBot);
+
+            for (int32 tx = txStart; tx <= txEnd; tx++) {
+                int32 wrappedTx = tx & txMask;
+                uint16 tileVal  = layout[wrappedTx + (tyTop << widthShift)];
+                if (tileVal == 0xFFFF)
+                    continue;
+
+                uint16 rawTile  = tileVal & 0xFFF; // lower 12 bits: tile index + flip flags
+                int32 flipBits  = rawTile / TILE_COUNT; // upper bits encode FLIP_X / FLIP_Y
+                uint16 tileIdx  = rawTile % TILE_COUNT; // actual tile index into atlas
+
+                // Tile edges in 16.16 source space: 65536.0f (1 << 16) converts pixels to 16.16.
+                // Then invert the scanline equation (sourceU = posX + screenX * deform)
+                // to solve for screenX = (sourceU - posX) / deform at each tile edge.
+                float srcLeft  = (float)(tx * TILE_SIZE) * 65536.0f;
+                float srcRight = (float)((tx + 1) * TILE_SIZE) * 65536.0f;
+
+                float ulX = (srcLeft - xPositionTop) * invDeformTop;
+                float urX = (srcRight - xPositionTop) * invDeformTop;
+                float llX = (srcLeft - xPositionBottom) * invDeformBot;
+                float lrX = (srcRight - xPositionBottom) * invDeformBot;
+
+                if (ulX >= fLineSize && urX >= fLineSize && llX >= fLineSize && lrX >= fLineSize)
+                    continue;
+                if (ulX < 0 && urX < 0 && llX < 0 && lrX < 0)
+                    continue;
+
+                // resolve tile to atlas UV (handling anitiles)
+                const AniTileState *aniState = AniTileTracker::GetAniTile(tileIdx);
+                const GFXSurface *tileSurface;
+                float u0, u1, v0, v1;
+
+                if (aniState != nullptr && aniState->sheetID != 0) {
+                    tileSurface = &gfxSurface[aniState->sheetID];
+                    u0 = (float)aniState->u;
+                    u1 = (float)(aniState->u + TILE_SIZE);
+                    v0 = (float)(aniState->v + vFracTop);
+                    v1 = (float)(aniState->v + vFracBotEnd);
+                } else {
+                    tileSurface = atlasSurface;
+                    int32 col   = tileIdx % KOS_ATLAS_WIDTH_TILES;
+                    int32 row   = tileIdx / KOS_ATLAS_HEIGHT_TILES;
+                    u0 = (float)(col * TILE_SIZE);
+                    u1 = (float)(col * TILE_SIZE + TILE_SIZE);
+                    v0 = (float)(row * TILE_SIZE + vFracTop);
+                    v1 = (float)(row * TILE_SIZE + vFracBotEnd);
+                }
+
+                if (flipBits & FLIP_X) {
+                    float tmp = u0;
+                    u0 = u1;
+                    u1 = tmp;
+                }
+
+                if (flipBits & FLIP_Y) {
+                    float tmp = v0;
+                    v0 = v1;
+                    v1 = tmp;
+                }
+
+                if (tileSurface != preparedSurface) {
+                    RenderDevice::PrepareTexturedPolyPTEX(subTop, INK_NONE, tileSurface);
+                    preparedSurface = tileSurface;
+                }
+
+                Vector4f ul = { ulX, fSubTop, baseZ, 0.0f };
+                Vector4f ur = { urX, fSubTop, baseZ, 0.0f };
+                Vector4f ll = { llX, fSubBot, baseZ, 0.0f };
+                Vector4f lr = { lrX, fSubBot, baseZ, 0.0f };
+
+                RenderDevice::DrawFloorTexturedPolyPTEx(
+                    ul, ur, ll, lr,
+                    u0, u1, v0, v1,
+                    tileSurface, 0xFFFFFFFF, 0x00000000
+                );
+            }
+
+            subTop = subBot;
+        }
+    }
+}
+
+// Don't get overwhelmed by this, just solving a math problem.
+//
+// Find the screen-X positions where an affine scanline crosses a tile boundary.
+//
+// In Mania's rotozoom/affine renderer, each scanline maps screen pixels to source texels via:
+//   source = position + screenX * deform
+// where pos is the starting source coordinate and def is the per-pixel step.
+// A tile boundary occurs every tsf source units (= TILE_SIZE << 16 in 16.16 fixed).
+//
+// We need these crossings because the tile atlas stores each tile separately —
+// a single quad can only reference one tile's UVs. Splitting at boundaries lets
+// us emit one quad per tile with correct atlas coordinates.
+//
+// pos:      source-space start of the scanline (16.16 fixed, as float)
+// def:      source-space step per screen pixel (16.16 fixed, as float)
+// lineSize: screen-space width in pixels
+// bounds:   output array of screen-X positions where tile crossings occur
+// count:    in/out index into bounds array
+static void CollectTileBoundaries(float pos, float def, float lineSize, float *bounds, int32 &count)
+{
+    const int32 maxCount = 250;
+    const float tileSize = (float)(TILE_SIZE << 16);
+
+    // no movement along this axis — no crossings possible
+    if (def == 0.0f)
+        return;
+
+    // invert the step to solve for screen-X: cx = (boundary - pos) / def
+    float invDef = shz_invf(def);
+
+    float invTileSize = shz_invf(tileSize);
+
+    // source-space range covered by this scanline
+    float src0 = pos;
+    float src1 = pos + lineSize * def;
+    float srcMin = src0 < src1 ? src0 : src1;
+    float srcMax = src0 > src1 ? src0 : src1;
+
+    // tile indices spanned: first tile boundary crossed (firstCrossIndex) to last (lastCrossIndex)
+    int32 firstCrossIndex = (int32)floorf(srcMin * invTileSize) + 1;
+    int32 lastCrossIndex = (int32)floorf(srcMax * invTileSize);
+
+    for (int32 crossIndex = firstCrossIndex; crossIndex <= lastCrossIndex && count < maxCount; crossIndex++) {
+        float cx = (((float)crossIndex * tileSize) - pos) * invDef;
+        // skip crossings at the very edge
+        if (cx > 0.5f && cx < lineSize - 0.5f)
+            bounds[count++] = cx;
+    }
+}
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+#include <algorithm>
+#endif
+
+// The game has tile-based layers that can be rotated and scaled.
+// The software renderer draws these pixel-by-pixel:
+// for each screen pixel, it computes source texel to sample.
+// We want to draw textured quads with the PVR.
+// Any and all of the 1024 tiles that could make up the rotozoom layer
+// live in a single 512×512 atlas texture.
+// Each tile is a 16×16 region in that atlas.
+// Doing this scanline-by-scanline like the software renderer would take too many quads.
+// You would have to split each line where it crosses into a new tile.
+// If the layer was zoomed out far enough to have one tile per screen pixel,
+// you would end up needing to submit more than 75k quads (320x240) to cover the screen
+//
+// The scanline data gives a linear mapping for each row of the screen.
+// If you know where across the width of the screen.
+// and where along the height of the screen, the mapping crosses from one tile into the next,
+// you can split the screen into segments that each fall entirely within one tile.
+// Each segment becomes one quad with UVs that point to the correct 16×16 region of the atlas.
+//
+// That's what is done here.
+static void DrawLayerRotozoomAffine(TileLayer *layer)
+{
+    if (!layer->xsize || !layer->ysize)
+        return;
+
+    const int32 clipY1 = currentScreen->clipBound_Y1;
+    const int32 clipY2 = currentScreen->clipBound_Y2;
+    if (clipY1 >= clipY2)
+        return;
+
+    const int32 lineSize = currentScreen->clipBound_X2 - currentScreen->clipBound_X1;
+    if (lineSize <= 0)
+        return;
+
+    // masks for wrapping tile coordinates
+    const int32 widthMask  = (TILE_SIZE << layer->widthShift) - 1;
+    const int32 heightMask = (TILE_SIZE << layer->heightShift) - 1;
+    // tile width, height are 16 pixels
+    // tilemap coord masks for wrapping tilemap coords
+    const int32 txMask     = widthMask >> 4;
+    const int32 tyMask     = heightMask >> 4;
+
+    uint16 *layout    = layer->layout;
+    const int32 widthShift = layer->widthShift;
+
+    const GFXSurface *atlasSurface = &gfxSurface[0];
+    const float baseZ              = RenderDevice::GetDepth();
+    const float fLineSize          = (float)lineSize;
+
+    RenderDevice::PrepareTexturedPolyPTEX(clipY1, INK_NONE, atlasSurface);
+    const GFXSurface *preparedSurface = atlasSurface;
+
+    // converts a 16.16 source offset within a tile to a 0..TILE_SIZE texel coordinate
+    const float tileFracScale  = (float)TILE_SIZE / (float)(1 << 20);
+
+    // a height of 8 scanline was chosen because it minimizes warping
+    // when deform would significantly change endpoints over taller screen space
+    const int32 bandHeight = 8;
+    const int32 clipHeight = clipY2 - clipY1;
+
+    // create a dynamic number of bands that scales with the overall height of the clip area
+    const int32 numBands = (clipHeight + bandHeight - 1) / bandHeight;
+
+    // process the screen in horizontal bands of 8 scanlines each
+    for (int32 band = 0; band < numBands; band++) {
+        int32 cyTop = clipY1 + (clipHeight * band) / numBands;
+        int32 cyBot = clipY1 + (clipHeight * (band + 1)) / numBands;
+
+        if (cyBot > clipY2)
+            cyBot = clipY2;
+
+        if (cyTop >= cyBot)
+            continue;
+
+        // affine parameters at the top and bottom edges of this band
+        ScanlineInfo *slTop = &scanlines[cyTop];
+        ScanlineInfo *slBot = &scanlines[cyBot - 1];
+
+        float xPositionTop = (float)slTop->position.x;
+        float yPositionTop = (float)slTop->position.y;
+        float xPositionBottom = (float)slBot->position.x;
+        float yPositionBottom = (float)slBot->position.y;
+
+        float xDeformTop = (float)slTop->deform.x;
+        float yDeformTop = (float)slTop->deform.y;
+        float xDeformBottom = (float)slBot->deform.x;
+        float yDeformBottom = (float)slBot->deform.y;
+
+        float topClipY = (float)cyTop;
+        float bottomClipY = (float)cyBot;
+
+        // collect every screen-X where the affine mapping crosses a tile edge
+        // (both U and V axes, both top and bottom scanlines of the band)
+        float bounds[256];
+        int32 nBounds = 0;
+        bounds[nBounds++] = 0.0f;
+        bounds[nBounds++] = fLineSize;
+
+        CollectTileBoundaries(xPositionTop, xDeformTop, fLineSize, bounds, nBounds);
+        CollectTileBoundaries(xPositionBottom, xDeformBottom, fLineSize, bounds, nBounds);
+
+        CollectTileBoundaries(yPositionTop, yDeformTop, fLineSize, bounds, nBounds);
+        CollectTileBoundaries(yPositionBottom, yDeformBottom, fLineSize, bounds, nBounds);
+
+        // need to sort so you can walk the bounds from left to right
+        std::sort(bounds, bounds + nBounds);
+
+        // each pair of adjacent bounds is one segment guaranteed to stay within a single tile
+        for (int32 seg = 0; seg < nBounds - 1; seg++) {
+            float leftClipX = bounds[seg];
+            float rightClipX = bounds[seg + 1];
+            if (rightClipX - leftClipX < 0.5f)
+                continue;
+
+            // sample the tile at the segment midpoint (safely inside one tile)
+            float midpointClipX = (leftClipX + rightClipX) * 0.5f;
+            float src_uMid = xPositionTop + midpointClipX * xDeformTop;
+            float src_vMid = yPositionTop + midpointClipX * yDeformTop;
+            int32 txMid = ((int32)src_uMid >> 20) & txMask;
+            int32 tyMid = ((int32)src_vMid >> 20) & tyMask;
+
+            uint16 tileVal = layout[txMid + (tyMid << widthShift)];
+            if (tileVal == 0xFFFF)
+                continue;
+
+            uint16 rawTile = tileVal & 0xFFF;
+            int32 flipBits = rawTile / TILE_COUNT;
+            uint16 tileIdx = rawTile % TILE_COUNT;
+
+            // origin of this tile in source space (snapped to tile grid)
+            float tileOriginU = (float)(((int32)src_uMid & 0xFFFFF));// >> 20) << 20);
+            float tileOriginV = (float)(((int32)src_vMid & 0xFFFFF));//>> 20) << 20);
+
+            // compute source coords at all 4 screen corners of this segment
+            float src_uTL = xPositionTop    +  leftClipX * xDeformTop;
+            float src_vTL = yPositionTop    +  leftClipX * yDeformTop;
+            float src_uTR = xPositionTop    + rightClipX * xDeformTop;
+            float src_vTR = yPositionTop    + rightClipX * yDeformTop;
+            float src_uBL = xPositionBottom +  leftClipX * xDeformBottom;
+            float src_vBL = yPositionBottom +  leftClipX * yDeformBottom;
+            float src_uBR = xPositionBottom + rightClipX * xDeformBottom;
+            float src_vBR = yPositionBottom + rightClipX * yDeformBottom;
+
+            // convert source coords to 0..TILE_SIZE texel offsets within this tile
+            float fracUTL = ((float)((int32)src_uTL - (int32)tileOriginU)) * tileFracScale;
+            float fracVTL = ((float)((int32)src_vTL - (int32)tileOriginV)) * tileFracScale;
+            float fracUTR = ((float)((int32)src_uTR - (int32)tileOriginU)) * tileFracScale;
+            float fracVTR = ((float)((int32)src_vTR - (int32)tileOriginV)) * tileFracScale;
+            float fracUBL = ((float)((int32)src_uBL - (int32)tileOriginU)) * tileFracScale;
+            float fracVBL = ((float)((int32)src_vBL - (int32)tileOriginV)) * tileFracScale;
+            float fracUBR = ((float)((int32)src_uBR - (int32)tileOriginU)) * tileFracScale;
+            float fracVBR = ((float)((int32)src_vBR - (int32)tileOriginV)) * tileFracScale;
+
+            // apply tile flip flags
+            if (flipBits & FLIP_X) {
+                fracUTL = (float)TILE_SIZE - fracUTL;
+                fracUTR = (float)TILE_SIZE - fracUTR;
+                fracUBL = (float)TILE_SIZE - fracUBL;
+                fracUBR = (float)TILE_SIZE - fracUBR;
+            }
+            if (flipBits & FLIP_Y) {
+                fracVTL = (float)TILE_SIZE - fracVTL;
+                fracVTR = (float)TILE_SIZE - fracVTR;
+                fracVBL = (float)TILE_SIZE - fracVBL;
+                fracVBR = (float)TILE_SIZE - fracVBR;
+            }
+
+            // bottom scanline can drift slightly past tile bounds due to band interpolation
+            const float uvMin = 0.0f;
+            const float uvMax = (float)TILE_SIZE;
+            fracUTL = fmaxf(uvMin, fminf(uvMax, fracUTL));
+            fracVTL = fmaxf(uvMin, fminf(uvMax, fracVTL));
+            fracUTR = fmaxf(uvMin, fminf(uvMax, fracUTR));
+            fracVTR = fmaxf(uvMin, fminf(uvMax, fracVTR));
+            fracUBL = fmaxf(uvMin, fminf(uvMax, fracUBL));
+            fracVBL = fmaxf(uvMin, fminf(uvMax, fracVBL));
+            fracUBR = fmaxf(uvMin, fminf(uvMax, fracUBR));
+            fracVBR = fmaxf(uvMin, fminf(uvMax, fracVBR));
+
+            // resolve animated tile overrides, get atlas base position
+            const AniTileState *aniState = AniTileTracker::GetAniTile(tileIdx);
+            const GFXSurface *tileSurface;
+            float baseU, baseV;
+
+            if (aniState != nullptr && aniState->sheetID != 0) {
+                tileSurface = &gfxSurface[aniState->sheetID];
+                baseU = (float)aniState->u;
+                baseV = (float)aniState->v;
+            }
+            else {
+                tileSurface = atlasSurface;
+                baseU = (float)((tileIdx % KOS_ATLAS_WIDTH_TILES) * TILE_SIZE);
+                baseV = (float)((tileIdx / KOS_ATLAS_HEIGHT_TILES) * TILE_SIZE);
+            }
+
+            // final per-vertex UVs: atlas base + fractional offset within tile
+            float ulU = baseU + fracUTL;
+            float ulV = baseV + fracVTL;
+            float urU = baseU + fracUTR;
+            float urV = baseV + fracVTR;
+            float llU = baseU + fracUBL;
+            float llV = baseV + fracVBL;
+            float lrU = baseU + fracUBR;
+            float lrV = baseV + fracVBR;
+
+            if (tileSurface != preparedSurface) {
+                RenderDevice::PrepareTexturedPolyPTEX(cyTop, INK_NONE, tileSurface);
+                preparedSurface = tileSurface;
+            }
+
+            // quad corners in screen space (x = screen-X, y = scanline, z = depth)
+            Vector4f ul = {  leftClipX,    topClipY, baseZ, 0.0f };
+            Vector4f ur = { rightClipX,    topClipY, baseZ, 0.0f };
+            Vector4f ll = {  leftClipX, bottomClipY, baseZ, 0.0f };
+            Vector4f lr = { rightClipX, bottomClipY, baseZ, 0.0f };
+
+            RenderDevice::DrawFloorTexturedPolyPTExUV(
+                ul, ur, ll, lr,
+                ulU, ulV, urU, urV,
+                llU, llV, lrU, lrV,
+                tileSurface, 0xFFFFFFFF, 0x00000000
+            );
+        }
+    }
+}
+
+// macros for common code among the various 3d rotozoom renderers
+
+#define XFORM_WTEST(extrawork) \
+                int32 negw = 0; \
+                for (int32 i = 0; i < 4; i++) { \
+                    mat_trans_nodiv(tileVerts[i].x, tileVerts[i].y, tileVerts[i].z, tileVerts[i].w); \
+                    if (tileVerts[i].w <= EPS) { \
+                        negw = 1; \
+                        break; \
+                    } \
+                } \
+                /* if any were behind camera, move on to next tile */ \
+                if (negw) { \
+                    (extrawork); \
+                    continue; \
+                }
+
+#define PERSPDIV() \
+            for (int32 i = 0; i < 4; i++) { \
+                float invW = shz_invf(tileVerts[i].w); \
+                tileVerts[i].x *= invW; \
+                tileVerts[i].y *= invW; \
+                tileVerts[i].z *= invW; \
+                tileVerts[i].z += baseZ; \
+                tileVerts[i].w = invW; \
+            }
+
+#define CULL(dim,dir,val) \
+            if (tileVerts[0].dim dir (val) && tileVerts[1].dim dir (val) && tileVerts[2].dim dir (val) && tileVerts[3].dim dir (val))  { \
+                continue; \
+            }
+
+#define VERTS(x0,x1,y,z0,z1) \
+            tileVerts[TILE_UL] = { (x0),  (y), (z0), 1.0f }; \
+            tileVerts[TILE_UR] = { (x1),  (y), (z0), 1.0f }; \
+            tileVerts[TILE_LL] = { (x0),  (y), (z1), 1.0f }; \
+            tileVerts[TILE_LR] = { (x1),  (y), (z1), 1.0f };
+
+#define VERTS_LCOPY(x1, y, z0, z1) \
+            tileVerts[TILE_UL] = tileVerts[TILE_UR]; \
+            tileVerts[TILE_LL] = tileVerts[TILE_LR]; \
+            tileVerts[TILE_UR] = { (x1),  (y), (z0), 1.0f }; \
+            tileVerts[TILE_LR] = { (x1),  (y), (z1), 1.0f };
+
+// similar to the playfield renderer
+// dervie a camera basis, use it to render rotating tilemap
+static void DrawRotozoomIsland(TileLayer *layer)
+{
+    const GFXSurface *surface = &gfxSurface[0];
+    uint16 *layout            = layer->layout;
+    ScanlineInfo *scanline    = &scanlines[0];
+    const int32 clipY1 = currentScreen->clipBound_Y1;
+    const int32 clipY2 = currentScreen->clipBound_Y2;
+
+    int32 sine   = scanline->position.x;
+    int32 cosine = scanline->position.y;
+
+    // values passed in scanline position are Sin256/Cos256
+    // sinA = -sine/256, cosA = cosine/256
+    // floats for the matrix
+    float sinA = (float)(-sine) / 256.0f;
+    float cosA = (float)(-cosine) / 256.0f;
+
+    // parameters derived from the scanline equations:
+    //   srcU = (sine*0x140000 - sx*cosine*0x2800)/i - 0xA000*sine + 0x2000000
+    //   srcV = (cosine*0x140000 + sx*sine*0x2800)/i - 0xA000*cosine + 0x2000000
+    // orbit radius = 160 source pixels, camera height = 40, focal length = 128
+    const float orbitR  = 160.0f;
+    const float camH    = 40.0f;
+    const float focalL  = 128.0f;
+    const float horizY  = 152.0f;
+    const float centerX = (float)(DEFAULT_PIXWIDTH / 2);
+
+    // build combined view-projection-screenspace matrix
+    // maps world (x, y, z, 1) -> (sx*w, sy*w, z_clip, w)
+    // where world x/z = source pixels centered at map center, y = tile height
+    //
+    // after rotation by angle a:
+    //   depth = orbitR - (sinA*x + cosA*z)    distance from camera ground pos
+    //   lateral = -(cosA*x - sinA*z)          perpendicular to depth
+    //
+    // projection:
+    //   screen_x = centerX + focalL * lateral / depth
+    //   screen_y = horizY + focalL * (camH - y) / depth
+    //
+    // in homogeneous form with w = depth:
+    //   sx*w = centerX*w + focalL*lateral
+    //        = centerX*(orbitR - sinA*x - cosA*z) + focalL*(-(cosA*x - sinA*z))
+    //   sy*w = horizY*w + focalL*(camH - y)
+    //        = horizY*(orbitR - sinA*x - cosA*z) + focalL*camH - focalL*y
+    //   w    = orbitR - sinA*x - cosA*z
+
+    const float __attribute__((aligned(32))) islandMat[4][4] = {
+        { -centerX * sinA + focalL * cosA, -horizY * sinA,                   -0.5f * sinA,   -sinA   },
+        {  0.0f,                           -focalL,                           0.0f,           0.0f   },
+        { -centerX * cosA - focalL * sinA, -horizY * cosA,                   -0.5f * cosA,   -cosA   },
+        {  centerX * orbitR,                horizY * orbitR + focalL * camH,  0.5f * orbitR,  orbitR },
+    };
+
+    mat_load(&islandMat);
+
+    const float baseZ = RenderDevice::GetDepth();
+    const int32 tilesW = 1 << layer->widthShift;
+    const int32 tilesH = 1 << layer->heightShift;
+    const float halfW = (float)(tilesW) * 0.5f;
+    const float halfH = (float)(tilesH) * 0.5f;
+
+    RenderDevice::PrepareTexturedPolyPTEX(currentScreen->clipBound_Y1, INK_NONE, surface);
+
+    for (int32 ty = 0; ty < tilesH; ty++) {
+        for (int32 tx = 0; tx < tilesW; tx++) {
+            uint16 tileVal = layout[tx + (ty << layer->widthShift)];
+            if (tileVal == 0xFFFF)
+                continue;
+
+            int32 uf = (tileVal >> 10) & 1;
+            int32 vf = (tileVal >> 11) & 1;
+            uint16 tile = tileVal & 0x3FF;
+
+            int32 atlasX = (tile % KOS_ATLAS_WIDTH_TILES) * TILE_SIZE;
+            int32 atlasY = (tile / KOS_ATLAS_HEIGHT_TILES) * TILE_SIZE;
+
+            int32 uoff0 = uf * TILE_SIZE;
+            int32 uoff1 = (!uf) * TILE_SIZE;
+            int32 voff0 = vf * TILE_SIZE;
+            int32 voff1 = (!vf) * TILE_SIZE;
+
+            // pull in the edges of each tile by one texel
+            // avoid gaps in grid
+            if (uoff0 < uoff1) {
+                uoff0++;
+                uoff1--;
+            } else {
+                uoff0--;
+                uoff1++;
+            }
+
+            if (voff0 < voff1) {
+                voff0++;
+                voff1--;
+            } else {
+                voff0--;
+                voff1++;
+            }
+
+            int32 u0 = atlasX + uoff0;
+            int32 u1 = atlasX + uoff1;
+            int32 v0 = atlasY + voff0;
+            int32 v1 = atlasY + voff1;
+
+            // tile world position in source pixels, centered at map center
+            float wx = ((float)tx - halfW) * (float)TILE_SIZE;
+            float wz = ((float)ty - halfH) * (float)TILE_SIZE;
+
+            VERTS(wx, wx + (float)TILE_SIZE, 0.0f, wz, wz + (float)TILE_SIZE);
+
+            XFORM_WTEST({});
+            PERSPDIV();
+
+            CULL(x, <, 0);
+            CULL(x, >, DEFAULT_PIXWIDTH);
+            CULL(y, <, clipY1);
+            CULL(y, >, clipY2);
+
+            RenderDevice::DrawFloorTexturedPolyPTEx(
+                tileVerts[TILE_UL], tileVerts[TILE_UR],
+                tileVerts[TILE_LL], tileVerts[TILE_LR],
+                u0, u1, v0, v1,
+                surface, 0xFFFFFFFF, 0x00000000
+            );
+        }
+    }
+}
+
+static void DrawRotozoom3DRoof(TileLayer *layer)
+{
+    if (!roofTextureReady) {
+        // TODO: fall back to per-tile renderer for non-UFO4 stages
+        return;
+    }
+
+    ScanlineInfo *scanline = &scanlines[0];
+
+    int32 roofHeightRaw = scanlines[2].position.y;
+    RotozoomCamera rc   = UnpackRotozoomCamera(scanline);
+    float roofTileY     = (float)(-roofHeightRaw) * recip64k + rc.cam.y;
+
+    LoadRotozoomMatrix(rc, rc.foa, rc.f, nullptr);
+
+    const float baseZ = RenderDevice::GetDepth();
+    const float PATTERN_SIZE = 128.0f;
+
+    // Determine current animation frame from tile 712's UV on sheet 6
+    const AniTileState *as = AniTileTracker::GetAniTile(712);
+    if (!as || as->sheetID == 0)
+        return;
+
+    int32 frameIdx = (as->v / ROOF_TEX_SIZE) * 4 + (as->u / ROOF_TEX_SIZE);
+    if (frameIdx < 0 || frameIdx >= ROOF_FRAME_COUNT)
+        frameIdx = 0;
+
+    const GFXSurface *roofSurf = &roofFrames[frameIdx];
+
+    float py = 120.0f - (float)((currentScreen->clipBound_Y1 + currentScreen->clipBound_Y2) / 2);
+    Vector4f dir = { rc.forward.x + rc.up.x * (py * recip200),
+                     rc.forward.y + rc.up.y * (py * recip200),
+                     rc.forward.z + rc.up.z * (py * recip200) };
+    if (dir.y == 0.0f)
+        dir.y = 0.001f;
+    float t = (roofTileY - rc.cam.y) / dir.y;
+    float originX = rc.cam.x + dir.x * t;
+    float originZ = rc.cam.z + dir.z * t;
+
+    const int32 originMX = (int32)floorf(originX / PATTERN_SIZE);
+    const int32 originMZ = (int32)floorf(originZ / PATTERN_SIZE);
+    const int32 metaRadius   = 5;
+    const float fadeStart    = 0;//1.0f;
+    const float recipFadeRange    = shz_invf((float)(metaRadius) - fadeStart);
+    // Camera forward/right projected onto XZ plane for view-aligned fade
+    float fwdX = rc.forward.x;
+    float fwdZ = rc.forward.z;
+    float fwdLen = sqrtf(fwdX * fwdX + fwdZ * fwdZ);
+    if (fwdLen > 0.001f) {
+        fwdX /= fwdLen;
+        fwdZ /= fwdLen;
+    }
+    float rightX = fwdZ;
+    float rightZ = -fwdX;
+
+    RenderDevice::PrepareTexturedPolyTREX(currentScreen->clipBound_Y1, INK_ALPHA, roofSurf);
+
+    for (int32 mz = originMZ - metaRadius; mz <= originMZ + metaRadius; mz++) {
+        float z0 = (float)mz * PATTERN_SIZE;
+        float z1 = z0 + PATTERN_SIZE;
+
+        for (int32 mx = originMX - metaRadius; mx <= originMX + metaRadius; mx++) {
+            float dx = ((float)mx + 0.5f) - originX / PATTERN_SIZE;
+            float dz = ((float)mz + 0.5f) - originZ / PATTERN_SIZE;
+            float viewFwd   = fabsf(dx * fwdX + dz * fwdZ);
+            float viewRight = fabsf(dx * rightX + dz * rightZ);
+            float dist = viewFwd > viewRight ? viewFwd : viewRight;
+
+            float alpha = 1.0f;
+            if (dist > fadeStart)
+                alpha = (1.0f - (dist - fadeStart) * recipFadeRange) * 0.8f;
+            if (alpha <= 0.0f)
+                continue;
+            uint32 a = (uint32)(alpha * 255.0f);
+            uint32 color = (a << 24) | 0x00FFFFFF;
+
+            float x0 = (float)mx * PATTERN_SIZE;
+            float x1 = x0 + PATTERN_SIZE;
+
+            VERTS(x0, x1, roofTileY, z0, z1);
+            XFORM_WTEST({});
+            for (int32 i = 0; i < 4; i++) {
+                float invW = shz_invf(tileVerts[i].w);
+                tileVerts[i].x *= invW;
+                tileVerts[i].y *= invW;
+                tileVerts[i].z = tileVerts[i].z * invW * 0.01f + baseZ;
+                tileVerts[i].w = invW;
+            }
+
+            RenderDevice::DrawFloorTexturedPolyTREx(
+                tileVerts[TILE_UL], tileVerts[TILE_UR],
+                tileVerts[TILE_LL], tileVerts[TILE_LR],
+                x0, x1, z0, z1,
+                roofSurf, color, 0x00000000
+            );
+        }
+    }
+}
+
+// simplified version of DrawRotozoomPlayfield
+// only draws with a texture of the infinite plane tilemap instead of atlas
+static void DrawRotozoom3DFloor(TileLayer *layer)
+{
+    ScanlineInfo *scanline = &scanlines[0];
+
+    if (!floorTextureReady)
+        return;
+
+    RotozoomCamera rc = UnpackRotozoomCamera(scanline);
+    LoadRotozoomMatrix(rc, rc.foa, rc.f, nullptr);
+
+    const float baseZ = RenderDevice::GetDepth();
+    const float PATTERN_W = (float)(floorTilesW * TILE_SIZE);
+    const float PATTERN_H = (float)(floorTilesH * TILE_SIZE);
+    const float texW = (float)floorSurf.width;
+    const float texH = (float)floorSurf.height;
+
+    // project screen center onto the y=0 ground plane to find the origin
+    float py = 120.0f - (float)((currentScreen->clipBound_Y1 + currentScreen->clipBound_Y2) / 2);
+    Vector4f dir = { rc.forward.x + rc.up.x * (py * recip200),
+                     rc.forward.y + rc.up.y * (py * recip200),
+                     rc.forward.z + rc.up.z * (py * recip200) };
+    if (dir.y >= -0.001f)
+        dir.y = -0.001f;
+    float t = -rc.cam.y / dir.y;
+    float originX = rc.cam.x + dir.x * t;
+    float originZ = rc.cam.z + dir.z * t;
+
+    const int32 originMX = (int32)floorf(originX / PATTERN_W);
+    const int32 originMZ = (int32)floorf(originZ / PATTERN_H);
+    const int32 metaRadius = 8;
+    const float fadeStart  = 2.0f;
+    const float fadeRange  = (float)(metaRadius) - fadeStart;
+
+    // camera forward/right projected onto XZ plane for view-aligned fade
+    float fwdX = rc.forward.x;
+    float fwdZ = rc.forward.z;
+    float fwdLen = sqrtf(fwdX * fwdX + fwdZ * fwdZ);
+    if (fwdLen > 0.001f) {
+        fwdX /= fwdLen;
+        fwdZ /= fwdLen;
+    }
+    float rightX = fwdZ;
+    float rightZ = -fwdX;
+
+    const int32 gridSize = metaRadius * 2 + 1;
+    const int32 gridVSize = gridSize + 1;
+    Vector4f gridVerts[gridVSize][gridVSize];
+    uint8 gridValid[gridVSize][gridVSize];
+
+    int32 minMX = originMX - metaRadius;
+    int32 minMZ = originMZ - metaRadius;
+
+    for (int32 gz = 0; gz < gridVSize; gz++) {
+        float wz = (float)(minMZ + gz) * PATTERN_H;
+        for (int32 gx = 0; gx < gridVSize; gx++) {
+            float wx = (float)(minMX + gx) * PATTERN_W;
+
+            gridVerts[gz][gx] = { wx, 0.0f, wz, 1.0f };
+            mat_trans_nodiv(gridVerts[gz][gx].x, gridVerts[gz][gx].y,
+                            gridVerts[gz][gx].z, gridVerts[gz][gx].w);
+
+            if (gridVerts[gz][gx].w <= EPS) {
+                gridValid[gz][gx] = 0;
+            } else {
+                float invW = shz_invf(gridVerts[gz][gx].w);
+                gridVerts[gz][gx].x *= invW;
+                gridVerts[gz][gx].y *= invW;
+                gridVerts[gz][gx].z = gridVerts[gz][gx].z * invW * 0.01f + baseZ;
+                gridVerts[gz][gx].w = invW;
+                gridValid[gz][gx] = 1;
+            }
+        }
+    }
+
+    RenderDevice::PrepareTexturedPolyTREX(currentScreen->clipBound_Y1, INK_ALPHA, &floorSurf);
+
+    for (int32 gz = 0; gz < gridSize; gz++) {
+        int32 mz = minMZ + gz;
+        for (int32 gx = 0; gx < gridSize; gx++) {
+            int32 mx = minMX + gx;
+
+            if (!gridValid[gz][gx] || !gridValid[gz][gx + 1] ||
+                !gridValid[gz + 1][gx] || !gridValid[gz + 1][gx + 1])
+                continue;
+
+            float dx = ((float)mx + 0.5f) - originX / PATTERN_W;
+            float dz = ((float)mz + 0.5f) - originZ / PATTERN_H;
+            float viewFwd   = fabsf(dx * fwdX + dz * fwdZ);
+            float viewRight = fabsf(dx * rightX + dz * rightZ);
+            float dist = viewFwd > viewRight ? viewFwd : viewRight;
+
+            float alpha = 1.0f;
+            if (dist > fadeStart)
+                alpha = 1.0f - (dist - fadeStart) / fadeRange;
+            if (alpha <= 0.0f)
+                continue;
+            uint32 a = (uint32)(alpha * 255.0f);
+            uint32 color = (a << 24) | 0x00FFFFFF;
+
+            RenderDevice::DrawFloorTexturedPolyTREx(
+                gridVerts[gz][gx], gridVerts[gz][gx + 1],
+                gridVerts[gz + 1][gx], gridVerts[gz + 1][gx + 1],
+                0.0f, texW, 0.0f, texH,
+                &floorSurf, color, 0x00000000
+            );
+        }
+    }
+}
+
+// this is technically a 3d layer that uses a camera
+// but the rotation of the layer is fixed
+// the scrolling is based on time alone
+static void DrawRotozoomPinballBG(TileLayer *layer)
+{
+    const GFXSurface *surface = &gfxSurface[0];
+    uint16 *layout            = layer->layout;
+    ScanlineInfo *scanline    = &scanlines[0];
+
+    // parameters tweaked by eye, trying to get something that resembled sw version
+    const float camHeight = 35.0f;
+    const float roofY = camHeight + 18.0f;
+
+    // see: SonicMania/Objects/Pinball/PBL_Setup.c
+    // PBL_Setup_Scanline_PinballBG
+    //    int32 sin     = RSDK.Sin256(32);
+    //    int32 cos     = RSDK.Cos256(32);
+    // fixed 45 degree angle
+    const float sinA = 0.7071f;
+    const float cosA = 0.7071f;
+
+    // scroll position from timer: moves diagonally at 45 degrees
+    int32 timer = scanline->position.x;
+    float scrollU = (float)timer * recip64k;
+    float scrollV = (float)timer * recip64k;
+
+    Vector4f cam;
+    cam.x = scrollU;
+    cam.y = camHeight;
+    cam.z = scrollV;
+
+    // camera basis: yaw = 45 degrees, no pitch
+    Vector4f forward = { sinA, 0.0f, cosA };
+    Vector4f right  = { cosA, 0.0f, -sinA };
+    Vector4f up     = { 0.0f, 1.0f, 0.0f };
+
+    // wider horizontal FOV for horizontal stretch, tighter vertical for depth density
+    const float fovy   = 47.5f * RSDK_PI / 180.0f;
+    const float fVert  = 1.0f / tanf(fovy * 0.5f);
+    const float fHoriz = fVert * 0.35f;
+
+    RotozoomCamera rc;
+    rc.cam = cam; rc.forward = forward; rc.right = right; rc.up = up;
+    rc.drc = fipr(right.x,   right.y,   right.z,   0, cam.x, cam.y, cam.z, 0);
+    rc.duc = fipr(up.x,      up.y,      up.z,      0, cam.x, cam.y, cam.z, 0);
+    rc.dfc = fipr(forward.x, forward.y, forward.z, 0, cam.x, cam.y, cam.z, 0);
+
+    float __attribute__((aligned(32))) finalmat[4][4];
+    LoadRotozoomMatrix(rc, fHoriz, fVert, finalmat);
+
+    const float baseZ = RenderDevice::GetDepth();
+    const int32 tilesW = 1 << layer->widthShift;
+    const int32 tilesH = 1 << layer->heightShift;
+
+    // origin: ray through center of visible ceiling area
+    float originX, originZ;
+    float py = 120.0f - 56.0f;
+    Vector4f dir = { forward.x + up.x * (py * recip200),
+                     forward.y + up.y * (py * recip200),
+                     forward.z + up.z * (py * recip200) };
+
+    if (dir.y == 0.0f) {
+        dir.y = 0.001f;
+    }
+
+    float t = (roofY - cam.y) / dir.y;
+    originX = cam.x + dir.x * t;
+    originZ = cam.z + dir.z * t;
+
+    const int32 originTX = (int32)floorf(originX * recip16);
+    const int32 originTZ = (int32)floorf(originZ * recip16);
+
+    const int32 tileRadius = 15;
+    const float tileRadSq  = (float)(tileRadius * tileRadius);
+    const int32 wrapMaskX  = tilesW - 1;
+    const int32 wrapMaskZ  = tilesH - 1;
+    const float clipBot    = (float)currentScreen->clipBound_Y2;
+
+    RenderDevice::PrepareTexturedPolyPTEX(currentScreen->clipBound_Y1, INK_NONE, surface);
+
+    for (int32 tz = originTZ - tileRadius; tz <= originTZ + tileRadius; tz++) {
+        float z0 = (float)(tz * TILE_SIZE);
+        float z1 = z0 + (float)TILE_SIZE;
+        float zdiff = (float)(originTZ - tz);
+        bool cantReuse = true;
+
+        for (int32 tx = originTX - tileRadius; tx <= originTX + tileRadius; tx++) {
+            float xdiff = (float)(originTX - tx);
+            // euclidean distance test: too far, move on to next tile
+            if ((xdiff * xdiff + zdiff * zdiff) > tileRadSq) {
+                cantReuse = true;
+                continue;
+            }
+
+            int32 wrappedTx = tx & wrapMaskX;
+            int32 wrappedTz = tz & wrapMaskZ;
+            __builtin_prefetch(&layout[(wrappedTx + (wrappedTz << layer->widthShift)) + 16]);
+            uint16 tileVal = layout[wrappedTx + (wrappedTz << layer->widthShift)];
+            if (tileVal == 0xFFFF) {
+                cantReuse = true; continue;
+            }
+
+            int32 uf = (tileVal >> 10) & 1;
+            int32 vf = (tileVal >> 11) & 1;
+            uint16 tile = tileVal & 0x3FF;
+
+            float x0 = (float)(tx * TILE_SIZE);
+            float x1 = x0 + (float)TILE_SIZE;
+
+            // last iteration didn't prevent vertex reuse, attempt it
+            if (!cantReuse) {
+                // test the most lower right corner to see if it is behind camera
+                // if it is, move on to next tile
+                float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
+                                   x1, roofY, z1, 1.0f);
+
+                if (wTest <= EPS) {
+                    cantReuse = true;
+                    continue;
+                }
+
+                // reuse verts to save transforms
+                VERTS_LCOPY(x1, roofY, z0, z1);
+
+                // now transform and test upper right
+                // behind camera, move on to next tile
+                mat_trans_nodiv(tileVerts[TILE_UR].x, tileVerts[TILE_UR].y, tileVerts[TILE_UR].z, tileVerts[TILE_UR].w);
+
+                if (tileVerts[TILE_UR].w <= EPS) {
+                    cantReuse = true;
+                    continue;
+                }
+
+                // fully transform lower right vert now
+                mat_trans_nodiv(tileVerts[TILE_LR].x, tileVerts[TILE_LR].y, tileVerts[TILE_LR].z, tileVerts[TILE_LR].w);
+
+                // perspective divide the new right-side verts
+
+                float invWUR = shz_invf(tileVerts[TILE_UR].w);
+                tileVerts[TILE_UR].x *= invWUR;
+                tileVerts[TILE_UR].y *= invWUR;
+                tileVerts[TILE_UR].z *= invWUR;
+                tileVerts[TILE_UR].z += baseZ;
+                tileVerts[TILE_UR].w = invWUR;
+
+                float invWLR = shz_invf(tileVerts[TILE_LR].w);
+                tileVerts[TILE_LR].x *= invWLR;
+                tileVerts[TILE_LR].y *= invWLR;
+                tileVerts[TILE_LR].z *= invWLR;
+                tileVerts[TILE_LR].z += baseZ;
+                tileVerts[TILE_LR].w = invWLR;
+            } else {
+                // need to make all new verts for this tile
+                // start by testing upper right vert w
+                // if it is behind camera, move on to next tile
+                float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
+                                   x1, roofY, z0, 1.0f);
+                if (wTest <= EPS) {
+                    cantReuse = true;
+                    continue;
+                }
+
+                VERTS(x0, x1, roofY, z0, z1);
+
+                XFORM_WTEST(cantReuse = true);
+                PERSPDIV();
+            }
+
+            // so far, verts can be reused for next tile
+            cantReuse = false;
+
+            CULL(x, <, 0);
+            CULL(x, >, DEFAULT_PIXWIDTH);
+            CULL(y, <, 0);
+            CULL(y, >, clipBot);
+
+            int32 u0, u1, v0, v1;
+            TileAtlasUV(tile, uf, vf, u0, u1, v0, v1, surface);
+
+            // distance fade: farther tiles (smaller 1/W) darken toward purple
+            float invW = tileVerts[TILE_UR].w;
+
+            // fade only near the horizon: full brightness above fadeStart, full fog below fadeEnd
+            const float fadeStart = 0.008f;
+            const float fadeEnd   = 0.0034f;
+            float fadeMix = 0.0f;
+            if (invW < fadeStart) {
+                fadeMix = 1.0f;//1.0f - (invW - fadeEnd) / (fadeStart - fadeEnd);
+                //if (fadeMix < 0.0f) fadeMix = 0.0f;
+                //if (fadeMix > 1.0f) fadeMix = 1.0f;
+            }
+
+            // vertex color fades to black, offset color fades to purple
+            uint8 vC = (uint8)((1.0f - fadeMix) * 0xFF);//EE);
+            uint32 pblBgColor = 0xFF000000 | (vC << 16) | (vC << 8) | vC;
+            uint8 oR = (uint8)(fadeMix * 45.0f);
+            uint8 oG = (uint8)(fadeMix * 25.0f);
+            uint8 oB = (uint8)(fadeMix * 75.0f);
+            uint32 pblBgOColor = 0xFF000000 | (oR << 16) | (oG << 8) | oB;
+
+            RenderDevice::DrawFloorTexturedPolyPTEx(
+                tileVerts[TILE_UL], tileVerts[TILE_UR],
+                tileVerts[TILE_LL], tileVerts[TILE_LR],
+                u0, u1, v0, v1,
+                surface, pblBgColor, pblBgOColor
+            );
+        }
+    }
+}
+
+// Tiles with magenta pixels in the tileset should NOT have plasma drawn under them.
+// this is a set of bitfields covering all 1024 tile numbers
+// a bit set to 1 means magenta pixels exist in that tile
+static const uint32 ufo7PlasmaSkip[32] = {
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF700000, 0x87EAA930, 0x5C2AB499, 0xFC000011, 0xFFFFFFFF, 0x1FFFFFFF, 0x8080C1DC, 0xC0603803,
+    0xE000BFE0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+};
+
+static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
+{
+    const GFXSurface *surface = &gfxSurface[0];
+    uint16 *layout            = layer->layout;
+    int32 width               = (TILE_SIZE << layer->widthShift) - 1;
+    int32 height              = (TILE_SIZE << layer->heightShift) - 1;
+    ScanlineInfo *scanline    = &scanlines[0];
+
+    RotozoomCamera rc = UnpackRotozoomCamera(scanline);
+
+    float __attribute__((aligned(32))) finalmat[4][4];
+    LoadRotozoomMatrix(rc, rc.foa, rc.f, finalmat);
+
+    // aliases for readability in the large body below
+    const Vector4f &cam     = rc.cam;
+    const Vector4f &forward = rc.forward;
+    const Vector4f &right   = rc.right;
+    const Vector4f &up      = rc.up;
+    const float sp          = rc.sp;
 
     // used to push out the bounding box to deal with some close-up disappearing sections
     size_t dimensionAdjust = 34;
@@ -2694,7 +4207,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                     gridVerts[gz][gx].x *= invW;
                     gridVerts[gz][gx].y *= invW;
                     gridVerts[gz][gx].z *= invW;
-                    gridVerts[gz][gx].z += baseZ - 0.001f;
+                    gridVerts[gz][gx].z += baseZ - 0.0001f;
                     gridVerts[gz][gx].w = invW;
                     gridValid[gz][gx] = 1;
                 }
@@ -2720,7 +4233,7 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // we can skip the more expensive euclidean distance test
                 // so let's try the cheaper test first
                 if (((cx0 + cz0) < (tileRadius + LOD_RAD_OFFSET)) &&
-                    ((cx1 + cz1) < (tileRadius + LOD_RAD_OFFSET)) &&
+                    ((cx1 + cz0) < (tileRadius + LOD_RAD_OFFSET)) &&
                     ((cx0 + cz1) < (tileRadius + LOD_RAD_OFFSET)) &&
                     ((cx1 + cz1) < (tileRadius + LOD_RAD_OFFSET))
                 ) {
@@ -2760,14 +4273,174 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
 
                 // simulated floor distance shading, experimentally derived
                 uint8 comp = (uint8)((1.0f - ((ur.w*250.0f) < 1.0f ? (ur.w*250.0f) : 1.0f)) * 84.0f);
-                // uses vertex offset color to increase lightness (additive color)
-                uint32 ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
-                const uint32 color = 0xFFEEEEEE;
+                uint32 ocolor;
+                uint32 color;
+                if (ufoNum == 2 || ufoNum == 4 || ufoNum == 7) {
+                    uint8 bright = 0xEE - comp;
+                    color  = 0xFF000000 | (bright << 16) | (bright << 8) | bright;
+                    ocolor = 0x00000000;
+                } else {
+                    color  = 0xFFEEEEEE;
+                    ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+                }
                 RenderDevice::DrawFloorTexturedPolyPTEx(
                     ul, ur, ll, lr,
                     iu0, iu1, iv0, iv1,
                     &mapSurf, color, ocolor
                 );
+            }
+        }
+    }
+
+    // "INK_MASKED" plasma pass on stage 7 / stage 1+
+    if (ufoNum == 7 && !pinball) {
+        uint16 plasmaSheetID = (uint16)scanlines[0].position.x;
+        int32 plasmaTimer    = scanlines[0].position.y;
+
+        if (plasmaSheetID > 0 && plasmaSheetID < SURFACE_COUNT) {
+            const GFXSurface *plasmaSurface = &gfxSurface[plasmaSheetID];
+            if (plasmaSurface->texture) {
+                RenderDevice::PrepareTexturedPolyPTEX(currentScreen->clipBound_Y1, INK_NONE, plasmaSurface);
+
+                float scrollU = 0.0f;
+                float scrollV = (float)plasmaTimer * 1.0f;
+
+                const float waveFreq   = 12.0f;
+                const float waveAmp    = 48.0f;
+                const float phaseScale = 2.0f * RSDK_PI / 256.0f;
+                const float plasmaBaseZ = baseZ - 0.0001f;
+                const int plasmaRadius = 33;
+                const float plasmaRadSq = (float)(plasmaRadius * plasmaRadius);
+
+                int pfirstZ = firstNonEmptyRow > minTileZ ? firstNonEmptyRow : minTileZ;
+                int plastZ  = lastNonEmptyRow < maxTileZ ? lastNonEmptyRow : maxTileZ;
+
+                float wavePhaseTop = (float)(((int)(pfirstZ * waveFreq) + plasmaTimer * 2) & 0xFF) * phaseScale;
+                float waveOffTop   = sinf(wavePhaseTop) * waveAmp;
+
+                for (int tz = pfirstZ; tz <= plastZ; tz++) {
+                    float wavePhaseBot = (float)(((int)((tz + 1) * waveFreq) + plasmaTimer * 2) & 0xFF) * phaseScale;
+                    float waveOffBot   = sinf(wavePhaseBot) * waveAmp;
+
+                    float z0    = (float)((uint32)(tz * TILE_SIZE));
+                    float z1    = z0 + TILE_SIZE;
+                    float zdiff = (float)(originTZ - tz);
+
+                    int firstX = (minTileX < firstNonemptyTileInRow[tz]) ? firstNonemptyTileInRow[tz] : minTileX;
+                    int lastX  = (maxTileX > lastNonemptyTileInRow[tz]) ? lastNonemptyTileInRow[tz] : maxTileX;
+
+                    bool cantReuse = true;
+                    size_t layout_offset = firstX + (tz << layer->widthShift) - 1;
+
+                    for (int tx = firstX; tx <= lastX; tx++) {
+                        bool reuseRights = false;
+                        layout_offset++;
+
+                        float xdiff  = (float)(originTX - tx);
+                        float xzdist = (xdiff * xdiff) + (zdiff * zdiff);
+                        if (xzdist > plasmaRadSq) {
+                            cantReuse = true;
+                            continue;
+                        }
+
+                        uint16 tile = layout[layout_offset] & 0xFFF;
+                        if (tile == 0xFFF) {
+                            cantReuse = true;
+                            continue;
+                        }
+                        if (tile < 1024 && (ufo7PlasmaSkip[tile >> 5] & (1u << (tile & 31)))) {
+                            cantReuse = true;
+                            continue;
+                        }
+
+                        if (!cantReuse)
+                            reuseRights = true;
+                        cantReuse = false;
+
+                        float x0 = (float)((uint32)(tx * TILE_SIZE));
+                        float x1 = x0 + TILE_SIZE;
+
+                        __builtin_prefetch(&layout[layout_offset + 16]);
+
+                        if (reuseRights) {
+                            float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
+                                                x1, 0.0f, z1, 1.0f);
+                            if (wTest <= EPS) {
+                                cantReuse = true;
+                                continue;
+                            }
+
+                            VERTS_LCOPY(x1, 0.0f, z0, z1);
+
+                            mat_trans_nodiv(tileVerts[TILE_UR].x, tileVerts[TILE_UR].y, tileVerts[TILE_UR].z, tileVerts[TILE_UR].w);
+                            if (tileVerts[TILE_UR].w <= EPS) {
+                                cantReuse = true;
+                                continue;
+                            }
+
+                            mat_trans_nodiv(tileVerts[TILE_LR].x, tileVerts[TILE_LR].y, tileVerts[TILE_LR].z, tileVerts[TILE_LR].w);
+
+                            float wUR = tileVerts[TILE_UR].w;
+                            float wLR = tileVerts[TILE_LR].w;
+                            tileVerts[TILE_UR].w = shz_invf(wUR);
+                            tileVerts[TILE_LR].w = shz_invf(wLR);
+
+                            tileVerts[TILE_UR].x *= tileVerts[TILE_UR].w;
+                            tileVerts[TILE_UR].y *= tileVerts[TILE_UR].w;
+                            tileVerts[TILE_UR].z *= tileVerts[TILE_UR].w;
+                            tileVerts[TILE_UR].z += plasmaBaseZ;
+
+                            tileVerts[TILE_LR].x *= tileVerts[TILE_LR].w;
+                            tileVerts[TILE_LR].y *= tileVerts[TILE_LR].w;
+                            tileVerts[TILE_LR].z *= tileVerts[TILE_LR].w;
+                            tileVerts[TILE_LR].z += plasmaBaseZ;
+                        } else {
+                            float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
+                                                x1, 0.0f, z0, 1.0f);
+                            if (wTest < EPS) {
+                                cantReuse = true;
+                                continue;
+                            }
+
+                            VERTS(x0, x1, 0.0f, z0, z1);
+                            XFORM_WTEST(cantReuse = true);
+
+                            for (int32 i = 0; i < 4; i++) {
+                                float invW    = shz_invf(tileVerts[i].w);
+                                tileVerts[i].x *= invW;
+                                tileVerts[i].y *= invW;
+                                tileVerts[i].z *= invW;
+                                tileVerts[i].z += plasmaBaseZ;
+                                tileVerts[i].w = invW;
+                            }
+                        }
+
+                        CULL(x, <, 0);
+                        CULL(x, >, DEFAULT_PIXWIDTH);
+                        CULL(y, <, 0);
+                        CULL(y, >, 240);
+
+                        uint8 comp   = (uint8)((1.0f - ((tileVerts[TILE_UR].w * 250.0f) < 1.0f ? (tileVerts[TILE_UR].w * 250.0f) : 1.0f)) * 84.0f);
+                        uint8 bright = 0xEE - comp;
+                        uint32 color  = 0xFF000000 | (bright << 16) | (bright << 8) | bright;
+                        uint32 ocolor = 0x00000000;
+
+                        float baseU0 = (float)(tx * TILE_SIZE) + scrollU;
+                        float baseU1 = baseU0 + TILE_SIZE;
+                        float baseV0 = (float)(tz * TILE_SIZE) + scrollV;
+                        float baseV1 = baseV0 + TILE_SIZE;
+
+                        RenderDevice::DrawFloorTexturedPolyPTExUV(
+                            tileVerts[TILE_UL], tileVerts[TILE_UR],
+                            tileVerts[TILE_LL], tileVerts[TILE_LR],
+                            baseU0 + waveOffTop, baseV0, baseU1 + waveOffTop, baseV0,
+                            baseU0 + waveOffBot, baseV1, baseU1 + waveOffBot, baseV1,
+                            plasmaSurface, color, ocolor
+                        );
+                    }
+
+                    waveOffTop = waveOffBot;
+                }
             }
         }
     }
@@ -2859,8 +4532,8 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // early out test
                 // one FIPR and one branch can skip all of the work for this tile
                 float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
-                                    x1, 0.0f, z0, 1.0f);
-                // new upper-right vert would be very close to, or behind camera
+                                    x1, 0.0f, z1, 1.0f);
+                // new lower-right vert would be very close to, or behind camera
                 // skip the entire tile
                 if (wTest <= EPS) {
                     cantReuse = true;
@@ -2868,45 +4541,20 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 }
 
                 // reuse previous iteration upper/lower right tiles
-                tileVerts[TILE_UL].x = tileVerts[TILE_UR].x;
-                tileVerts[TILE_UL].y = tileVerts[TILE_UR].y;
-                tileVerts[TILE_UL].z = tileVerts[TILE_UR].z;
-                tileVerts[TILE_UL].w = tileVerts[TILE_UR].w;
-
-                tileVerts[TILE_LL].x = tileVerts[TILE_LR].x;
-                tileVerts[TILE_LL].y = tileVerts[TILE_LR].y;
-                tileVerts[TILE_LL].z = tileVerts[TILE_LR].z;
-                tileVerts[TILE_LL].w = tileVerts[TILE_LR].w;
-
                 // now create new upper/lower right tiles
-                tileVerts[TILE_UR].x = x1;
-                tileVerts[TILE_UR].y = 0.0f;
-                tileVerts[TILE_UR].z = z0;
-                tileVerts[TILE_UR].w = 1.0f;
-
-                tileVerts[TILE_LR].x = x1;
-                tileVerts[TILE_LR].y = 0.0f;
-                tileVerts[TILE_LR].z = z1;
-                tileVerts[TILE_LR].w = 1.0f;
+                VERTS_LCOPY(x1, 0.0f, z0, z1);
 
                 // transform new upper right
                 mat_trans_nodiv(tileVerts[TILE_UR].x, tileVerts[TILE_UR].y, tileVerts[TILE_UR].z, tileVerts[TILE_UR].w);
-                // redundant now
-#if 0
+                // new upper-right vert would be very close to, or behind camera
+                // skip the entire tile
                 if (tileVerts[TILE_UR].w <= EPS) {
                     cantReuse = true;
                     continue;
                 }
-#endif
 
                 // transform new lower right
                 mat_trans_nodiv(tileVerts[TILE_LR].x, tileVerts[TILE_LR].y, tileVerts[TILE_LR].z, tileVerts[TILE_LR].w);
-                // new lower-right vert would be very close to, or behind camera
-                // skip the entire tile
-                if (tileVerts[TILE_LR].w <= EPS) {
-                    cantReuse = true;
-                    continue;
-                }
 
                 // perspective divide
                 float wUR = tileVerts[TILE_UR].w;
@@ -2927,9 +4575,9 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 // early out test
                 // one FIPR and one branch can skip all of the work for this tile
                 float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
-                                    x0, 0.0f, z0, 1.0f);
+                                    x1, 0.0f, z0, 1.0f);
 
-                // upper-left vert would be very close to, or behind camera
+                // upper-right vert would be very close to, or behind camera
                 // skip the entire tile
                 if (wTest < EPS) {
                     cantReuse = true;
@@ -2937,99 +4585,36 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
                 }
 
                 // create all four tile verts
-                tileVerts[TILE_UL].x = x0;
-                tileVerts[TILE_UL].y = 0.0f;
-                tileVerts[TILE_UL].z = z0;
-                tileVerts[TILE_UL].w = 1.0f;
+                VERTS(x0, x1, 0.0f, z0, z1);
 
-                tileVerts[TILE_UR].x = x1;
-                tileVerts[TILE_UR].y = 0.0f;
-                tileVerts[TILE_UR].z = z0;
-                tileVerts[TILE_UR].w = 1.0f;
+                XFORM_WTEST(cantReuse = true);
 
-                tileVerts[TILE_LL].x = x0;
-                tileVerts[TILE_LL].y = 0.0f;
-                tileVerts[TILE_LL].z = z1;
-                tileVerts[TILE_LL].w = 1.0f;
-
-                tileVerts[TILE_LR].x = x1;
-                tileVerts[TILE_LR].y = 0.0f;
-                tileVerts[TILE_LR].z = z1;
-                tileVerts[TILE_LR].w = 1.0f;
-
-                // loop to transform and near-plane test all tile verts
-                int negw = 0;
-                for (int i=0;i<4;i++) {
-                    mat_trans_nodiv(tileVerts[i].x, tileVerts[i].y, tileVerts[i].z, tileVerts[i].w);
-                    float wi = tileVerts[i].w;
-                    // vert `i` would be very close to, or behind camera
-                    // set flag and break
-                    if (wi <= EPS) {
-                        negw = 1;
-                        break;
-                    }
-                }
-
-                // skip the entire tile if flag was set
-                if (negw) {
-                    cantReuse = true;
-                    continue;
-                }
-
-                // perspective divide
-                for (int i=0;i<4;i++) {
-                    float wi = shz_invf(tileVerts[i].w);
-                    tileVerts[i].w = wi;
-                    tileVerts[i].x *= tileVerts[i].w;
-                    tileVerts[i].y *= tileVerts[i].w;
-                    tileVerts[i].z *= tileVerts[i].w;
-                    tileVerts[i].z += baseZ;
-                }
+                PERSPDIV();
             }
 
-            // we might still be able to discard tile if it is outside of screenspace bounds
-            // off left side of screen
-            if (tileVerts[0].x < 0 && tileVerts[1].x < 0 && tileVerts[2].x < 0 && tileVerts[3].x < 0)  {
-                cantReuse = true;
-                continue;
-            }
-
-            // off right side of screen
-            if (tileVerts[0].x > DEFAULT_PIXWIDTH && tileVerts[1].x > DEFAULT_PIXWIDTH &&
-                tileVerts[2].x > DEFAULT_PIXWIDTH && tileVerts[3].x > DEFAULT_PIXWIDTH)  {
-                cantReuse = true;
-                continue;
-            }
-
-            // off bottom of screen
-            if (tileVerts[0].y > 240 && tileVerts[1].y > 240 && tileVerts[2].y > 240  && tileVerts[3].y > 240) {
-                cantReuse = true;
-                continue;
-            }
-
-            // I don't know if this actually happens, so this is disabled
-#if 0
-            // off top of screen
-            if (sp != 0.0f) {
-                if (tileVerts[0].y > 240 && tileVerts[1].y > 240 && tileVerts[2].y > 240  && tileVerts[3].y > 240) {
-                    cantReuse = true;
-                    continue;
-                }
-            }
-#endif
+            CULL(x, <, 0);
+            CULL(x, >, DEFAULT_PIXWIDTH);
+            CULL(y, <, 0);
+            CULL(y, >, 240);
 
             // simulated floor distance shading, experimentally derived
             uint8 comp = (uint8)((1.0f - ((tileVerts[TILE_UR].w*250.0f) < 1.0f ? (tileVerts[TILE_UR].w*250.0f) : 1.0f)) * 84.0f);
             uint32 ocolor;
             uint32 color = 0xFFEEEEEE;
             if (!pinball) {
-                ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+                if (ufoNum == 2 || ufoNum == 4 || ufoNum == 7) {
+                    uint8 bright = 0xEE - comp;
+                    color  = 0xFF000000 | (bright << 16) | (bright << 8) | bright;
+                    ocolor = 0x00000000;
+                } else {
+                    ocolor = 0xFF000000 | (comp << 16) | (comp << 8) | comp;
+                }
             } else {
                 // no additive fade for pinball stage
                 // instead, try to recreate the darkness fade at the upper end of table
                 // applied to vertex color
                 ocolor = 0x00000000;
-                float invW = 1.0f / tileVerts[TILE_UR].w;
+                float invW = shz_invf(tileVerts[TILE_UR].w);
 #define INVW_MAX 1000.0f
 #define INVW_SHADE_THRESHOLD 475.0f
 #define INVW_SHADE_FACTOR 478.0f
@@ -3093,6 +4678,53 @@ void RSDK::DrawLayerRotozoom(TileLayer *layer)
             );
         }
     }
+}
+
+#endif
+
+void RSDK::DrawLayerRotozoom(TileLayer *layer)
+{
+#if defined(KOS_HARDWARE_RENDERER)
+    const GFXSurface *surface = &gfxSurface[0];
+    ScanlineInfo *scanline    = &scanlines[0];
+
+    // this covers Title clouds + ERZ clouds, FBZ1 background, MMZ1 far plane
+    if ((uint32)scanline->deform.x != (uint32)SCANLINE_MAJOR_MAGIC_3DTILES) {
+        // MMZ1 far plane
+        if (isMMZ1) {
+            DrawRotozoomMMZ1(layer);
+        }
+        // the rest
+        DrawLayerRotozoom2D(layer);
+        return;
+    }
+
+    uint32 minor = (uint32)scanline->deform.y;
+
+    if (minor == (uint32)SCANLINE_MINOR_MAGIC_ISLAND) {
+        DrawRotozoomIsland(layer);
+        return;
+    }
+
+    if (minor == (uint32)SCANLINE_MINOR_MAGIC_ROOF) {
+        DrawRotozoom3DRoof(layer);
+        return;
+    }
+
+    if (minor == (uint32)SCANLINE_MINOR_MAGIC_UFO_FLOOR) {
+        DrawRotozoom3DFloor(layer);
+        return;
+    }
+
+    if (minor == (uint32)SCANLINE_MINOR_MAGIC_PBL_BG) {
+        DrawRotozoomPinballBG(layer);
+        return;
+    }
+
+    bool pinball = (minor == (uint32)SCANLINE_MINOR_MAGIC_PINBALL);
+    if (!pinball && minor != (uint32)SCANLINE_MINOR_MAGIC_UFO) return;
+
+    DrawRotozoomPlayfield(layer, pinball);
     return;
 #endif
 #if !defined(KOS_HARDWARE_RENDERER)

@@ -3261,7 +3261,7 @@ void RSDK::Draw3DSprite(Animator *animator, Vector4f *position, bool32 screenRel
     pos.y = (int)position->y;
     float oldDepth = RenderDevice::GetDepth();
 
-    RenderDevice::SetDepth(oldDepth + position->z + 0.125f);
+    RenderDevice::SetDepth(oldDepth + position->z);
     DrawSprite(animator, &pos, screenRelative);
     RenderDevice::SetDepth(oldDepth);
 }
