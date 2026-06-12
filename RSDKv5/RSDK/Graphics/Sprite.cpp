@@ -1217,6 +1217,37 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 
                     printPvrMem(pvrMemBefore, pvrMemAfter);
 
+                    // Patch the wing sprite's mask pixels (palette 55) to per-row palette
+                    // indices so we can animate the fringe color per-row via palette cycling.
+                    // Free indices: 62-127 (66) + 45,46,47 (3) + 152,162,163,167,172,173,174 (7) + 245,246 (2) = 78
+                    if (strstr(filename, "Title/Logo.gif")) {
+                        static const uint8 fringeIndices[] = {
+                            62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,
+                            90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,
+                            114,115,116,117,118,119,120,121,122,123,124,125,126,127,
+                            45,46,47,152,162,163,167,172,173,174,245,246
+                        };
+                        uint8 *px   = surface->pixels;
+                        int32 w     = surface->width;
+                        int32 count = 0;
+                        for (int32 y = 8; y <= 89; y++) {
+                            bool hasMaskPixel = false;
+                            for (int32 x = 1; x <= 145; x++) {
+                                if (px[y * w + x] == 55) {
+                                    hasMaskPixel = true;
+                                    break;
+                                }
+                            }
+                            if (hasMaskPixel && count < (int32)sizeof(fringeIndices)) {
+                                for (int32 x = 1; x <= 145; x++) {
+                                    if (px[y * w + x] == 55)
+                                        px[y * w + x] = fringeIndices[count];
+                                }
+                                count++;
+                            }
+                        }
+                    }
+
                     // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
                     // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h).
                     // pvr_txr_load_ex actually *always* twiddles, even if you don't want it.

@@ -421,6 +421,8 @@ void RSDK::LoadSceneFolder()
     sceneInfo.milliseconds = 0;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // DC_SILHOUETTE: remove regions before each level
+    ClearSilhouetteRegions();
     ReleaseLODTexture();
     ReleaseFloorTexture();
     ReleaseRoofTextures();
@@ -2319,12 +2321,152 @@ void RSDK::DrawLayerHScroll(TileLayer *layer)
     }
 #endif
 }
+#if defined(KOS_HARDWARE_RENDERER)
+// VScroll layers with a scanlineCallback (e.g. SSZ2 tower) apply per-pixel-column
+// X displacement to create deformation effects (SSZ2 tower has cylindrical perspective).
+// The normal DC VScroll renderer draws tile-wide (16px) columns so it misses this entirely.
+//
+// This alternative renderer iterates pixel-by-pixel across the screen, grouping consecutive
+// columns that map to the same tilemap tile x index. Each group becomes a variable-width
+// strip. At the center of the tilemap, these are a full 16 pixels wide, narrowing at the edges
+// where the perspective compresses the tilemap. The PVR handles the compression by
+// mapping the full tile texture onto the narrower screen quad.
+static void DrawTowerLayerVScroll(TileLayer *layer)
+{
+    const int32 pixelWidth  = TILE_SIZE * layer->xsize;
+    const int32 clipX1      = currentScreen->clipBound_X1;
+    const int32 clipX2      = currentScreen->clipBound_X2;
+    const int32 clipY1      = currentScreen->clipBound_Y1;
+    const int32 clipY2      = currentScreen->clipBound_Y2;
+    const int32 screenH     = currentScreen->size.y;
+    const GFXSurface *surface = &gfxSurface[0];
+
+    RenderDevice::PrepareTexturedQuadPT(0, surface);
+
+    int32 prevTileX  = -1;
+    int32 stripStart = clipX1;
+    int32 stripSubX0 = 0;
+
+    // The scanline callback has already run, so scanlines[screenColumn].position.x
+    // tells us which tilemap x pixel each screen column should show.
+    //
+    // We walk every screen column left to right. Each column maps to some tile in the
+    // tilemap. As long as consecutive columns map to the SAME tilemap x index,
+    // we accumulate them.
+    // When the tilemap x index changes (or we hit the right edge of the screen),
+    // we draw everything we accumulated as one quad per row (a vertical column of tiles)
+    // at whatever width the group ended up being after the scanline deformation.
+    // In the center of the effect that width is a full 16 pixels (normal tile).
+    // At the edges where the deformation compresses the output tiles,
+    // the width is smaller, and the PVR squishes the tile texture into that narrower space.
+    //
+    // It does a convincing job of recreating the original scanline deformation effect.
+    for (int32 cx = clipX1; cx <= clipX2; cx++) {
+        // What tilemap x does this screen column map to?
+        int32 mapX = FROM_FIXED(scanlines[MIN(cx, clipX2 - 1)].position.x);
+        if (mapX < 0)
+            mapX += pixelWidth;
+        mapX %= pixelWidth;
+
+        int32 tileX = mapX >> 4; // which tile column in the tilemap
+        int32 subX = mapX & 0xF; // pixel offset within that tile (0-15)
+
+        // If we've crossed into a new tile (or hit the screen edge), draw the previous group
+        bool endStrip = (cx == clipX2) || (tileX != prevTileX && prevTileX >= 0);
+
+        if (endStrip && prevTileX >= 0) {
+            int32 stripWidth = cx - stripStart;
+            if (stripWidth <= 0)
+                goto nextStrip;
+
+            // Vertical scroll comes from the scanline at the center of this group
+            int32 centerCx = stripStart + stripWidth / 2;
+            int32 mapY = FROM_FIXED(scanlines[centerCx].position.y);
+            int32 pixelHeight = TILE_SIZE * layer->ysize;
+            if (mapY < 0)
+                mapY += pixelHeight;
+            mapY %= pixelHeight;
+
+            int32 subY = mapY & 0xF;
+            int32 startTY = mapY >> 4;
+            int32 screenY = -subY;
+            int32 tilesToDraw = (screenH + subY + TILE_SIZE - 1) / TILE_SIZE + 1;
+
+            // The group's first column started at sub-tile offset stripSubX0,
+            // and the last column is at endSubX. Together they define which
+            // horizontal slice of the tile texture to show in this quad.
+            int32 endSubX  = FROM_FIXED(scanlines[cx - 1].position.x);
+            if (endSubX < 0)
+                endSubX += pixelWidth;
+            endSubX = (endSubX % pixelWidth) & 0xF;
+
+            // Draw every tile in this vertical column, one per row
+            for (int32 t = 0; t < tilesToDraw; t++) {
+                int32 ty = (startTY + t) % layer->ysize;
+                int32 sy = screenY + t * TILE_SIZE;
+
+                if (sy + TILE_SIZE <= clipY1 || sy >= clipY2)
+                    continue;
+
+                uint16 layout = layer->layout[prevTileX + (ty << layer->widthShift)];
+                if (layout == 0xFFFF)
+                    continue;
+
+                layout &= 0xFFF;
+                int32 flip = layout / TILE_COUNT;
+                layout %= TILE_COUNT;
+
+                // Find this tile's position in the texture atlas
+                int32 tilesetX = TILE_SIZE * (static_cast<int32>(layout) % KOS_ATLAS_WIDTH_TILES);
+                int32 tilesetY = TILE_SIZE * (static_cast<int32>(layout) / KOS_ATLAS_WIDTH_TILES);
+
+                // source UV
+                // only the horizontal slice [stripSubX0..endSubX] of the tile,
+                // mapped across stripWidth pixels on screen
+                // always full height
+                int32 srcX0 = tilesetX + stripSubX0;
+                int32 srcX1 = tilesetX + endSubX + 1;
+                int32 srcY0 = tilesetY;
+                int32 srcY1 = tilesetY + TILE_SIZE;
+
+                if (flip & FLIP_X) {
+                    int32 tmpX0 = tilesetX + (TILE_SIZE - (endSubX + 1));
+                    int32 tmpX1 = tilesetX + (TILE_SIZE - stripSubX0);
+                    srcX0 = tmpX1;
+                    srcX1 = tmpX0;
+                }
+                if (flip & FLIP_Y) {
+                    int32 tmp = srcY0;
+                    srcY0 = srcY1;
+                    srcY1 = tmp;
+                }
+
+                RenderDevice::DrawTexturedQuadPT(stripStart, sy, stripWidth, TILE_SIZE,
+                                                 srcX0, srcX1, srcY0, srcY1, surface);
+            }
+        }
+
+    nextStrip:
+        // Start tracking a new group whenever we enter a different tile
+        if (tileX != prevTileX) {
+            prevTileX  = tileX;
+            stripStart = cx;
+            stripSubX0 = subX;
+        }
+    }
+}
+#endif
 void RSDK::DrawLayerVScroll(TileLayer *layer)
 {
     if (!layer->xsize || !layer->ysize)
         return;
 
 #if defined(KOS_HARDWARE_RENDERER)
+    if (layer->scanlineCallback) {
+        DrawTowerLayerVScroll(layer);
+        return;
+    }
+
     const ScanlineInfo* leftScanline = &scanlines[currentScreen->clipBound_X1];
 
     const int32 sheetX = FROM_FIXED(leftScanline->position.x) & 0xF;
@@ -4309,14 +4451,15 @@ static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
             if (plasmaSurface->texture) {
                 RenderDevice::PrepareTexturedPolyPTEX(currentScreen->clipBound_Y1, INK_NONE, plasmaSurface);
 
-                // this is a loose recreation of the original scanline deformation effect
-                // looks decent visually, is not necessarily accurate
                 float scrollU = 0.0f;
                 float scrollV = (float)plasmaTimer * 1.0f;
 
                 const float waveFreq   = 12.0f;
                 const float waveAmp    = 48.0f;
                 const float phaseScale = 2.0f * RSDK_PI / 256.0f;
+                const float plasmaBaseZ = baseZ - 0.0001f;
+                const int plasmaRadius = 33;
+                const float plasmaRadSq = (float)(plasmaRadius * plasmaRadius);
 
                 int pfirstZ = firstNonEmptyRow > minTileZ ? firstNonEmptyRow : minTileZ;
                 int plastZ  = lastNonEmptyRow < maxTileZ ? lastNonEmptyRow : maxTileZ;
@@ -4335,31 +4478,90 @@ static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
                     int firstX = (minTileX < firstNonemptyTileInRow[tz]) ? firstNonemptyTileInRow[tz] : minTileX;
                     int lastX  = (maxTileX > lastNonemptyTileInRow[tz]) ? lastNonemptyTileInRow[tz] : maxTileX;
 
+                    bool cantReuse = true;
+                    size_t layout_offset = firstX + (tz << layer->widthShift) - 1;
+
                     for (int tx = firstX; tx <= lastX; tx++) {
+                        bool reuseRights = false;
+                        layout_offset++;
+
                         float xdiff  = (float)(originTX - tx);
                         float xzdist = (xdiff * xdiff) + (zdiff * zdiff);
-                        if (xzdist > tileRadSq)
+                        if (xzdist > plasmaRadSq) {
+                            cantReuse = true;
                             continue;
+                        }
 
-                        uint16 tile = layout[tx + (tz << layer->widthShift)] & 0xFFF;
-                        if (tile == 0xFFF)
+                        uint16 tile = layout[layout_offset] & 0xFFF;
+                        if (tile == 0xFFF) {
+                            cantReuse = true;
                             continue;
-                        if (tile < 1024 && (ufo7PlasmaSkip[tile >> 5] & (1u << (tile & 31))))
+                        }
+                        if (tile < 1024 && (ufo7PlasmaSkip[tile >> 5] & (1u << (tile & 31)))) {
+                            cantReuse = true;
                             continue;
+                        }
+
+                        if (!cantReuse)
+                            reuseRights = true;
+                        cantReuse = false;
 
                         float x0 = (float)((uint32)(tx * TILE_SIZE));
                         float x1 = x0 + TILE_SIZE;
 
-                        VERTS(x0, x1, 0.0f, z0, z1);
-                        XFORM_WTEST({});
+                        __builtin_prefetch(&layout[layout_offset + 16]);
 
-                        for (int32 i = 0; i < 4; i++) {
-                            float invW    = shz_invf(tileVerts[i].w);
-                            tileVerts[i].x *= invW;
-                            tileVerts[i].y *= invW;
-                            tileVerts[i].z *= invW;
-                            tileVerts[i].z += baseZ - 0.0001f;
-                            tileVerts[i].w = invW;
+                        if (reuseRights) {
+                            float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
+                                                x1, 0.0f, z1, 1.0f);
+                            if (wTest <= EPS) {
+                                cantReuse = true;
+                                continue;
+                            }
+
+                            VERTS_LCOPY(x1, 0.0f, z0, z1);
+
+                            mat_trans_nodiv(tileVerts[TILE_UR].x, tileVerts[TILE_UR].y, tileVerts[TILE_UR].z, tileVerts[TILE_UR].w);
+                            if (tileVerts[TILE_UR].w <= EPS) {
+                                cantReuse = true;
+                                continue;
+                            }
+
+                            mat_trans_nodiv(tileVerts[TILE_LR].x, tileVerts[TILE_LR].y, tileVerts[TILE_LR].z, tileVerts[TILE_LR].w);
+
+                            float wUR = tileVerts[TILE_UR].w;
+                            float wLR = tileVerts[TILE_LR].w;
+                            tileVerts[TILE_UR].w = shz_invf(wUR);
+                            tileVerts[TILE_LR].w = shz_invf(wLR);
+
+                            tileVerts[TILE_UR].x *= tileVerts[TILE_UR].w;
+                            tileVerts[TILE_UR].y *= tileVerts[TILE_UR].w;
+                            tileVerts[TILE_UR].z *= tileVerts[TILE_UR].w;
+                            tileVerts[TILE_UR].z += plasmaBaseZ;
+
+                            tileVerts[TILE_LR].x *= tileVerts[TILE_LR].w;
+                            tileVerts[TILE_LR].y *= tileVerts[TILE_LR].w;
+                            tileVerts[TILE_LR].z *= tileVerts[TILE_LR].w;
+                            tileVerts[TILE_LR].z += plasmaBaseZ;
+                        } else {
+                            float wTest = fipr(finalmat[0][3], finalmat[1][3], finalmat[2][3], finalmat[3][3],
+                                                x1, 0.0f, z0, 1.0f);
+                            if (wTest < EPS) {
+                                cantReuse = true;
+                                continue;
+                            }
+
+                            VERTS(x0, x1, 0.0f, z0, z1);
+                            XFORM_WTEST(cantReuse = true);
+
+                            for (int32 i = 0; i < 4; i++) {
+                                float invW    = shz_invf(tileVerts[i].w);
+                                tileVerts[i].x *= invW;
+                                tileVerts[i].y *= invW;
+                                tileVerts[i].z *= invW;
+                                tileVerts[i].z += plasmaBaseZ;
+                                tileVerts[i].w = invW;
+                            }
                         }
 
                         CULL(x, <, 0);
