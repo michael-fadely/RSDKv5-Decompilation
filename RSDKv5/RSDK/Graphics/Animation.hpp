@@ -81,6 +81,9 @@ extern SpriteAnimation spriteAnimationList[SPRFILE_COUNT];
 
 uint16 LoadSpriteAnimation(const char *filename, uint8 scope);
 uint16 CreateSpriteAnimation(const char *filename, uint32 frameCount, uint32 animCount, uint8 scope);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+void FreeSpriteAnimation(uint16 aniFrames);
+#endif
 
 inline uint16 FindSpriteAnimation(uint16 aniFrames, const char *name)
 {
