@@ -63,7 +63,7 @@ public:
     static uint8 GetPaletteDesaturation();
     static void DrawTintedFillScreen(int32 alphaR, int32 alphaG, int32 alphaB, uint32 color);
     static bool SupportedInk(int inkEffect);
-    static bool InkToBlendModes(int inkEffect, pvr_blend_mode_t* srcBlend, pvr_blend_mode_t* dstBlend);
+    static void InkToBlendModes(int inkEffect, pvr_blend_mode_t* srcBlend, pvr_blend_mode_t* dstBlend);
 
 private:
     static bool PreparePrimitive(int primitiveType,
