@@ -290,6 +290,19 @@ extern uint16 subtractLookupTable[0x20 * 0x100];
 
 extern GFXSurface gfxSurface[SURFACE_COUNT];
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+// DC_SILHOUETTE
+#define MAX_SILHOUETTE_REGIONS 256
+struct SilhouetteRegion {
+    int32 x1, y1, x2, y2;
+    int32 drawGroup;
+};
+extern int32 silhouetteRegionCount;
+extern SilhouetteRegion silhouetteRegions[MAX_SILHOUETTE_REGIONS];
+void SetSilhouetteRegion(int32 x1, int32 y1, int32 x2, int32 y2, int32 drawGroup);
+void ClearSilhouetteRegions();
+#endif
+
 extern float dpi;
 extern int32 cameraCount;
 extern ScreenInfo screens[SCREEN_COUNT];

@@ -228,6 +228,8 @@ enum FunctionTableIDs {
     FunctionTable_LoadSpriteAnimation,
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     FunctionTable_FreeSpriteAnimation,
+    FunctionTable_SetSilhouetteRegion, // DC_SILHOUETTE
+    FunctionTable_ClearSilhouetteRegions, // DC_SILHOUETTE
 #endif
     FunctionTable_CreateSpriteAnimation,
     FunctionTable_SetSpriteAnimation,

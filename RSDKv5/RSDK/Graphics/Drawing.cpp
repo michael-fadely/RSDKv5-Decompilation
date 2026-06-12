@@ -160,6 +160,26 @@ uint16 RSDK::subtractLookupTable[0x20 * 0x100];
 
 GFXSurface RSDK::gfxSurface[SURFACE_COUNT];
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+// DC_SILHOUETTE
+int32 RSDK::silhouetteRegionCount = 0;
+SilhouetteRegion RSDK::silhouetteRegions[MAX_SILHOUETTE_REGIONS];
+
+void RSDK::SetSilhouetteRegion(int32 x1, int32 y1, int32 x2, int32 y2, int32 drawGroup)
+{
+    if (silhouetteRegionCount < MAX_SILHOUETTE_REGIONS) {
+        SilhouetteRegion *r = &silhouetteRegions[silhouetteRegionCount++];
+        r->x1        = x1;
+        r->y1        = y1;
+        r->x2        = x2;
+        r->y2        = y2;
+        r->drawGroup = drawGroup;
+    }
+}
+
+void RSDK::ClearSilhouetteRegions() { silhouetteRegionCount = 0; }
+#endif
+
 float RSDK::dpi         = 1;
 int32 RSDK::cameraCount = 0;
 ScreenInfo RSDK::screens[SCREEN_COUNT];
@@ -3448,6 +3468,95 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
 
             default: break;
         }
+
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+        // DC_SILHOUETTE: re-draw as solid purple silhouette clipped to each overlapping region
+        if (silhouetteRegionCount > 0) {
+            int32 camX = currentScreen->position.x;
+            int32 camY = currentScreen->position.y;
+
+            int32 sprLeft   = pos.x - frame->width - abs(frame->pivotX);
+            int32 sprTop    = pos.y - frame->height - abs(frame->pivotY);
+            int32 sprRight  = pos.x + frame->width + abs(frame->pivotX);
+            int32 sprBottom = pos.y + frame->height + abs(frame->pivotY);
+
+            for (int32 r = 0; r < silhouetteRegionCount; ++r) {
+                SilhouetteRegion *region = &silhouetteRegions[r];
+                if (sceneInfo.entity->drawGroup >= region->drawGroup)
+                    continue;
+
+                int32 rgnX1 = region->x1 - camX;
+                int32 rgnY1 = region->y1 - camY;
+                int32 rgnX2 = region->x2 - camX;
+                int32 rgnY2 = region->y2 - camY;
+
+                if (sprRight <= rgnX1 || sprLeft >= rgnX2 || sprBottom <= rgnY1 || sprTop >= rgnY2)
+                    continue;
+
+                int32 saveX1 = currentScreen->clipBound_X1;
+                int32 saveY1 = currentScreen->clipBound_Y1;
+                int32 saveX2 = currentScreen->clipBound_X2;
+                int32 saveY2 = currentScreen->clipBound_Y2;
+
+                currentScreen->clipBound_X1 = MAX(saveX1, rgnX1);
+                currentScreen->clipBound_Y1 = MAX(saveY1, rgnY1);
+                currentScreen->clipBound_X2 = MIN(saveX2, rgnX2);
+                currentScreen->clipBound_Y2 = MIN(saveY2, rgnY2);
+
+                switch (drawFX) {
+                    case FX_NONE:
+                        DrawSpriteFlipped(pos.x + frame->pivotX, pos.y + frame->pivotY, frame->width, frame->height, frame->sprX, frame->sprY,
+                                          FLIP_NONE, INK_UNMASKED, 0xFF, frame->sheetID);
+                        break;
+
+                    case FX_FLIP:
+                        switch (sceneInfo.entity->direction) {
+                            case FLIP_NONE:
+                                DrawSpriteFlipped(pos.x + frame->pivotX, pos.y + frame->pivotY, frame->width, frame->height, frame->sprX,
+                                                  frame->sprY, FLIP_NONE, INK_UNMASKED, 0xFF, frame->sheetID);
+                                break;
+                            case FLIP_X:
+                                DrawSpriteFlipped(pos.x - frame->width - frame->pivotX, pos.y + frame->pivotY, frame->width, frame->height,
+                                                  frame->sprX, frame->sprY, FLIP_X, INK_UNMASKED, 0xFF, frame->sheetID);
+                                break;
+                            case FLIP_Y:
+                                DrawSpriteFlipped(pos.x + frame->pivotX, pos.y - frame->height - frame->pivotY, frame->width, frame->height,
+                                                  frame->sprX, frame->sprY, FLIP_Y, INK_UNMASKED, 0xFF, frame->sheetID);
+                                break;
+                            case FLIP_XY:
+                                DrawSpriteFlipped(pos.x - frame->width - frame->pivotX, pos.y - frame->height - frame->pivotY, frame->width,
+                                                  frame->height, frame->sprX, frame->sprY, FLIP_XY, INK_UNMASKED, 0xFF, frame->sheetID);
+                                break;
+                            default: break;
+                        }
+                        break;
+
+                    case FX_ROTATE:
+                    case FX_ROTATE | FX_FLIP:
+                    case FX_SCALE:
+                    case FX_SCALE | FX_FLIP:
+                    case FX_SCALE | FX_ROTATE:
+                    case FX_SCALE | FX_ROTATE | FX_FLIP:
+                        // DC_SILHOUETTE: rotated sprites can't be clipped to region bounds,
+                        // so only silhouette if left edge is inside the region
+                        if (sprLeft >= rgnX1 && sprLeft < rgnX2 && pos.y >= rgnY1 && pos.y < rgnY2)
+                            DrawSpriteRotozoom(pos.x, pos.y, frame->pivotX, frame->pivotY, frame->width, frame->height, frame->sprX, frame->sprY,
+                                               (drawFX & FX_SCALE) ? sceneInfo.entity->scale.x : 0x200,
+                                               (drawFX & FX_SCALE) ? sceneInfo.entity->scale.y : 0x200,
+                                               (drawFX & FX_FLIP) ? (sceneInfo.entity->direction & FLIP_X) : FLIP_NONE,
+                                               (drawFX & FX_ROTATE) ? rotation : 0, INK_UNMASKED, 0xFF, frame->sheetID);
+                        break;
+
+                    default: break;
+                }
+
+                currentScreen->clipBound_X1 = saveX1;
+                currentScreen->clipBound_Y1 = saveY1;
+                currentScreen->clipBound_X2 = saveX2;
+                currentScreen->clipBound_Y2 = saveY2;
+            }
+        }
+#endif
     }
 }
 void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 sprX, int32 sprY, int32 direction, int32 inkEffect, int32 alpha,
