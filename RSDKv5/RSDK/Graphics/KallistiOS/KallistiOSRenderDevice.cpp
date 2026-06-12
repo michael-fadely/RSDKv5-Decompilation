@@ -192,9 +192,9 @@ bool RenderDevice::Init()
 
         // vertex buffer size
         // 512 KB is the default used by pvr_init_defaults().
-        // we have now given it 1 mb.
+        // we have now given it 768 kb.
         // might need adjusting in the future.
-        1024 * 1024,
+        768 * 1024,
 
         // dma enabled? (yes)
         1,
