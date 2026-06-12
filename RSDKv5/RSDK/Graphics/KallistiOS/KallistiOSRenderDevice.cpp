@@ -27,6 +27,8 @@ static float pixelScaleY = 1.0f;
 // DCFIXME: really bad place for this
 struct vec2f { float x; float y; };
 
+uint8 lastFlashGigaAlpha = 0;
+
 namespace {
 enum PrimitiveTypes {
     PrimitiveTypes_None,
@@ -804,13 +806,19 @@ bool RenderDevice::SupportedInk(int inkEffect)
         case INK_UNMASKED:
             return true; // DC_SILHOUETTE
 
+        case INK_FLASH:
+            return true;
+
+        case INK_FLASH_GIGA:
+            return true;
+
         default:
             return false;
     }
 }
 
 // static
-bool RenderDevice::InkToBlendModes(int inkEffect, pvr_blend_mode_t* srcBlend, pvr_blend_mode_t* dstBlend)
+void RenderDevice::InkToBlendModes(int inkEffect, pvr_blend_mode_t* srcBlend, pvr_blend_mode_t* dstBlend)
 {
     if (srcBlend) {
         *srcBlend = PVR_BLEND_SRCALPHA;
@@ -822,38 +830,34 @@ bool RenderDevice::InkToBlendModes(int inkEffect, pvr_blend_mode_t* srcBlend, pv
 
     switch (inkEffect) {
         case INK_NONE:
-            return true;
+            return;
 
         case INK_BLEND:
-            return true;
+            return;
 
         case INK_ALPHA:
-            return true;
+            return;
 
         case INK_ADD:
             if (dstBlend) {
                 *dstBlend = PVR_BLEND_ONE;
             }
-
-            return true;
+            return;
 
         case INK_SUB:
-            return true;
+            return;
 
         case INK_TINT:
-            return true;
+            return;
 
         case INK_MASKED:
-            //printf("[pvr] WARNING: unsupported ink effect INK_MASKED; skipping sprite\n");
-            return false;
+            return;
 
         case INK_UNMASKED:
-            //printf("[pvr] WARNING: unsupported ink effect INK_UNMASKED; skipping sprite\n");
-            return false;
+            return;
 
         default:
-            printf("[pvr] WARNING: unsupported ink effect %d; skipping sprite\n", inkEffect);
-            return false;
+            return;
     }
 }
 
@@ -1165,8 +1169,7 @@ void RenderDevice::PrepareTexturedPolyPT(int32 y, int inkEffect, const GFXSurfac
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
 
-        // DC_SILHOUETTE: enable offset color so tex*black + purple = solid purple silhouette
-        if (inkEffect == INK_UNMASKED)
+        if (inkEffect == INK_UNMASKED || inkEffect == INK_FLASH || inkEffect == INK_FLASH_GIGA)
             context.gen.specular = 1;
 
         // Compile polygon header directly into SQ to avoid having to copy it.
@@ -1372,14 +1375,25 @@ void RenderDevice::DrawTexturedPolyPT(
     const float v0 = shz_divf_fsrra(sprY0, surface->height);
     const float u1 = shz_divf_fsrra(sprX1, surface->width);
     const float v1 = shz_divf_fsrra(sprY1, surface->height);
-    // DC_SILHOUETTE: black base + purple offset = solid purple; normal PT = white
-    const uint32 argb  = (lastInkEffect == INK_UNMASKED) ? 0xFF010101u : 0xFFFFFFFFu;
-    // DC_DESATURATE: use gray (40,44,40) instead of purple when desaturated
-    const uint32 oargb = (lastInkEffect == INK_UNMASKED) ? (pauseDesaturation > 0 ? 0xFF282C28u : 0xFF100068u) : 0x00000000u;
-
-    // DC_SILHOUETTE: prevent unrelated polys from being impacted by the effect when headers would otherwise match
-    if (lastInkEffect == INK_UNMASKED)
+    uint32 argb  = 0xFFFFFFFFu;
+    uint32 oargb = 0x00000000u;
+    if (lastInkEffect == INK_UNMASKED) {
+        argb  = 0xFF010101u;
+        oargb = pauseDesaturation > 0 ? 0xFF282C28u : 0xFF100068u;
         lastInkEffect = 0xFFFFFFFF;
+    } else if (lastInkEffect == INK_FLASH) {
+        argb  = 0xFF010101u;
+        oargb = 0xFFE0E0E0u;
+        lastInkEffect = 0xFFFFFFFF;
+    } else if (lastInkEffect == INK_FLASH_GIGA) {
+        uint32 t    = lastFlashGigaAlpha;
+        uint32 invT = 255 - t;
+        argb  = 0xFF000000 | (invT << 16) | (invT << 8) | invT;
+        uint32 r = t * 0xF0 / 255;
+        uint32 b = t * 0x80 / 255;
+        oargb = 0xFF000000 | (r << 16) | (b);
+        lastInkEffect = 0xFFFFFFFF;
+    }
 
     /* Since we have to potentially modify the vertex stream later on to apply
        rotation to it, we're better off constructing it in RAM rather than

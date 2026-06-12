@@ -3664,7 +3664,11 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
     const int32 xClipped = x + marginLeft;
     const int32 yClipped = y + marginTop;
 
-    if (inkEffect == INK_NONE) {
+    if (inkEffect == INK_NONE || inkEffect == INK_FLASH) {
+        alpha = 0xFF;
+    }
+    if (inkEffect == INK_FLASH_GIGA) {
+        lastFlashGigaAlpha = (uint8)alpha;
         alpha = 0xFF;
     }
 
