@@ -48,6 +48,10 @@ enum InkEffects {
     INK_TINT,
     INK_MASKED,
     INK_UNMASKED,
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    INK_FLASH,
+    INK_FLASH_GIGA,
+#endif
 };
 
 enum DrawFX { FX_NONE = 0, FX_FLIP = 1, FX_ROTATE = 2, FX_SCALE = 4 };

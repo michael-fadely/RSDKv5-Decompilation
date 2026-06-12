@@ -2046,7 +2046,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
                         // that lets them approximate what `normalVal` used to be here
                         int32 normal    = (int32)shz_divf(ny1 , (float)vertCount);
                         if (normal < 0) normal = 0;
-                        if (normal > 31) normal = 31;
+                        else if (normal > 31) normal = 31;
                         int32 specularC = specLUT[normal];
                         float diffuseC  = (normal * DIFFUSE_SCALE) + 0.625f;
 
@@ -2128,7 +2128,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
                     if (!isBaked) {
                         int32 normal    = (int32)shz_divf(ny , (float)vertCount);
                         if (normal < 0) normal = 0;
-                        if (normal > 31) normal = 31;
+                        else if (normal > 31) normal = 31;
                         int32 specularC = specLUT[normal];
                         float diffuseC  = (normal * DIFFUSE_SCALE) + 0.625f;
 
@@ -2178,7 +2178,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
                         if (!isBaked) {
                             int32 normal    = (int32)drawVert[v].ny;
                             if (normal < 0) normal = 0;
-                            if (normal > 31) normal = 31;
+                            else if (normal > 31) normal = 31;
                             int32 specularC = specLUT[normal];
                             float diffuseC  = (normal * DIFFUSE_SCALE) + 0.625f;
 
@@ -2318,7 +2318,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
                         if (!isBaked) {
                             int32 normal    = (int32)shz_divf(ny1, (float)vertCount);
                             if (normal < 0) normal = 0;
-                            if (normal > 31) normal = 31;
+                            else if (normal > 31) normal = 31;
                             int32 specularC = specLUT[normal];
                             float diffuseC  = (normal * DIFFUSE_SCALE) + 0.625f;
 
@@ -2380,7 +2380,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
                         if (!isBaked) {
                             int32 normal    = (int32)shz_divf(ny, (float)vertCount);
                             if (normal < 0) normal = 0;
-                            if (normal > 31) normal = 31;
+                            else if (normal > 31) normal = 31;
                             int32 specularC = specLUT[normal];
                             float diffuseC  = (normal * DIFFUSE_SCALE) + 0.625f;
 
@@ -2437,7 +2437,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
                                 float fnorm = shz_divf((drawVert[v].ny * drawVert[v].ny), 19.0f);
                                 int32 normal    = (int32)fnorm;
                                 if (normal < 0) normal = 0;
-                                if (normal > 31) normal = 31;
+                                else if (normal > 31) normal = 31;
                                 int32 specularC = specLUT[(int32)normal];
                                 float diffuseC  = (normal * DIFFUSE_SCALE) + 0.625f;
 

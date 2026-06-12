@@ -69,6 +69,10 @@ rm -f -- "$stagedir/Sprites/UI/Diorama2.gif"
 # fix for the save select zone icons
 rm -f -- "$stagedir/Sprites/UI/Zones.gif"
 
+# remove controller and button graphics to be replaced
+rm -f -- "$stagedir/Sprites/UI/Buttons.gif"
+rm -f -- "$stagedir/Sprites/UI/Controllers.gif"
+
 "$script_dir/model_process.sh"              "$sourcedir" "$stagedir"
 
 # get rid of eggtower and monarchplans 
@@ -87,13 +91,12 @@ rm -rf -- "$stagedir/Meshes/SSZ"
 "$script_dir/gfx_step_1_toalphapng.sh"      "$stagedir"
 "$script_dir/gfx_step_2_todtex.sh"          "$stagedir"
 
-# if we had up-to-date Controllers.gif, Buttons.gif and SuperButtons.gif,
-# this is where they would get copied
-cp Controllers.tex "$stagedir/Sprites/UI/Controllers.gif"
-cp Buttons.tex "$stagedir/Sprites/UI/Buttons.gif"
+# copy Dreamcast-specific control graphics into staged data dir
+cp "./Controllers.gif"                      "$stagedir/Sprites/UI"
+cp "./Buttons.gif"                          "$stagedir/Sprites/UI"
 mkdir -p "$stagedir/Sprites/Global"
 # this is not a typo
-cp Buttons.tex "$stagedir/Sprites/Global/SuperButtons.gif"
+cp "./Buttons.gif"                          "$stagedir/Sprites/Global/SuperButtons.gif"
 
 "$script_dir/img_step_1_todtex.sh"          "$stagedir"
 

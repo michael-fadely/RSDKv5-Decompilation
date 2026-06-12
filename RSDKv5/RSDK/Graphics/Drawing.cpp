@@ -8,6 +8,7 @@ using namespace RSDK;
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
 #include <RSDK/Graphics/KallistiOS/AniTileTracker.hpp>
+extern uint8 lastFlashGigaAlpha;
 #endif
 
 // all render devices need to access the initial vertex buffer :skull:
@@ -2795,7 +2796,7 @@ void RSDK::DrawBlendedFace(Vector2 *vertices, uint32 *colors, int32 vertCount, i
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
     // DC_DESATURATE: desaturate per-vertex colors when paused, but not for the pause menu's own draw group
     uint8 desat = RenderDevice::GetPaletteDesaturation();
-    uint32 localColors[256];
+    uint32 localColors[4];
     if (desat > 0 && sceneInfo.currentDrawGroup < DRAWGROUP_COUNT - 1) {
         for (int32 v = 0; v < vertCount; ++v)
             localColors[v] = DesaturateColor32(colors[v], desat);
@@ -3476,10 +3477,19 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
             int32 camX = currentScreen->position.x;
             int32 camY = currentScreen->position.y;
 
-            int32 sprLeft   = pos.x - frame->width - abs(frame->pivotX);
-            int32 sprTop    = pos.y - frame->height - abs(frame->pivotY);
-            int32 sprRight  = pos.x + frame->width + abs(frame->pivotX);
-            int32 sprBottom = pos.y + frame->height + abs(frame->pivotY);
+            int32 sprLeft, sprTop, sprRight, sprBottom;
+            if (drawFX & FX_ROTATE) {
+                int32 maxExt = MAX(frame->width + abs(frame->pivotX), frame->height + abs(frame->pivotY));
+                sprLeft   = pos.x - maxExt;
+                sprTop    = pos.y - maxExt;
+                sprRight  = pos.x + maxExt;
+                sprBottom = pos.y + maxExt;
+            } else {
+                sprLeft   = pos.x - frame->width - abs(frame->pivotX);
+                sprTop    = pos.y - frame->height - abs(frame->pivotY);
+                sprRight  = pos.x + frame->width + abs(frame->pivotX);
+                sprBottom = pos.y + frame->height + abs(frame->pivotY);
+            }
 
             for (int32 r = 0; r < silhouetteRegionCount; ++r) {
                 SilhouetteRegion *region = &silhouetteRegions[r];
@@ -3540,7 +3550,7 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
                     case FX_SCALE | FX_ROTATE | FX_FLIP:
                         // DC_SILHOUETTE: rotated sprites can't be clipped to region bounds,
                         // so only silhouette if left edge is inside the region
-                        if (sprLeft >= rgnX1 && sprLeft < rgnX2 && pos.y >= rgnY1 && pos.y < rgnY2)
+                        if (pos.x >= rgnX1 && pos.x < rgnX2 && sprLeft >= rgnX1 && sprBottom > rgnY1 && pos.y < rgnY2)
                             DrawSpriteRotozoom(pos.x, pos.y, frame->pivotX, frame->pivotY, frame->width, frame->height, frame->sprX, frame->sprY,
                                                (drawFX & FX_SCALE) ? sceneInfo.entity->scale.x : 0x200,
                                                (drawFX & FX_SCALE) ? sceneInfo.entity->scale.y : 0x200,
@@ -3654,7 +3664,11 @@ void RSDK::DrawSpriteFlipped(int32 x, int32 y, int32 width, int32 height, int32 
     const int32 xClipped = x + marginLeft;
     const int32 yClipped = y + marginTop;
 
-    if (inkEffect == INK_NONE) {
+    if (inkEffect == INK_NONE || inkEffect == INK_FLASH) {
+        alpha = 0xFF;
+    }
+    if (inkEffect == INK_FLASH_GIGA) {
+        lastFlashGigaAlpha = (uint8)alpha;
         alpha = 0xFF;
     }
 
@@ -4389,30 +4403,37 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
         newY = y + scaledPivotY;
     }
 
-    int32 widthClipped = scaledWidth;
-    int32 heightClipped = scaledHeight;
-    int32 marginTop = 0;
+    int32 marginLeft   = 0;
+    int32 marginRight  = 0;
+    int32 marginTop    = 0;
+    int32 marginBottom = 0;
 
-    if (newX + scaledWidth > currentScreen->clipBound_X2) {
-        widthClipped -= currentScreen->clipBound_X2 - (newX + scaledWidth);
+#if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
+    if (angle != 0) {
+        // Rotated sprites can extend well beyond their unrotated bounds.
+        // Use the rotation center (x, y) and a generous radius for the cull test.
+        int32 maxExtent = scaledWidth + scaledHeight + abs(scaledPivotX) + abs(scaledPivotY);
+        if (x + maxExtent <= currentScreen->clipBound_X1 || x - maxExtent >= currentScreen->clipBound_X2
+            || y + maxExtent <= currentScreen->clipBound_Y1 || y - maxExtent >= currentScreen->clipBound_Y2)
+            return;
+    } else
+#endif
+    {
+        if (newX + scaledWidth > currentScreen->clipBound_X2)
+            marginRight = (newX + scaledWidth) - currentScreen->clipBound_X2;
+        if (newX < currentScreen->clipBound_X1)
+            marginLeft = currentScreen->clipBound_X1 - newX;
+        if (newY + scaledHeight > currentScreen->clipBound_Y2)
+            marginBottom = (newY + scaledHeight) - currentScreen->clipBound_Y2;
+        if (newY < currentScreen->clipBound_Y1)
+            marginTop = currentScreen->clipBound_Y1 - newY;
     }
 
-    if (newX < currentScreen->clipBound_X1) {
-        widthClipped -= currentScreen->clipBound_X1 - newX;
-    }
+    int32 widthClipped  = scaledWidth - marginLeft - marginRight;
+    int32 heightClipped = scaledHeight - marginTop - marginBottom;
 
-    if (newY + scaledHeight > currentScreen->clipBound_Y2) {
-        heightClipped -= currentScreen->clipBound_Y2 - (newY + scaledHeight);
-    }
-
-    if (newY < currentScreen->clipBound_Y1) {
-        marginTop = currentScreen->clipBound_Y1 - newY;
-        heightClipped -= marginTop;
-    }
-
-    if (widthClipped <= 0 || heightClipped <= 0) {
+    if (widthClipped <= 0 || heightClipped <= 0)
         return;
-    }
 
     validDraw = true;
 
@@ -4421,48 +4442,105 @@ void RSDK::DrawSpriteRotozoom(int32 x, int32 y, int32 pivotX, int32 pivotY, int3
     int32 sprY0;
     int32 sprY1;
 
-    if (direction & FLIP_X) {
-        sprX0 = sprX + width;
-        sprX1 = sprX;
-    } else {
-        sprX0 = sprX;
-        sprX1 = sprX + width;
-    }
+    if (angle == 0) {
+        // Non-rotated: apply clip margins to position and UVs
+        if (direction & FLIP_X) {
+            sprX0 = sprX + width  - marginLeft * width / scaledWidth;
+            sprX1 = sprX          + marginRight * width / scaledWidth;
+        } else {
+            sprX0 = sprX          + marginLeft * width / scaledWidth;
+            sprX1 = sprX + width  - marginRight * width / scaledWidth;
+        }
 
-    if (direction & FLIP_Y) {
-        sprY0 = sprY + height;
-        sprY1 = sprY;
-    } else {
-        sprY0 = sprY;
-        sprY1 = sprY + height;
-    }
+        if (direction & FLIP_Y) {
+            sprY0 = sprY + height - marginTop * height / scaledHeight;
+            sprY1 = sprY          + marginBottom * height / scaledHeight;
+        } else {
+            sprY0 = sprY          + marginTop * height / scaledHeight;
+            sprY1 = sprY + height - marginBottom * height / scaledHeight;
+        }
 
-    if (inkEffect == INK_NONE) {
-        alpha = 0xFF;
-    }
+        int32 drawX = newX + marginLeft;
+        int32 drawY = newY + marginTop;
 
-    if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
-        RenderDevice::PrepareTexturedPolyPT(newY + marginTop, inkEffect, surface);
-        RenderDevice::DrawTexturedPolyPT(
-                newX, newY,
-                x, y,
-                scaledWidth, scaledHeight,
-                sprX0, sprX1,
-                sprY0, sprY1,
-                512 - angle,
-                alpha,
-                surface);
+        if (inkEffect == INK_NONE || inkEffect == INK_FLASH)
+            alpha = 0xFF;
+        if (inkEffect == INK_FLASH_GIGA) {
+            lastFlashGigaAlpha = (uint8)alpha;
+            alpha = 0xFF;
+        }
+
+        if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
+            RenderDevice::PrepareTexturedPolyPT(drawY, inkEffect, surface);
+            RenderDevice::DrawTexturedPolyPT(
+                    drawX, drawY,
+                    drawX, drawY,
+                    widthClipped, heightClipped,
+                    sprX0, sprX1,
+                    sprY0, sprY1,
+                    0,
+                    alpha,
+                    surface);
+        } else {
+            RenderDevice::PrepareTexturedPolyTR(drawY, inkEffect, surface);
+            RenderDevice::DrawTexturedPolyTR(
+                    drawX, drawY,
+                    drawX, drawY,
+                    widthClipped, heightClipped,
+                    sprX0, sprX1,
+                    sprY0, sprY1,
+                    0,
+                    alpha,
+                    surface);
+        }
     } else {
-        RenderDevice::PrepareTexturedPolyTR(newY + marginTop, inkEffect, surface);
-        RenderDevice::DrawTexturedPolyTR(
-                newX, newY,
-                x, y,
-                scaledWidth, scaledHeight,
-                sprX0, sprX1,
-                sprY0, sprY1,
-                512 - angle,
-                alpha,
-                surface);
+        // Rotated: can't clip to bounds, draw full sprite if any part is visible
+        if (direction & FLIP_X) {
+            sprX0 = sprX + width;
+            sprX1 = sprX;
+        } else {
+            sprX0 = sprX;
+            sprX1 = sprX + width;
+        }
+
+        if (direction & FLIP_Y) {
+            sprY0 = sprY + height;
+            sprY1 = sprY;
+        } else {
+            sprY0 = sprY;
+            sprY1 = sprY + height;
+        }
+
+        if (inkEffect == INK_NONE || inkEffect == INK_FLASH)
+            alpha = 0xFF;
+        if (inkEffect == INK_FLASH_GIGA) {
+            lastFlashGigaAlpha = (uint8)alpha;
+            alpha = 0xFF;
+        }
+
+        if ((inkEffect != INK_SUB) && (inkEffect != INK_ADD) && (alpha == 0xFF)) {
+            RenderDevice::PrepareTexturedPolyPT(newY + marginTop, inkEffect, surface);
+            RenderDevice::DrawTexturedPolyPT(
+                    newX, newY,
+                    x, y,
+                    scaledWidth, scaledHeight,
+                    sprX0, sprX1,
+                    sprY0, sprY1,
+                    512 - angle,
+                    alpha,
+                    surface);
+        } else {
+            RenderDevice::PrepareTexturedPolyTR(newY + marginTop, inkEffect, surface);
+            RenderDevice::DrawTexturedPolyTR(
+                    newX, newY,
+                    x, y,
+                    scaledWidth, scaledHeight,
+                    sprX0, sprX1,
+                    sprY0, sprY1,
+                    512 - angle,
+                    alpha,
+                    surface);
+        }
     }
 #else
     int32 sine        = sin512LookupTable[angle];
@@ -4814,8 +4892,64 @@ void RSDK::DrawDeformedSprite(uint16 sheetID, int32 inkEffect, int32 alpha)
     }
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-    // DCTODO: DrawDeformedSprite
     validDraw = true;
+
+    if (inkEffect == INK_MASKED)
+        return;
+
+    GFXSurface *surface = &gfxSurface[sheetID];
+    if (!surface->texture)
+        return;
+
+    int32 clipY1  = currentScreen->clipBound_Y1;
+    int32 clipY2  = currentScreen->clipBound_Y2;
+    int32 screenW = currentScreen->pitch;
+
+    uint32 argb = ((uint32)alpha << 24) | 0x00FFFFFF;
+
+    RenderDevice::PrepareTexturedPolyTREX(clipY1, inkEffect, surface);
+
+    float z      = RenderDevice::GetDepth();
+    int32 stripH = 4;
+    float texW   = (float)surface->width;
+    float texH   = (float)surface->height;
+
+    float baseV = fmodf((float)scanlines[clipY1].position.y / 65536.0f, texH);
+    if (baseV < 0.0f)
+        baseV += texH;
+
+    for (int32 y = clipY1; y < clipY2; y += stripH) {
+        int32 botY = y + stripH;
+        if (botY > clipY2)
+            botY = clipY2;
+
+        int32 midY = (y + botY) >> 1;
+        ScanlineInfo *midScan = &scanlines[midY];
+
+        float rawX0 = (float)midScan->position.x / 65536.0f;
+        float scale = (float)midScan->deform.x / 65536.0f;
+        float span  = (float)screenW * scale;
+        float sprX0 = fmodf(rawX0, texW);
+        if (sprX0 < 0.0f)
+            sprX0 += texW;
+        float sprX1 = sprX0 + span;
+
+        float sprY0 = fmodf(baseV + (float)(y - clipY1), texH);
+        if (sprY0 < 0.0f)
+            sprY0 += texH;
+        float sprY1 = sprY0 + (float)(botY - y);
+
+        Vector4f ul = { 0.0f, (float)y, z, 1.0f };
+        Vector4f ur = { (float)screenW, (float)y, z, 1.0f };
+        Vector4f ll = { 0.0f, (float)botY, z, 1.0f };
+        Vector4f lr = { (float)screenW, (float)botY, z, 1.0f };
+
+        RenderDevice::DrawFloorTexturedPolyTREx(
+            ul, ur, ll, lr,
+            sprX0, sprX1, sprY0, sprY1,
+            surface, argb, 0x00000000
+        );
+    }
 #else
     validDraw              = true;
     GFXSurface *surface    = &gfxSurface[sheetID];
