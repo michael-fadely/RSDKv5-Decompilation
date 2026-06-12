@@ -71,6 +71,11 @@ rm -f -- "$stagedir/Sprites/UI/Diorama2.gif"
 # fix for the save select zone icons
 rm -f -- "$stagedir/Sprites/UI/Zones.gif"
 
+# remove controller and button graphics to be replaced
+rm -f -- "$stagedir/Sprites/UI/Buttons.gif"
+rm -f -- "$stagedir/Sprites/UI/Controllers.gif"
+rm -f -- "$stagedir/Sprites/Global/SuperButtons.gif"
+
 "$script_dir/model_process.sh"              "$sourcedir" "$stagedir"
 
 "$script_dir/video_script.sh"               "$sourcedir" "$stagedir"
@@ -85,6 +90,11 @@ rm -f -- "$stagedir/Sprites/UI/Zones.gif"
 
 "$script_dir/gfx_step_1_toalphapng.sh"      "$stagedir"
 "$script_dir/gfx_step_2_todtex.sh"          "$stagedir"
+
+# copy Dreamcast-specific control graphics into staged data dir
+cp "./Controllers.gif"                      "$stagedir/Sprites/UI"
+cp "./Buttons.gif"                          "$stagedir/Sprites/UI"
+cp "./Buttons.gif"                          "$stagedir/Sprites/Global/SuperButtons.gif"
 
 "$script_dir/img_step_1_todtex.sh"          "$stagedir"
 
