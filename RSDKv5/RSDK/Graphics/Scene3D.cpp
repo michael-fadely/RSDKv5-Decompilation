@@ -1766,6 +1766,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
 {
     const float pixelScaleX = RenderDevice::viewSize.x / RenderDevice::pixelSize.x;
     const float pixelScaleY = RenderDevice::viewSize.y / RenderDevice::pixelSize.y;
+    const uint8 desat = RenderDevice::GetPaletteDesaturation(); // DC_DESATURATE
 
     // always pull the specular table into cache
     // does not really cost us anything but can save a lot
@@ -1817,6 +1818,8 @@ void RSDK::Draw3DScene(uint16 sceneID)
             for (int32 v = 0; v < mdl->vertCount; v++) {
                 StripTransformedVert *sv = &xfVerts[v];
                 uint32 col = sv->color;
+                if (desat > 0) // DC_DESATURATE
+                    col = DesaturateColor32(col, desat);
                 sv->color = alphaPrefix | col;
             }
 
@@ -1987,18 +1990,20 @@ void RSDK::Draw3DScene(uint16 sceneID)
             case S3D_WIREFRAME:
                 for (int32 f = 0; f < scn->faceCount; ++f) {
                     Scene3DVertex *drawVert = &scn->vertices[scn->faceBuffer[f].index];
+                    uint32 wireColor = drawVert[0].color;
+                    if (desat > 0) wireColor = DesaturateColor32(wireColor, desat); // DC_DESATURATE
                     float z = 0.0f;
                     for (int32 v = 0; v < *vertCnt - 1; v++) {
                         if (isBaked) {
                             z = shz_divf(65536.0f, (float)drawVert[v].z);
                         }
-                        Draw3DLine(z, drawVert[v + 0].x << 8, drawVert[v + 0].y << 8, drawVert[v + 1].x << 8, drawVert[v + 1].y << 8, drawVert[0].color,
+                        Draw3DLine(z, drawVert[v + 0].x << 8, drawVert[v + 0].y << 8, drawVert[v + 1].x << 8, drawVert[v + 1].y << 8, wireColor,
                             entity->alpha, entity->inkEffect, false);
                     }
                     if (isBaked) {
                         z = shz_divf(65536.0f, (float)drawVert[0].z);
                     }
-                    Draw3DLine(z, drawVert[0].x << 8, drawVert[0].y << 8, drawVert[*vertCnt - 1].x << 8, drawVert[*vertCnt - 1].y << 8, drawVert[0].color,
+                    Draw3DLine(z, drawVert[0].x << 8, drawVert[0].y << 8, drawVert[*vertCnt - 1].x << 8, drawVert[*vertCnt - 1].y << 8, wireColor,
                         entity->alpha, entity->inkEffect, false);
                     vertCnt++;
                 }
@@ -2016,7 +2021,9 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             vert3DPos[v].z = shz_divf(65536.0f, (float)drawVert[v].z);
                         }
                     }
-                    Draw3DFace(vert3DPos, *vertCnt, (drawVert->color >> 16) & 0xFF, (drawVert->color >> 8) & 0xFF, (drawVert->color >> 0) & 0xFF,
+                    uint32 faceColor = drawVert->color;
+                    if (desat > 0) faceColor = DesaturateColor32(faceColor, desat); // DC_DESATURATE
+                    Draw3DFace(vert3DPos, *vertCnt, (faceColor >> 16) & 0xFF, (faceColor >> 8) & 0xFF, (faceColor >> 0) & 0xFF,
                         entity->alpha, entity->inkEffect);
                     vertCnt++;
                 }
@@ -2053,6 +2060,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
 
                         color = (r << 16) | (g << 8) | b;
                     }
+                    if (desat > 0) color = DesaturateColor32(color, desat); // DC_DESATURATE
                     float z = 0.0f;
                     for (int32 v = 0; v < vertCount - 1; v++) {
                         if (isBaked) {
@@ -2078,14 +2086,15 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             float rx2 = ((float)region->x2 - (float)currentScreen->position.x) * 65536.0f;
                             float ry2 = ((float)region->y2 - (float)currentScreen->position.y) * 65536.0f;
                             if (testX >= rx1 && testX < rx2 && testY >= ry1 && testY < ry2) {
+                                uint32 silColor = (desat > 0) ? 0x282C28u : 0x100068u; // DC_DESATURATE
                                 for (int32 v = 0; v < vertCount - 1; v++) {
                                     float zs = isBaked ? shz_divf(65536.0f, (float)drawVert[v].z) + 0.01f : 0.01f;
                                     Draw3DLine(zs, drawVert[v + 0].x << 8, drawVert[v + 0].y << 8, drawVert[v + 1].x << 8, drawVert[v + 1].y << 8,
-                                               0x100068, 0xFF, INK_NONE, false);
+                                               silColor, 0xFF, INK_NONE, false);
                                 }
                                 float zs = isBaked ? shz_divf(65536.0f, (float)drawVert[vertCount - 1].z) + 0.01f : 0.01f;
                                 Draw3DLine(zs, drawVert[vertCount - 1].x << 8, drawVert[vertCount - 1].y << 8, drawVert[0].x << 8, drawVert[0].y << 8,
-                                           0x100068, 0xFF, INK_NONE, false);
+                                           silColor, 0xFF, INK_NONE, false);
                                 break;
                             }
                         }
@@ -2131,6 +2140,10 @@ void RSDK::Draw3DScene(uint16 sceneID)
                         if (g > 255) g = 255;
                         if (b > 255) b = 255;
 
+                        if (desat > 0) { // DC_DESATURATE
+                            uint32 dc = DesaturateColor32((r << 16) | (g << 8) | b, desat);
+                            r = (dc >> 16) & 0xFF; g = (dc >> 8) & 0xFF; b = dc & 0xFF;
+                        }
                         Draw3DFace(vert3DPos, vertCount, r, g, b, entity->alpha, entity->inkEffect);
                     }
                 }
@@ -2178,6 +2191,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             if (b > 255) b = 255;
                         }
                         vertClrs[v] = (r << 16) | (g << 8) | b;
+                        if (desat > 0) vertClrs[v] = DesaturateColor32(vertClrs[v], desat); // DC_DESATURATE
                     }
                     if (!degenerate) {
                         Draw3DBlendedFace(vert3DPos, vertClrs, vertCount, entity->alpha, entity->inkEffect);
@@ -2192,9 +2206,10 @@ void RSDK::Draw3DScene(uint16 sceneID)
                                 float ry2 = ((float)region->y2 - (float)currentScreen->position.y) * 65536.0f;
                                 if (vert3DPos[0].x >= rx1 && vert3DPos[0].x < rx2
                                     && vert3DPos[0].y >= ry1 && vert3DPos[0].y < ry2) {
+                                    uint32 silColor = (desat > 0) ? 0x282C28u : 0x100068u; // DC_DESATURATE
                                     for (int32 v = 0; v < vertCount; ++v) {
                                         vert3DPos[v].z += 0.01f;
-                                        vertClrs[v] = 0x100068;
+                                        vertClrs[v] = silColor;
                                     }
                                     Draw3DBlendedFace(vert3DPos, vertClrs, vertCount, 0xFF, INK_NONE);
                                     break;
@@ -2223,17 +2238,19 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             vertPos[v].x = currentScreen->center.x + (drawVert[v].x << 8) * rvz;
                             vertPos[v].y = currentScreen->center.y - (drawVert[v].y << 8) * rvz;
                         }
+                        uint32 wireColor = drawVert[0].color;
+                        if (desat > 0) wireColor = DesaturateColor32(wireColor, desat); // DC_DESATURATE
                         for (v = 0; v < vertCount - 1; v++) {
                             if (isBaked) {
                                 z = shz_divf(65536.0f, (float)drawVert[v].z);
                             }
-                            Draw3DLine(z, vertPos[v + 0].x, vertPos[v + 0].y, vertPos[v + 1].x, vertPos[v + 1].y, drawVert[0].color, entity->alpha,
+                            Draw3DLine(z, vertPos[v + 0].x, vertPos[v + 0].y, vertPos[v + 1].x, vertPos[v + 1].y, wireColor, entity->alpha,
                                 entity->inkEffect, true);
                         }
                         if (isBaked) {
                             z = shz_divf(65536.0f, (float)drawVert[0].z);
                         }
-                        Draw3DLine(z, vertPos[0].x, vertPos[0].y, vertPos[vertCount - 1].x, vertPos[vertCount - 1].y, drawVert[0].color, entity->alpha,
+                        Draw3DLine(z, vertPos[0].x, vertPos[0].y, vertPos[vertCount - 1].x, vertPos[vertCount - 1].y, wireColor, entity->alpha,
                             entity->inkEffect, true);
                     }
 
@@ -2265,8 +2282,10 @@ void RSDK::Draw3DScene(uint16 sceneID)
                                 vert3DPos[v].z = shz_divf(65536.0f, (float)drawVert[v].z);
                             }
                         }
-                        Draw3DFace(vert3DPos, vertCount, (drawVert[0].color >> 16) & 0xFF, (drawVert[0].color >> 8) & 0xFF,
-                            (drawVert[0].color >> 0) & 0xFF, entity->alpha, entity->inkEffect);
+                        uint32 faceColor = drawVert[0].color;
+                        if (desat > 0) faceColor = DesaturateColor32(faceColor, desat); // DC_DESATURATE
+                        Draw3DFace(vert3DPos, vertCount, (faceColor >> 16) & 0xFF, (faceColor >> 8) & 0xFF,
+                            (faceColor >> 0) & 0xFF, entity->alpha, entity->inkEffect);
                     }
                 }
                 break;
@@ -2313,6 +2332,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
 
                             color = (r << 16) | (g << 8) | (b << 0);
                         }
+                        if (desat > 0) color = DesaturateColor32(color, desat); // DC_DESATURATE
                         float z = 0.0f;
                         for (v = 0; v < vertCount - 1; v++) {
                             z = shz_divf(65536.0f, (float)drawVert[v].z);
@@ -2371,6 +2391,10 @@ void RSDK::Draw3DScene(uint16 sceneID)
                             if (r > 255) r = 255;
                             if (g > 255) g = 255;
                             if (b > 255) b = 255;
+                        }
+                        if (desat > 0) { // DC_DESATURATE
+                            uint32 dc = DesaturateColor32((r << 16) | (g << 8) | b, desat);
+                            r = (dc >> 16) & 0xFF; g = (dc >> 8) & 0xFF; b = dc & 0xFF;
                         }
                         Draw3DFace(vert3DPos, vertCount, r, g, b, entity->alpha, entity->inkEffect);
                     }
@@ -2435,6 +2459,7 @@ void RSDK::Draw3DScene(uint16 sceneID)
                                 color = (r << 16) | (g << 8) | b;
                             }
                             vertClrs[v] = color;
+                            if (desat > 0) vertClrs[v] = DesaturateColor32(vertClrs[v], desat); // DC_DESATURATE
                         }
                         Draw3DBlendedFace(vert3DPos, vertClrs, vertCount, entity->alpha, entity->inkEffect);
                     }

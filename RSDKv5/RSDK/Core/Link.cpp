@@ -417,6 +417,7 @@ void RSDK::SetupFunctionTables()
     ADD_RSDK_FUNCTION(FunctionTable_FreeSpriteAnimation, FreeSpriteAnimation);
     ADD_RSDK_FUNCTION(FunctionTable_SetSilhouetteRegion, SetSilhouetteRegion); // DC_SILHOUETTE
     ADD_RSDK_FUNCTION(FunctionTable_ClearSilhouetteRegions, ClearSilhouetteRegions); // DC_SILHOUETTE
+    ADD_RSDK_FUNCTION(FunctionTable_SetPaletteDesaturation, SetPaletteDesaturation); // DC_DESATURATE
 #endif
     ADD_RSDK_FUNCTION(FunctionTable_CreateSpriteAnimation, CreateSpriteAnimation);
     ADD_RSDK_FUNCTION(FunctionTable_SetSpriteAnimation, SetSpriteAnimation);

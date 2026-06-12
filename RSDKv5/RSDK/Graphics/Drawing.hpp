@@ -301,6 +301,23 @@ extern int32 silhouetteRegionCount;
 extern SilhouetteRegion silhouetteRegions[MAX_SILHOUETTE_REGIONS];
 void SetSilhouetteRegion(int32 x1, int32 y1, int32 x2, int32 y2, int32 drawGroup);
 void ClearSilhouetteRegions();
+
+void SetPaletteDesaturation(uint8 amount); // DC_DESATURATE
+
+// DC_DESATURATE: desaturate a 0x00RRGGBB color, same formula as palette desaturation
+inline uint32 DesaturateColor32(uint32 color, uint8 amount) {
+    uint32 r = (color >> 16) & 0xFF;
+    uint32 g = (color >> 8) & 0xFF;
+    uint32 b = color & 0xFF;
+    uint32 brightness = ((r + g + b) << 8) / 680;
+    if (brightness > 0xFF)
+        brightness = 0xFF;
+    uint32 inv = 256 - amount;
+    r          = (r * inv + brightness * amount) >> 8;
+    g          = (g * inv + brightness * amount) >> 8;
+    b          = (b * inv + brightness * amount) >> 8;
+    return (r << 16) | (g << 8) | b;
+}
 #endif
 
 extern float dpi;

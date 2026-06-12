@@ -348,6 +348,8 @@ void RSDK::InitObjects()
 }
 void RSDK::ProcessObjects()
 {
+    RenderDevice::SetPaletteDesaturation(0); // DC_DESATURATE: reset each frame; PauseMenu re-sets during Update if active
+
     for (int32 i = 0; i < DRAWGROUP_COUNT; ++i) drawGroups[i].entityCount = 0;
 
     for (int32 o = 0; o < sceneInfo.classCount; ++o) {
@@ -578,6 +580,8 @@ void RSDK::ProcessPausedObjects()
 }
 void RSDK::ProcessFrozenObjects()
 {
+    RenderDevice::SetPaletteDesaturation(0); // DC_DESATURATE: reset each frame; PauseMenu re-sets during Update if active
+
     for (int32 i = 0; i < DRAWGROUP_COUNT; ++i) drawGroups[i].entityCount = 0;
 
     for (int32 o = 0; o < sceneInfo.classCount; ++o) {

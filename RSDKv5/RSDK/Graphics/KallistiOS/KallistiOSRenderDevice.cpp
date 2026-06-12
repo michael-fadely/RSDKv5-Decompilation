@@ -80,6 +80,8 @@ pvr_blend_mode_t lastStripDstBlend = PVR_BLEND_ZERO;
 
 bool trExhausted = false;
 
+uint8 pauseDesaturation = 0; // DC_DESATURATE
+
 // PVR header/vertex buffer for TR list DMA rendering
 #define TR_VERTBUF_SIZE (256 * 1024)
 static uint8_t __attribute__((aligned(32))) trDmaBuffer[TR_VERTBUF_SIZE];
@@ -719,6 +721,15 @@ uint32 RenderDevice::GameToPvrPaletteBankIndex(uint32 gamePaletteBankIndex) {
     return pvrPaletteBankIndex;
 }
 
+// DC_DESATURATE: desaturate an RGB565 palette entry
+static inline uint16 DesaturateRGB565(uint16 color565, uint8 amount) {
+    uint32 r = (0x20F * (color565 >> 11) + 23) >> 6;
+    uint32 g = (0x103 * ((color565 >> 5) & 0x3F) + 33) >> 6;
+    uint32 b = (0x20F * (color565 & 0x1F) + 23) >> 6;
+    uint32 dc = DesaturateColor32((r << 16) | (g << 8) | b, amount);
+    return (uint16)((((dc >> 16) & 0xFF) >> 3) << 11) | ((((dc >> 8) & 0xFF) >> 2) << 5) | (((dc) & 0xFF) >> 3);
+}
+
 // static
 void RenderDevice::PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPaletteBankIndex) {
     const uint32 pvrPaletteBankOffset = CalculatePvrPaletteBankOffset(pvrPaletteBankIndex);
@@ -732,19 +743,38 @@ void RenderDevice::PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPal
     pvr_set_pal_format(PVR_PAL_ARGB1555);
 
     // first color (0) is always completely translucent
-    pvr_set_pal_entry(pvrPaletteBankOffset, rgb565toargb1555(activePalette[0]));
+    uint16 color0 = activePalette[0];
+    if (pauseDesaturation > 0) // DC_DESATURATE
+        color0 = DesaturateRGB565(color0, pauseDesaturation);
+    pvr_set_pal_entry(pvrPaletteBankOffset, rgb565toargb1555(color0));
 
     // now set every other color with the opaque bit set
     for (int i = 1; i < PALETTE_BANK_SIZE; ++i) {
-        const uint16 color16 = rgb565toargb1555(activePalette[i]) | 0x8000;
-        // INK_MASK green, set it to fully transparent
-        if (((((color16 >> 10) & 0x1f) == 0) && ((color16 >> 5) & 0x1f) > 0x1d) && (((color16) & 0x1f) == 0)) {
+        uint16 entry = activePalette[i];
+        // INK_MASK green check on original color before desaturation // DC_DESATURATE
+        const uint16 origColor16 = rgb565toargb1555(entry) | 0x8000;
+        if (((((origColor16 >> 10) & 0x1f) == 0) && ((origColor16 >> 5) & 0x1f) > 0x1d) && (((origColor16) & 0x1f) == 0)) {
             pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32) 0);
         } else {
-            pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32) color16);
+            if (pauseDesaturation > 0) // DC_DESATURATE
+                entry = DesaturateRGB565(entry, pauseDesaturation);
+            pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32)(rgb565toargb1555(entry) | 0x8000));
         }
     }
 }
+
+// DC_DESATURATE: set desaturation level; palettes re-upload naturally during scene draws
+// static
+void RenderDevice::SetPaletteDesaturation(uint8 amount) {
+    if (amount != pauseDesaturation) {
+        pauseDesaturation = amount;
+        PaletteFlags::MarkAllDirty();
+    }
+}
+
+// DC_DESATURATE
+// static
+uint8 RenderDevice::GetPaletteDesaturation() { return pauseDesaturation; }
 
 // static
 bool RenderDevice::SupportedInk(int inkEffect)
@@ -840,7 +870,7 @@ bool RenderDevice::PreparePrimitive(int primitiveType,
         lastPrimitiveType = static_cast<PrimitiveTypes>(primitiveType);
         PaletteFlags::SetBank(gamePaletteBankIndex);
         // top bit set for special handling - pause menu tint
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastSrcBlend, &lastDstBlend);
+        RenderDevice::InkToBlendModes(inkEffect, &lastSrcBlend, &lastDstBlend);
         lastInkEffect = inkEffect;
         lastTexture = texture;
         return true;
@@ -1344,7 +1374,8 @@ void RenderDevice::DrawTexturedPolyPT(
     const float v1 = shz_divf_fsrra(sprY1, surface->height);
     // DC_SILHOUETTE: black base + purple offset = solid purple; normal PT = white
     const uint32 argb  = (lastInkEffect == INK_UNMASKED) ? 0xFF010101u : 0xFFFFFFFFu;
-    const uint32 oargb = (lastInkEffect == INK_UNMASKED) ? 0xFF100068u : 0x00000000u;
+    // DC_DESATURATE: use gray (40,44,40) instead of purple when desaturated
+    const uint32 oargb = (lastInkEffect == INK_UNMASKED) ? (pauseDesaturation > 0 ? 0xFF282C28u : 0xFF100068u) : 0x00000000u;
 
     // DC_SILHOUETTE: prevent unrelated polys from being impacted by the effect when headers would otherwise match
     if (lastInkEffect == INK_UNMASKED)
@@ -2122,18 +2153,6 @@ void RenderDevice::DrawColoredPolyTR(
     const float y1 = y0 + static_cast<float>(height) * pixelScaleY;
     const float z  = GetDepth();
 
-    // distinguish between INVERT tint and alpha tint
-    // when it is an alpha tint and not an invert tint,
-    // we set high bit of inkEffect word to 1
-    // this is where we check for that
-    // this is an otherwise invalid `INK_` value
-    if (lastInkEffect & 0x80000000) {
-        // use a semi-transparent black for the poly
-        color = 0x7F000000;
-        // and force the next draw to reset header
-        lastInkEffect = 0xFFFFFFFF;
-    }
-
     if (lastInkEffect != INK_TINT) {
         // top left
         pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
@@ -2221,6 +2240,126 @@ void RenderDevice::DrawColoredPolyTR(
     }
 }
 
+void RenderDevice::DrawTintedFillScreen(int32 alphaR, int32 alphaG, int32 alphaB, uint32 color) {
+    lastPrimitiveWasConsumed = true;
+
+    // Invalidate cached state so next draw re-emits its header
+    lastPrimitiveType       = PrimitiveTypes_None;
+
+    if (IsTrExhausted())
+        return;
+
+    const float x0 = 0.0f;
+    const float y0 = 0.0f;
+    const float x1 = static_cast<float>(currentScreen->size.x) * pixelScaleX;
+    const float y1 = static_cast<float>(currentScreen->size.y) * pixelScaleY;
+    const float z  = GetDepth();
+
+    // Pass 1: darken framebuffer per-channel
+    // DESTCOLOR * src + ZERO * dst = src_color * framebuffer per channel
+    // vertex color = (1-alphaR, 1-alphaG, 1-alphaB) so each channel scales independently
+    pvr_poly_cxt_t context;
+    pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+    context.gen.alpha   = 1;
+    context.gen.culling = PVR_CULLING_NONE;
+    context.blend.src   = PVR_BLEND_DESTCOLOR;
+    context.blend.dst   = PVR_BLEND_ZERO;
+
+    pvr_poly_hdr_t *hdr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+    if (hdr == nullptr)
+        return;
+    pvr_poly_compile(hdr, &context);
+    safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+
+    uint32 invColor = 0xFF000000 | ((255 - alphaR) << 16) | ((255 - alphaG) << 8) | (255 - alphaB);
+
+    pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = x0;
+    vert->y = y0;
+    vert->z = z;
+    vert->argb = invColor;
+    vert++;
+
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = x1;
+    vert->y = y0;
+    vert->z = z;
+    vert->argb = invColor;
+    vert++;
+
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = x0;
+    vert->y = y1;
+    vert->z = z;
+    vert->argb = invColor;
+    vert++;
+
+    vert->flags = PVR_CMD_VERTEX_EOL;
+    vert->x = x1;
+    vert->y = y1;
+    vert->z = z;
+    vert->argb = invColor;
+
+    safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+
+    // Pass 2: add pre-multiplied fill color (skip when fill is black)
+    if (color != 0) {
+        if (IsTrExhausted())
+            return;
+
+        pvr_poly_cxt_t context;
+        pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+        context.gen.alpha   = 1;
+        context.gen.culling = PVR_CULLING_NONE;
+        context.blend.src   = PVR_BLEND_ONE;
+        context.blend.dst   = PVR_BLEND_ONE;
+
+        pvr_poly_hdr_t *hdr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        if (hdr == nullptr)
+            return;
+        pvr_poly_compile(hdr, &context);
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+
+        uint8 colorR    = (color >> 16) & 0xFF;
+        uint8 colorG    = (color >> 8) & 0xFF;
+        uint8 colorB    = color & 0xFF;
+        uint32 tintColor = 0xFF000000 | (((colorR * alphaR) / 255) << 16) | (((colorG * alphaG) / 255) << 8) | ((colorB * alphaB) / 255);
+
+        pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+
+        vert->flags = PVR_CMD_VERTEX;
+        vert->x = x0;
+        vert->y = y0;
+        vert->z = z;
+        vert->argb = tintColor;
+        vert++;
+
+        vert->flags = PVR_CMD_VERTEX;
+        vert->x = x1;
+        vert->y = y0;
+        vert->z = z;
+        vert->argb = tintColor;
+        vert++;
+
+        vert->flags = PVR_CMD_VERTEX;
+        vert->x = x0;
+        vert->y = y1;
+        vert->z = z;
+        vert->argb = tintColor;
+        vert++;
+
+        vert->flags = PVR_CMD_VERTEX_EOL;
+        vert->x = x1;
+        vert->y = y1;
+        vert->z = z;
+        vert->argb = tintColor;
+
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+    }
+}
+
 // static
 void RenderDevice::SetLinePolyThickness(int thickness) {
     currentLineThickness = (float)thickness / (float)((640 / displayWidth[0]) * 2.0f);
@@ -2235,7 +2374,7 @@ void RenderDevice::PrepareLinePolyPT(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastLineSrcBlend, &lastLineDstBlend);
+        RenderDevice::InkToBlendModes(inkEffect, &lastLineSrcBlend, &lastLineDstBlend);
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
@@ -2261,7 +2400,7 @@ void RenderDevice::PrepareLinePolyTR(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastLineSrcBlend, &lastLineDstBlend);
+        RenderDevice::InkToBlendModes(inkEffect, &lastLineSrcBlend, &lastLineDstBlend);
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
@@ -2409,7 +2548,7 @@ void RenderDevice::PrepareFacePolyPT(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastFaceSrcBlend, &lastFaceDstBlend);
+        RenderDevice::InkToBlendModes(inkEffect, &lastFaceSrcBlend, &lastFaceDstBlend);
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
@@ -2437,7 +2576,7 @@ void RenderDevice::PrepareFacePolyTR(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastFaceSrcBlend, &lastFaceDstBlend);
+        RenderDevice::InkToBlendModes(inkEffect, &lastFaceSrcBlend, &lastFaceDstBlend);
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
@@ -2743,7 +2882,7 @@ void RenderDevice::Prepare3DStripPT(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF),
+        RenderDevice::InkToBlendModes(inkEffect,
                                     &lastStripSrcBlend, &lastStripDstBlend);
 
         pvr_poly_cxt_t context;
@@ -2788,7 +2927,7 @@ void RenderDevice::Prepare3DStripTR(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF),
+        RenderDevice::InkToBlendModes(inkEffect,
                                     &lastStripSrcBlend, &lastStripDstBlend);
 
         pvr_poly_cxt_t context;
