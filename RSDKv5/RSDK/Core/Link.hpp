@@ -200,6 +200,10 @@ enum FunctionTableIDs {
     FunctionTable_DrawBlendedFace,
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
     FunctionTable_Draw3DSprite,
+    FunctionTable_GetDepth,
+    FunctionTable_SetDepth,
+    FunctionTable_DrawCircleClipped,
+    FunctionTable_DrawCircleOutlineClipped,
 #endif
     FunctionTable_DrawSprite,
     FunctionTable_DrawDeformedSprite,
@@ -222,6 +226,12 @@ enum FunctionTableIDs {
     FunctionTable_AddMeshFrameToScene,
     FunctionTable_Draw3DScene,
     FunctionTable_LoadSpriteAnimation,
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    FunctionTable_FreeSpriteAnimation,
+    FunctionTable_SetSilhouetteRegion, // DC_SILHOUETTE
+    FunctionTable_ClearSilhouetteRegions, // DC_SILHOUETTE
+    FunctionTable_SetPaletteDesaturation, // DC_DESATURATE
+#endif
     FunctionTable_CreateSpriteAnimation,
     FunctionTable_SetSpriteAnimation,
     FunctionTable_EditSpriteAnimation,

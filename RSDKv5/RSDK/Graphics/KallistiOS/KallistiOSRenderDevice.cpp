@@ -3,7 +3,6 @@
 
 #include <RSDK/Core/Stub.hpp>
 #include <RSDK/Core/Math.hpp>
-
 #include <sh4zam/shz_sh4zam.h>
 
 struct KOSTexture
@@ -28,6 +27,8 @@ static float pixelScaleY = 1.0f;
 // DCFIXME: really bad place for this
 struct vec2f { float x; float y; };
 
+uint8 lastFlashGigaAlpha = 0;
+
 namespace {
 enum PrimitiveTypes {
     PrimitiveTypes_None,
@@ -41,6 +42,7 @@ enum PrimitiveTypes {
 
     PrimitiveTypes_TexturedQuadTR,
     PrimitiveTypes_TexturedPolyTR,
+    PrimitiveTypes_TexturedPolyTREX,
     PrimitiveTypes_ColoredPolyTR,
     PrimitiveTypes_FaceTR,
     PrimitiveTypes_LineTR,
@@ -68,17 +70,19 @@ int lastFaceInkEffect = -1;
 PrimitiveTypes lastPrimitiveType = PrimitiveTypes_None;
 bool lastPrimitiveWasConsumed = true;
 
-int lastSrcBlend = -1;
-int lastDstBlend = -1;
-int lastLineSrcBlend = -1;
-int lastLineDstBlend = -1;
-int lastFaceSrcBlend = -1;
-int lastFaceDstBlend = -1;
+pvr_blend_mode_t lastSrcBlend = PVR_BLEND_ZERO;
+pvr_blend_mode_t lastDstBlend = PVR_BLEND_ZERO;
+pvr_blend_mode_t lastLineSrcBlend = PVR_BLEND_ZERO;
+pvr_blend_mode_t lastLineDstBlend = PVR_BLEND_ZERO;
+pvr_blend_mode_t lastFaceSrcBlend = PVR_BLEND_ZERO;
+pvr_blend_mode_t lastFaceDstBlend = PVR_BLEND_ZERO;
 int lastStripInkEffect = -1;
-int lastStripSrcBlend = -1;
-int lastStripDstBlend = -1;
+pvr_blend_mode_t lastStripSrcBlend = PVR_BLEND_ZERO;
+pvr_blend_mode_t lastStripDstBlend = PVR_BLEND_ZERO;
 
 bool trExhausted = false;
+
+uint8 pauseDesaturation = 0; // DC_DESATURATE
 
 // PVR header/vertex buffer for TR list DMA rendering
 #define TR_VERTBUF_SIZE (256 * 1024)
@@ -94,7 +98,7 @@ bool IsTrExhausted(void) {
 // safe wrapper for vertbuf_tail, fails if a worst-case submission
 // would exceed usable buffer size
 // the actual pvr api call does not fail in this case
-void *safe_pvr_vertbuf_tail(int list) {
+void *safe_pvr_vertbuf_tail(pvr_list_t list) {
     // TR_VERTBUF_SIZE / 2 because DMA is double-buffered
     if ((vbPos + TR_WORSTCASE_SUBMISSION) > (TR_VERTBUF_SIZE / 2)) {
 #if RSDK_DEBUG
@@ -110,7 +114,7 @@ void *safe_pvr_vertbuf_tail(int list) {
 // safe wrapper for vertbuf_written, fails if the current submission
 // would exceed usable buffer size
 // avoid buffer overrun or possible assertion failure
-void safe_pvr_vertbuf_written(int list, size_t amount) {
+void safe_pvr_vertbuf_written(pvr_list_t list, size_t amount) {
     if (IsTrExhausted())
         return;
 
@@ -190,9 +194,9 @@ bool RenderDevice::Init()
 
         // vertex buffer size
         // 512 KB is the default used by pvr_init_defaults().
-        // we have now given it ~1.1 mb.
+        // we have now given it 768 kb.
         // might need adjusting in the future.
-        1152 * 1024,
+        768 * 1024,
 
         // dma enabled? (yes)
         1,
@@ -618,6 +622,9 @@ void RenderDevice::ShowCursor(bool)
 // static
 void RenderDevice::BeginScene() {
 #if defined(KOS_HARDWARE_RENDERER)
+    uint32_t cfg = PVR_GET(PVR_FB_CFG_2);
+    cfg &= ~PM_DITHER_BIT;
+    PVR_SET(PVR_FB_CFG_2, cfg);
     SetDepth(1.0f);
     SetLinePolyThickness(2);
     exceededPalettes = false;
@@ -630,6 +637,15 @@ void RenderDevice::BeginScene() {
 
     pvr_scene_begin();
     pvr_set_bg_color(0.0f, 0.0f, 0.0f);
+
+    // Upload all dirty palettes before any draw calls (PVR deferred rendering —
+    // mid-frame palette writes cause glitches since hardware reads palette at render time)
+    for (uint32 bank = 0; bank < 4; ++bank) {
+        if (PaletteFlags::GetDirtyNoCheck(bank)) {
+            PopulatePvrPalette(bank, bank);
+            PaletteFlags::ClearDirtyNoCheck(bank);
+        }
+    }
 
     // direct render to punch-through list anything that doesn't need to blend
     if (pvr_list_begin(PVR_LIST_PT_POLY) == -1) {
@@ -707,6 +723,15 @@ uint32 RenderDevice::GameToPvrPaletteBankIndex(uint32 gamePaletteBankIndex) {
     return pvrPaletteBankIndex;
 }
 
+// DC_DESATURATE: desaturate an RGB565 palette entry
+static inline uint16 DesaturateRGB565(uint16 color565, uint8 amount) {
+    uint32 r = (0x20F * (color565 >> 11) + 23) >> 6;
+    uint32 g = (0x103 * ((color565 >> 5) & 0x3F) + 33) >> 6;
+    uint32 b = (0x20F * (color565 & 0x1F) + 23) >> 6;
+    uint32 dc = DesaturateColor32((r << 16) | (g << 8) | b, amount);
+    return (uint16)((((dc >> 16) & 0xFF) >> 3) << 11) | ((((dc >> 8) & 0xFF) >> 2) << 5) | (((dc) & 0xFF) >> 3);
+}
+
 // static
 void RenderDevice::PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPaletteBankIndex) {
     const uint32 pvrPaletteBankOffset = CalculatePvrPaletteBankOffset(pvrPaletteBankIndex);
@@ -720,19 +745,38 @@ void RenderDevice::PopulatePvrPalette(uint32 gamePaletteBankIndex, uint32 pvrPal
     pvr_set_pal_format(PVR_PAL_ARGB1555);
 
     // first color (0) is always completely translucent
-    pvr_set_pal_entry(pvrPaletteBankOffset, rgb565toargb1555(activePalette[0]));
+    uint16 color0 = activePalette[0];
+    if (pauseDesaturation > 0) // DC_DESATURATE
+        color0 = DesaturateRGB565(color0, pauseDesaturation);
+    pvr_set_pal_entry(pvrPaletteBankOffset, rgb565toargb1555(color0));
 
     // now set every other color with the opaque bit set
     for (int i = 1; i < PALETTE_BANK_SIZE; ++i) {
-        const uint16 color16 = rgb565toargb1555(activePalette[i]) | 0x8000;
-        // INK_MASK green, set it to fully transparent
-        if (((((color16 >> 10) & 0x1f) == 0) && ((color16 >> 5) & 0x1f) > 0x1d) && (((color16) & 0x1f) == 0)) {
+        uint16 entry = activePalette[i];
+        // INK_MASK green check on original color before desaturation // DC_DESATURATE
+        const uint16 origColor16 = rgb565toargb1555(entry) | 0x8000;
+        if (((((origColor16 >> 10) & 0x1f) == 0) && ((origColor16 >> 5) & 0x1f) > 0x1d) && (((origColor16) & 0x1f) == 0)) {
             pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32) 0);
         } else {
-            pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32) color16);
+            if (pauseDesaturation > 0) // DC_DESATURATE
+                entry = DesaturateRGB565(entry, pauseDesaturation);
+            pvr_set_pal_entry(pvrPaletteBankOffset + i, (uint32)(rgb565toargb1555(entry) | 0x8000));
         }
     }
 }
+
+// DC_DESATURATE: set desaturation level; palettes re-upload naturally during scene draws
+// static
+void RenderDevice::SetPaletteDesaturation(uint8 amount) {
+    if (amount != pauseDesaturation) {
+        pauseDesaturation = amount;
+        PaletteFlags::MarkAllDirty();
+    }
+}
+
+// DC_DESATURATE
+// static
+uint8 RenderDevice::GetPaletteDesaturation() { return pauseDesaturation; }
 
 // static
 bool RenderDevice::SupportedInk(int inkEffect)
@@ -760,7 +804,13 @@ bool RenderDevice::SupportedInk(int inkEffect)
             return false;
 
         case INK_UNMASKED:
-            return false;
+            return true; // DC_SILHOUETTE
+
+        case INK_FLASH:
+            return true;
+
+        case INK_FLASH_GIGA:
+            return true;
 
         default:
             return false;
@@ -768,7 +818,7 @@ bool RenderDevice::SupportedInk(int inkEffect)
 }
 
 // static
-bool RenderDevice::InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
+void RenderDevice::InkToBlendModes(int inkEffect, pvr_blend_mode_t* srcBlend, pvr_blend_mode_t* dstBlend)
 {
     if (srcBlend) {
         *srcBlend = PVR_BLEND_SRCALPHA;
@@ -780,38 +830,34 @@ bool RenderDevice::InkToBlendModes(int inkEffect, int* srcBlend, int* dstBlend)
 
     switch (inkEffect) {
         case INK_NONE:
-            return true;
+            return;
 
         case INK_BLEND:
-            return true;
+            return;
 
         case INK_ALPHA:
-            return true;
+            return;
 
         case INK_ADD:
             if (dstBlend) {
                 *dstBlend = PVR_BLEND_ONE;
             }
-
-            return true;
+            return;
 
         case INK_SUB:
-            return true;
+            return;
 
         case INK_TINT:
-            return true;
+            return;
 
         case INK_MASKED:
-            //printf("[pvr] WARNING: unsupported ink effect INK_MASKED; skipping sprite\n");
-            return false;
+            return;
 
         case INK_UNMASKED:
-            //printf("[pvr] WARNING: unsupported ink effect INK_UNMASKED; skipping sprite\n");
-            return false;
+            return;
 
         default:
-            printf("[pvr] WARNING: unsupported ink effect %d; skipping sprite\n", inkEffect);
-            return false;
+            return;
     }
 }
 
@@ -821,12 +867,6 @@ bool RenderDevice::PreparePrimitive(int primitiveType,
                                     uint32 pvrPaletteBankIndex,
                                     int inkEffect,
                                     pvr_ptr_t texture) {
-    if (PaletteFlags::GetDirty(gamePaletteBankIndex)
-        || pvrPaletteBankIndex != gamePaletteBankIndex) {
-        PopulatePvrPalette(gamePaletteBankIndex, pvrPaletteBankIndex);
-        PaletteFlags::ClearDirty(gamePaletteBankIndex);
-    }
-
     if (lastPrimitiveType != primitiveType
         || !PaletteFlags::BankIsSame(gamePaletteBankIndex)
         || inkEffect != lastInkEffect
@@ -834,7 +874,7 @@ bool RenderDevice::PreparePrimitive(int primitiveType,
         lastPrimitiveType = static_cast<PrimitiveTypes>(primitiveType);
         PaletteFlags::SetBank(gamePaletteBankIndex);
         // top bit set for special handling - pause menu tint
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastSrcBlend, &lastDstBlend);
+        RenderDevice::InkToBlendModes(inkEffect, &lastSrcBlend, &lastDstBlend);
         lastInkEffect = inkEffect;
         lastTexture = texture;
         return true;
@@ -907,11 +947,10 @@ void RenderDevice::PrepareTexturedQuadTR(int32 y, const GFXSurface* surface) {
         context.gen.culling = PVR_CULLING_NONE;
 
         pvr_sprite_hdr_t *hdr_ptr = (pvr_sprite_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        if (hdr_ptr == nullptr) {
-            return;
+        if (hdr_ptr != nullptr) {
+            pvr_sprite_compile(hdr_ptr, &context);
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_sprite_hdr_t));
         }
-        pvr_sprite_compile(hdr_ptr, &context);
-        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_sprite_hdr_t));
     }
 }
 
@@ -1130,6 +1169,9 @@ void RenderDevice::PrepareTexturedPolyPT(int32 y, int inkEffect, const GFXSurfac
         context.blend.src = lastSrcBlend;
         context.blend.dst = lastDstBlend;
 
+        if (inkEffect == INK_UNMASKED || inkEffect == INK_FLASH || inkEffect == INK_FLASH_GIGA)
+            context.gen.specular = 1;
+
         // Compile polygon header directly into SQ to avoid having to copy it.
         auto *header = reinterpret_cast<pvr_poly_hdr_t *>(pvr_dr_target(drState));
         pvr_poly_compile(header, &context);
@@ -1240,13 +1282,68 @@ void RenderDevice::PrepareTexturedPolyTR(int32 y, int inkEffect, const GFXSurfac
         context.blend.dst = lastDstBlend;
 
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        pvr_poly_compile(hdr_ptr, &context);
-        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
-
+        if (hdr_ptr != nullptr) {
+            pvr_poly_compile(hdr_ptr, &context);
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        }
         // this only gets used if we have a special effect to handle after making this header
         // in that case, we will have to build a new context and header
         // and we require the previously used index
         lastPvrPaletteBankIndex = pvrPaletteBankIndex;
+    }
+}
+
+// static
+void RenderDevice::PrepareTexturedPolyTREX(int32 y, int inkEffect, const GFXSurface *surface) {
+    const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
+    const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
+
+    if (PreparePrimitive(PrimitiveTypes_TexturedPolyTREX,
+                         gamePaletteBankIndex,
+                         pvrPaletteBankIndex,
+                         inkEffect,
+                         surface->texture)) {
+        if (!lastPrimitiveWasConsumed) {
+            printf("[pvr] [NG] LAST PRIMITIVE NOT CONSUMED BEFORE CALL TO %s\n", __FUNCTION__);
+        }
+
+        lastPrimitiveWasConsumed = false;
+
+        pvr_poly_cxt_t context;
+
+        if (surface->isARGB) {
+            pvr_poly_cxt_txr(
+                    &context,
+                    PVR_LIST_TR_POLY,
+                    PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_TWIDDLED,
+                    surface->width,
+                    surface->height,
+                    surface->texture,
+                    PVR_FILTER_NEAREST
+            );
+        } else {
+            pvr_poly_cxt_txr(
+                    &context,
+                    PVR_LIST_TR_POLY,
+                    PVR_TXRFMT_PAL8BPP | PVR_TXRFMT_8BPP_PAL(pvrPaletteBankIndex),
+                    surface->width,
+                    surface->height,
+                    surface->texture,
+                    PVR_FILTER_NEAREST
+            );
+        }
+
+        context.gen.specular = 1;
+        context.gen.alpha = 1;
+        context.gen.culling = PVR_CULLING_NONE;
+        context.blend.src = lastSrcBlend;
+        context.blend.dst = lastDstBlend;
+
+        pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        if (hdr_ptr != nullptr) {
+            pvr_poly_compile(hdr_ptr, &context);
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        }
     }
 }
 
@@ -1278,8 +1375,25 @@ void RenderDevice::DrawTexturedPolyPT(
     const float v0 = shz_divf_fsrra(sprY0, surface->height);
     const float u1 = shz_divf_fsrra(sprX1, surface->width);
     const float v1 = shz_divf_fsrra(sprY1, surface->height);
-    // alpha is irrelevant for PT
-    const uint32 argb = 0xFFFFFFFFu;
+    uint32 argb  = 0xFFFFFFFFu;
+    uint32 oargb = 0x00000000u;
+    if (lastInkEffect == INK_UNMASKED) {
+        argb  = 0xFF010101u;
+        oargb = pauseDesaturation > 0 ? 0xFF282C28u : 0xFF100068u;
+        lastInkEffect = 0xFFFFFFFF;
+    } else if (lastInkEffect == INK_FLASH) {
+        argb  = 0xFF010101u;
+        oargb = 0xFFE0E0E0u;
+        lastInkEffect = 0xFFFFFFFF;
+    } else if (lastInkEffect == INK_FLASH_GIGA) {
+        uint32 t    = lastFlashGigaAlpha;
+        uint32 invT = 255 - t;
+        argb  = 0xFF000000 | (invT << 16) | (invT << 8) | invT;
+        uint32 r = t * 0xF0 / 255;
+        uint32 b = t * 0x80 / 255;
+        oargb = 0xFF000000 | (r << 16) | (b);
+        lastInkEffect = 0xFFFFFFFF;
+    }
 
     /* Since we have to potentially modify the vertex stream later on to apply
        rotation to it, we're better off constructing it in RAM rather than
@@ -1292,7 +1406,8 @@ void RenderDevice::DrawTexturedPolyPT(
             .z = z,
             .u = u0,
             .v = v0,
-            .argb = argb
+            .argb = argb,
+            .oargb = oargb
         },
         {
             .flags = PVR_CMD_VERTEX,
@@ -1301,7 +1416,8 @@ void RenderDevice::DrawTexturedPolyPT(
             .z = z,
             .u = u1,
             .v = v0,
-            .argb = argb
+            .argb = argb,
+            .oargb = oargb
         },
         {
             .flags = PVR_CMD_VERTEX,
@@ -1310,7 +1426,8 @@ void RenderDevice::DrawTexturedPolyPT(
             .z = z,
             .u = u0,
             .v = v1,
-            .argb = argb
+            .argb = argb,
+            .oargb = oargb
         },
         {
             .flags = PVR_CMD_VERTEX_EOL,
@@ -1319,7 +1436,8 @@ void RenderDevice::DrawTexturedPolyPT(
             .z = z,
             .u = u1,
             .v = v1,
-            .argb = argb
+            .argb = argb,
+            .oargb = oargb
         }
     };
 
@@ -1513,6 +1631,70 @@ void RenderDevice::DrawFloorTexturedPolyPTEx(
     /* This is the routine called by `pvr_prim()` under-the-hood when
        the current list does not use DMA transfers and PVR DR mode is
        enabled. We can call this directly to shave off a few cycles. */
+    sq_fast_cpy(SQ_MASK_DEST(PVR_TA_INPUT), verts, 4);
+}
+
+// static
+void RenderDevice::DrawFloorTexturedPolyPTExUV(
+    const Vector4f& upperLeft, const Vector4f& upperRight,
+    const Vector4f& lowerLeft, const Vector4f& lowerRight,
+    float ulU, float ulV, float urU, float urV,
+    float llU, float llV, float lrU, float lrV,
+    const GFXSurface* surface, uint32 color, uint32 addcolor
+) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedPolyPTEX) {
+        printf("[pvr] [NG] ATTEMPTED TO DRAW PrepareTexturedPolyPTEX BEFORE PREPPING!\n");
+        return;
+    }
+
+    lastPrimitiveWasConsumed = true;
+
+    const float invW = shz_invf(surface->width);
+    const float invH = shz_invf(surface->height);
+
+    pvr_vertex_t verts[4] = {
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = upperLeft.x * pixelScaleX,
+            .y = upperLeft.y * pixelScaleY,
+            .z = upperLeft.z,
+            .u = ulU * invW,
+            .v = ulV * invH,
+            .argb = color,
+            .oargb = addcolor
+        },
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = upperRight.x * pixelScaleX,
+            .y = upperRight.y * pixelScaleY,
+            .z = upperRight.z,
+            .u = urU * invW,
+            .v = urV * invH,
+            .argb = color,
+            .oargb = addcolor
+        },
+        {
+            .flags = PVR_CMD_VERTEX,
+            .x = lowerLeft.x * pixelScaleX,
+            .y = lowerLeft.y * pixelScaleY,
+            .z = lowerLeft.z,
+            .u = llU * invW,
+            .v = llV * invH,
+            .argb = color,
+            .oargb = addcolor
+        },
+        {
+            .flags = PVR_CMD_VERTEX_EOL,
+            .x = lowerRight.x * pixelScaleX,
+            .y = lowerRight.y * pixelScaleY,
+            .z = lowerRight.z,
+            .u = lrU * invW,
+            .v = lrV * invH,
+            .argb = color,
+            .oargb = addcolor
+        }
+    };
+
     sq_fast_cpy(SQ_MASK_DEST(PVR_TA_INPUT), verts, 4);
 }
 
@@ -1777,6 +1959,74 @@ void RenderDevice::DrawTexturedPolyTR(
 }
 
 // static
+void RenderDevice::DrawFloorTexturedPolyTREx(
+    const Vector4f& upperLeft, const Vector4f& upperRight,
+    const Vector4f& lowerLeft, const Vector4f& lowerRight,
+    float sprX0, float sprX1,
+    float sprY0, float sprY1,
+    const GFXSurface* surface, uint32 color, uint32 addcolor
+) {
+    if (lastPrimitiveType != PrimitiveTypes_TexturedPolyTREX) {
+//        printf("[pvr] [NG] ATTEMPTED TO DRAW PrepareTexturedPolyTREX BEFORE PREPPING!\n");
+        return;
+    }
+
+    lastPrimitiveWasConsumed = true;
+
+    if (IsTrExhausted())
+        return;
+
+    const float u0 = shz_divf_fsrra(sprX0, surface->width);
+    const float v0 = shz_divf_fsrra(sprY0, surface->height);
+    const float u1 = shz_divf_fsrra(sprX1, surface->width);
+    const float v1 = shz_divf_fsrra(sprY1, surface->height);
+
+    pvr_vertex_t *verts = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY); 
+    verts[0] = (pvr_vertex_t){
+            .flags = PVR_CMD_VERTEX,
+            .x = upperLeft.x * pixelScaleX,
+            .y = upperLeft.y * pixelScaleY,
+            .z = upperLeft.z,
+            .u = u0,
+            .v = v0,
+            .argb = color,
+            .oargb = addcolor
+        };
+    verts[1] = (pvr_vertex_t){
+            .flags = PVR_CMD_VERTEX,
+            .x = upperRight.x * pixelScaleX,
+            .y = upperRight.y * pixelScaleY,
+            .z = upperRight.z,
+            .u = u1,
+            .v = v0,
+            .argb = color,
+            .oargb = addcolor
+        };
+    verts[2] = (pvr_vertex_t){
+            .flags = PVR_CMD_VERTEX,
+            .x = lowerLeft.x * pixelScaleX,
+            .y = lowerLeft.y * pixelScaleY,
+            .z = lowerLeft.z,
+            .u = u0,
+            .v = v1,
+            .argb = color,
+            .oargb = addcolor
+        };
+    verts[3] = (pvr_vertex_t){
+            .flags = PVR_CMD_VERTEX_EOL,
+            .x = lowerRight.x * pixelScaleX,
+            .y = lowerRight.y * pixelScaleY,
+            .z = lowerRight.z,
+            .u = u1,
+            .v = v1,
+            .argb = color,
+            .oargb = addcolor
+        };
+
+    safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+}
+
+// static
 void RenderDevice::PrepareColoredPolyPT(int32 y, int inkEffect) {
     const uint32 gamePaletteBankIndex = GetGamePaletteBankIndex(y);
     const uint32 pvrPaletteBankIndex = GameToPvrPaletteBankIndex(gamePaletteBankIndex);
@@ -1832,8 +2082,10 @@ void RenderDevice::PrepareColoredPolyTR(int32 y, int inkEffect) {
         context.blend.dst = lastDstBlend;
 
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        pvr_poly_compile(hdr_ptr, &context);
-        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        if (hdr_ptr != nullptr) {
+            pvr_poly_compile(hdr_ptr, &context);
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        }
     }
 }
 
@@ -1914,18 +2166,6 @@ void RenderDevice::DrawColoredPolyTR(
     const float x1 = x0 + static_cast<float>(width) * pixelScaleX;
     const float y1 = y0 + static_cast<float>(height) * pixelScaleY;
     const float z  = GetDepth();
-
-    // distinguish between INVERT tint and alpha tint
-    // when it is an alpha tint and not an invert tint,
-    // we set high bit of inkEffect word to 1
-    // this is where we check for that
-    // this is an otherwise invalid `INK_` value
-    if (lastInkEffect & 0x80000000) {
-        // use a semi-transparent black for the poly
-        color = 0x7F000000;
-        // and force the next draw to reset header
-        lastInkEffect = 0xFFFFFFFF;
-    }
 
     if (lastInkEffect != INK_TINT) {
         // top left
@@ -2014,6 +2254,126 @@ void RenderDevice::DrawColoredPolyTR(
     }
 }
 
+void RenderDevice::DrawTintedFillScreen(int32 alphaR, int32 alphaG, int32 alphaB, uint32 color) {
+    lastPrimitiveWasConsumed = true;
+
+    // Invalidate cached state so next draw re-emits its header
+    lastPrimitiveType       = PrimitiveTypes_None;
+
+    if (IsTrExhausted())
+        return;
+
+    const float x0 = 0.0f;
+    const float y0 = 0.0f;
+    const float x1 = static_cast<float>(currentScreen->size.x) * pixelScaleX;
+    const float y1 = static_cast<float>(currentScreen->size.y) * pixelScaleY;
+    const float z  = GetDepth();
+
+    // Pass 1: darken framebuffer per-channel
+    // DESTCOLOR * src + ZERO * dst = src_color * framebuffer per channel
+    // vertex color = (1-alphaR, 1-alphaG, 1-alphaB) so each channel scales independently
+    pvr_poly_cxt_t context;
+    pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+    context.gen.alpha   = 1;
+    context.gen.culling = PVR_CULLING_NONE;
+    context.blend.src   = PVR_BLEND_DESTCOLOR;
+    context.blend.dst   = PVR_BLEND_ZERO;
+
+    pvr_poly_hdr_t *hdr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+    if (hdr == nullptr)
+        return;
+    pvr_poly_compile(hdr, &context);
+    safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+
+    uint32 invColor = 0xFF000000 | ((255 - alphaR) << 16) | ((255 - alphaG) << 8) | (255 - alphaB);
+
+    pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = x0;
+    vert->y = y0;
+    vert->z = z;
+    vert->argb = invColor;
+    vert++;
+
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = x1;
+    vert->y = y0;
+    vert->z = z;
+    vert->argb = invColor;
+    vert++;
+
+    vert->flags = PVR_CMD_VERTEX;
+    vert->x = x0;
+    vert->y = y1;
+    vert->z = z;
+    vert->argb = invColor;
+    vert++;
+
+    vert->flags = PVR_CMD_VERTEX_EOL;
+    vert->x = x1;
+    vert->y = y1;
+    vert->z = z;
+    vert->argb = invColor;
+
+    safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+
+    // Pass 2: add pre-multiplied fill color (skip when fill is black)
+    if (color != 0) {
+        if (IsTrExhausted())
+            return;
+
+        pvr_poly_cxt_t context;
+        pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
+        context.gen.alpha   = 1;
+        context.gen.culling = PVR_CULLING_NONE;
+        context.blend.src   = PVR_BLEND_ONE;
+        context.blend.dst   = PVR_BLEND_ONE;
+
+        pvr_poly_hdr_t *hdr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+        if (hdr == nullptr)
+            return;
+        pvr_poly_compile(hdr, &context);
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+
+        uint8 colorR    = (color >> 16) & 0xFF;
+        uint8 colorG    = (color >> 8) & 0xFF;
+        uint8 colorB    = color & 0xFF;
+        uint32 tintColor = 0xFF000000 | (((colorR * alphaR) / 255) << 16) | (((colorG * alphaG) / 255) << 8) | ((colorB * alphaB) / 255);
+
+        pvr_vertex_t *vert = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
+
+        vert->flags = PVR_CMD_VERTEX;
+        vert->x = x0;
+        vert->y = y0;
+        vert->z = z;
+        vert->argb = tintColor;
+        vert++;
+
+        vert->flags = PVR_CMD_VERTEX;
+        vert->x = x1;
+        vert->y = y0;
+        vert->z = z;
+        vert->argb = tintColor;
+        vert++;
+
+        vert->flags = PVR_CMD_VERTEX;
+        vert->x = x0;
+        vert->y = y1;
+        vert->z = z;
+        vert->argb = tintColor;
+        vert++;
+
+        vert->flags = PVR_CMD_VERTEX_EOL;
+        vert->x = x1;
+        vert->y = y1;
+        vert->z = z;
+        vert->argb = tintColor;
+
+        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, 4 * sizeof(pvr_vertex_t));
+    }
+}
+
 // static
 void RenderDevice::SetLinePolyThickness(int thickness) {
     currentLineThickness = (float)thickness / (float)((640 / displayWidth[0]) * 2.0f);
@@ -2028,7 +2388,7 @@ void RenderDevice::PrepareLinePolyPT(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastLineSrcBlend, &lastLineDstBlend);
+        RenderDevice::InkToBlendModes(inkEffect, &lastLineSrcBlend, &lastLineDstBlend);
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
@@ -2054,7 +2414,7 @@ void RenderDevice::PrepareLinePolyTR(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastLineSrcBlend, &lastLineDstBlend);
+        RenderDevice::InkToBlendModes(inkEffect, &lastLineSrcBlend, &lastLineDstBlend);
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
@@ -2064,8 +2424,10 @@ void RenderDevice::PrepareLinePolyTR(int inkEffect) {
         context.blend.dst = lastLineDstBlend;
 
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        pvr_poly_compile(hdr_ptr, &context);
-        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        if (hdr_ptr != nullptr) {
+            pvr_poly_compile(hdr_ptr, &context);
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        }
         lastLineInkEffect = inkEffect;
         lastPrimitiveType = PrimitiveTypes_LineTR;
     }
@@ -2170,8 +2532,6 @@ void RenderDevice::DrawLinePolyTR(int lx1, int ly1, int lx2, int ly2, int color)
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
 
         context.gen.alpha = 1;
-//        if (!useCulling)
-//            context.gen.culling = PVR_CULLING_NONE;
         context.blend.src = PVR_BLEND_INVDESTCOLOR;
         context.blend.dst = PVR_BLEND_ZERO;
 
@@ -2202,7 +2562,7 @@ void RenderDevice::PrepareFacePolyPT(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastFaceSrcBlend, &lastFaceDstBlend);
+        RenderDevice::InkToBlendModes(inkEffect, &lastFaceSrcBlend, &lastFaceDstBlend);
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_PT_POLY);
@@ -2230,7 +2590,7 @@ void RenderDevice::PrepareFacePolyTR(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF), &lastFaceSrcBlend, &lastFaceDstBlend);
+        RenderDevice::InkToBlendModes(inkEffect, &lastFaceSrcBlend, &lastFaceDstBlend);
 
         pvr_poly_cxt_t context;
         pvr_poly_cxt_col(&context, PVR_LIST_TR_POLY);
@@ -2241,9 +2601,10 @@ void RenderDevice::PrepareFacePolyTR(int inkEffect) {
         context.blend.dst = lastFaceDstBlend;
 
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        pvr_poly_compile(hdr_ptr, &context);
-        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
-
+        if (hdr_ptr != nullptr) {
+            pvr_poly_compile(hdr_ptr, &context);
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        }
         lastFaceInkEffect = inkEffect;
         lastPrimitiveType = PrimitiveTypes_FaceTR;
     }
@@ -2474,7 +2835,7 @@ void RenderDevice::Draw3DFacePolyTR(
             z = baseZ + (float)vertices[1].z;
             SET_FACEPOLY_VERT_DMA(vert, 1, z, faceColor, 1);
         } else { // if (vertCount == 4) {
-            float z = (float)vertices[0].z;
+            float z = baseZ + (float)vertices[0].z;
             SET_FACEPOLY_VERT_DMA(vert, 0, z, faceColor, 0);
             z = baseZ + (float)vertices[1].z;
             SET_FACEPOLY_VERT_DMA(vert, 1, z, faceColor, 0);
@@ -2535,7 +2896,7 @@ void RenderDevice::Prepare3DStripPT(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF),
+        RenderDevice::InkToBlendModes(inkEffect,
                                     &lastStripSrcBlend, &lastStripDstBlend);
 
         pvr_poly_cxt_t context;
@@ -2580,7 +2941,7 @@ void RenderDevice::Prepare3DStripTR(int inkEffect) {
 
         lastPrimitiveWasConsumed = false;
 
-        RenderDevice::InkToBlendModes(((uint32)inkEffect & 0x7FFFFFFF),
+        RenderDevice::InkToBlendModes(inkEffect,
                                     &lastStripSrcBlend, &lastStripDstBlend);
 
         pvr_poly_cxt_t context;
@@ -2592,9 +2953,10 @@ void RenderDevice::Prepare3DStripTR(int inkEffect) {
         context.blend.dst = lastStripDstBlend;
 
         pvr_poly_hdr_t *hdr_ptr = (pvr_poly_hdr_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
-        pvr_poly_compile(hdr_ptr, &context);
-        safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
-
+        if (hdr_ptr != nullptr) {
+            pvr_poly_compile(hdr_ptr, &context);
+            safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, sizeof(pvr_poly_hdr_t));
+        }
         lastStripInkEffect = inkEffect;
         lastPrimitiveType = PrimitiveTypes_StripTR;
     }
@@ -2611,10 +2973,10 @@ void RenderDevice::Draw3DStripTR(pvr_vertex_t *verts, int count) {
         return;
 
     const float baseZ = GetDepth();
-    for (int i=0;i<count;i++)
-        verts[i].z += baseZ;
 
     pvr_vertex_t *dst = (pvr_vertex_t *)safe_pvr_vertbuf_tail(PVR_LIST_TR_POLY);
     memcpy(dst, verts, count * sizeof(pvr_vertex_t));
+    for (int i=0;i<count;i++)
+        dst[i].z += baseZ;
     safe_pvr_vertbuf_written(PVR_LIST_TR_POLY, count * sizeof(pvr_vertex_t));
 }
