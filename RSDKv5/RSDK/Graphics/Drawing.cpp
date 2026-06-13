@@ -3548,9 +3548,8 @@ void RSDK::DrawSprite(Animator *animator, Vector2 *position, bool32 screenRelati
                     case FX_SCALE | FX_FLIP:
                     case FX_SCALE | FX_ROTATE:
                     case FX_SCALE | FX_ROTATE | FX_FLIP:
-                        // DC_SILHOUETTE: rotated sprites can't be clipped to region bounds,
-                        // so only silhouette if left edge is inside the region
-                        if (pos.x >= rgnX1 && pos.x < rgnX2 && sprLeft >= rgnX1 && sprBottom > rgnY1 && pos.y < rgnY2)
+                        if (frame->width * frame->height < 16384
+                            && pos.x >= rgnX1 && pos.x < rgnX2 && pos.y >= rgnY1 && pos.y < rgnY2)
                             DrawSpriteRotozoom(pos.x, pos.y, frame->pivotX, frame->pivotY, frame->width, frame->height, frame->sprX, frame->sprY,
                                                (drawFX & FX_SCALE) ? sceneInfo.entity->scale.x : 0x200,
                                                (drawFX & FX_SCALE) ? sceneInfo.entity->scale.y : 0x200,
