@@ -307,7 +307,9 @@ extern SilhouetteRegion silhouetteRegions[MAX_SILHOUETTE_REGIONS];
 void SetSilhouetteRegion(int32 x1, int32 y1, int32 x2, int32 y2, int32 drawGroup);
 void ClearSilhouetteRegions();
 extern bool32 forceBlackTileRender;
+extern uint32 spriteTintColor;
 void SetForceBlackTileRender(bool32 enable);
+void SetSpriteTint(uint32 color);
 
 void SetPaletteDesaturation(uint8 amount); // DC_DESATURATE
 

@@ -183,6 +183,9 @@ void RSDK::ClearSilhouetteRegions() { silhouetteRegionCount = 0; }
 bool32 RSDK::forceBlackTileRender = false;
 void RSDK::SetForceBlackTileRender(bool32 enable) { forceBlackTileRender = enable; }
 
+uint32 RSDK::spriteTintColor = 0xFFFFFFFF;
+void RSDK::SetSpriteTint(uint32 color) { spriteTintColor = color; }
+
 // DC_DESATURATE
 void RSDK::SetPaletteDesaturation(uint8 amount) { RenderDevice::SetPaletteDesaturation(amount); }
 #endif
