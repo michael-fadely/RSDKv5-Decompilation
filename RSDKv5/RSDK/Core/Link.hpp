@@ -232,6 +232,7 @@ enum FunctionTableIDs {
     FunctionTable_ClearSilhouetteRegions, // DC_SILHOUETTE
     FunctionTable_SetPaletteDesaturation, // DC_DESATURATE
     FunctionTable_SetForceBlackTileRender, // DC_INK_BLACK
+    FunctionTable_SetSpriteTint, // DC_SPRITE_TINT
 #endif
     FunctionTable_CreateSpriteAnimation,
     FunctionTable_SetSpriteAnimation,

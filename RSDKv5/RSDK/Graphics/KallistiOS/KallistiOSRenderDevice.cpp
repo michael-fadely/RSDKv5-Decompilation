@@ -1378,7 +1378,7 @@ void RenderDevice::DrawTexturedPolyPT(
     const float v0 = shz_divf_fsrra(sprY0, surface->height);
     const float u1 = shz_divf_fsrra(sprX1, surface->width);
     const float v1 = shz_divf_fsrra(sprY1, surface->height);
-    uint32 argb  = 0xFFFFFFFFu;
+    uint32 argb  = spriteTintColor;
     uint32 oargb = 0x00000000u;
     if (lastInkEffect == INK_UNMASKED) {
         argb  = 0xFF010101u;
