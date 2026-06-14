@@ -812,6 +812,9 @@ bool RenderDevice::SupportedInk(int inkEffect)
         case INK_FLASH_GIGA:
             return true;
 
+        case INK_BLACK:
+            return true;
+
         default:
             return false;
     }
@@ -1520,6 +1523,12 @@ void RenderDevice::DrawTexturedPolyPTEx(
     const float u1 = shz_divf_fsrra(sprX1, surface->width);
     const float v1 = shz_divf_fsrra(sprY1, surface->height);
 
+    uint32 argb = 0xFFFFFFFFu;
+    if (lastInkEffect == INK_BLACK) {
+        argb = 0xFF000000u;
+        lastInkEffect = 0xFFFFFFFF;
+    }
+
     pvr_vertex_t verts[4] = {
         {
             .flags = PVR_CMD_VERTEX,
@@ -1528,7 +1537,7 @@ void RenderDevice::DrawTexturedPolyPTEx(
             .z = z,
             .u = u0,
             .v = v0,
-            .argb = 0xFFFFFFFFu
+            .argb = argb
         },
         {
             .flags = PVR_CMD_VERTEX,
@@ -1537,7 +1546,7 @@ void RenderDevice::DrawTexturedPolyPTEx(
             .z = z,
             .u = u1,
             .v = v0,
-            .argb = 0xFFFFFFFFu
+            .argb = argb
         },
         {
             .flags = PVR_CMD_VERTEX,
@@ -1546,7 +1555,7 @@ void RenderDevice::DrawTexturedPolyPTEx(
             .z = z,
             .u = u0,
             .v = v1,
-            .argb = 0xFFFFFFFFu
+            .argb = argb
         },
         {
             .flags = PVR_CMD_VERTEX_EOL,
@@ -1555,7 +1564,7 @@ void RenderDevice::DrawTexturedPolyPTEx(
             .z = z,
             .u = u1,
             .v = v1,
-            .argb = 0xFFFFFFFFu
+            .argb = argb
         }
     };
 

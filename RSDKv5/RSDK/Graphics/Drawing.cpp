@@ -180,6 +180,9 @@ void RSDK::SetSilhouetteRegion(int32 x1, int32 y1, int32 x2, int32 y2, int32 dra
 
 void RSDK::ClearSilhouetteRegions() { silhouetteRegionCount = 0; }
 
+bool32 RSDK::forceBlackTileRender = false;
+void RSDK::SetForceBlackTileRender(bool32 enable) { forceBlackTileRender = enable; }
+
 // DC_DESATURATE
 void RSDK::SetPaletteDesaturation(uint8 amount) { RenderDevice::SetPaletteDesaturation(amount); }
 #endif

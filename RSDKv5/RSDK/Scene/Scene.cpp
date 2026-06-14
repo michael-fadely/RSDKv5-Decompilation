@@ -2030,9 +2030,10 @@ void DrawByLayoutEx(uint16 layout,
     }
 
     const int32 prepY = std::max<int32>(0, std::min(upperLeft.y, upperRight.y));
+    const int32 tileInk = forceBlackTileRender ? INK_BLACK : INK_NONE;
 
-    if (usePoly) {
-        RenderDevice::PrepareTexturedPolyPT(prepY, INK_NONE, surface);
+    if (usePoly || forceBlackTileRender) {
+        RenderDevice::PrepareTexturedPolyPT(prepY, tileInk, surface);
 
         RenderDevice::DrawTexturedPolyPTEx(
             upperLeft, upperRight,
