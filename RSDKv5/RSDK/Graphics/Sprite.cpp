@@ -2,6 +2,8 @@
 
 using namespace RSDK;
 
+extern void BuildRoofTexturesFromSheet(uint8 *pixels, int32 width, int32 height);
+
 #if RETRO_REV0U
 #include "Legacy/SpriteLegacy.cpp"
 #endif
@@ -949,8 +951,6 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
 
     surface->isVq = 1;
 
-    memcpy(surface->hash, hash, 4 * sizeof(int32));
-
     int32 w = surface->width;
     if (w > 1) {
         int32 ls = 0;
@@ -1080,6 +1080,7 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
     surface->pixels = NULL;
 
     fClose(vqTexFile);
+    memcpy(surface->hash, hash, 4 * sizeof(int32));
 
     return id;
 }
@@ -1088,12 +1089,18 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
 uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-#if DO_480
-    if ((strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("Global/", filename, 7) == 0) || (strncmp("UI/", filename, 3) == 0)) {
-#else
-    if ((strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("UI/", filename, 3) == 0)) {
-#endif
-        return LoadVQSpriteSheet(filename, scope);
+    if ((strncmp("SpecialBS", filename, 9) == 0) || (strncmp("TMZ1/Portal", filename, 11) == 0) || (strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("Global/", filename, 7) == 0) || (strncmp("UI/", filename, 3) == 0)) {
+        uint16_t id = LoadVQSpriteSheet(filename, scope);
+        if (id != (uint16_t)-1) {
+            return id;
+        }
+    }
+
+    // skip sheets that cause PVR OOM on GHZCutscene
+    if (strncmp(currentSceneFolder, "GHZCut", 6) == 0) {
+        if (strstr(filename, "Shields.gif") || strstr(filename, "SuperButtons.gif") || strstr(filename, "SmallFont1.gif") || strstr(filename, "SmallFont2.gif")) {
+            return (uint16)-1;
+        }
     }
 #endif
     char fullFilePath[0x100];
@@ -1210,6 +1217,37 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 
                     printPvrMem(pvrMemBefore, pvrMemAfter);
 
+                    // Patch the wing sprite's mask pixels (palette 55) to per-row palette
+                    // indices so we can animate the fringe color per-row via palette cycling.
+                    // Free indices: 62-127 (66) + 45,46,47 (3) + 152,162,163,167,172,173,174 (7) + 245,246 (2) = 78
+                    if (strstr(filename, "Title/Logo.gif")) {
+                        static const uint8 fringeIndices[] = {
+                            62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,
+                            90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,
+                            114,115,116,117,118,119,120,121,122,123,124,125,126,127,
+                            45,46,47,152,162,163,167,172,173,174,245,246
+                        };
+                        uint8 *px   = surface->pixels;
+                        int32 w     = surface->width;
+                        int32 count = 0;
+                        for (int32 y = 8; y <= 89; y++) {
+                            bool hasMaskPixel = false;
+                            for (int32 x = 1; x <= 145; x++) {
+                                if (px[y * w + x] == 55) {
+                                    hasMaskPixel = true;
+                                    break;
+                                }
+                            }
+                            if (hasMaskPixel && count < (int32)sizeof(fringeIndices)) {
+                                for (int32 x = 1; x <= 145; x++) {
+                                    if (px[y * w + x] == 55)
+                                        px[y * w + x] = fringeIndices[count];
+                                }
+                                count++;
+                            }
+                        }
+                    }
+
                     // pvr_txr_load_ex is used instead of pvr_txr_load because _ex twiddles automatically,
                     // which is useful since PVR palettized textures must be twiddled (apparently? see pvr.h).
                     // pvr_txr_load_ex actually *always* twiddles, even if you don't want it.
@@ -1222,6 +1260,11 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
                     );
 
                     surface->scope = scope;
+
+                    // build 3D "Roof" animation textures for Special Stage 4
+                    if (strstr(filename, "SpecialUFO/Water.gif") && surface->width == 512 && surface->height == 512) {
+                        BuildRoofTexturesFromSheet(surface->pixels, surface->width, surface->height);
+                    }
                 }
             }
 
