@@ -5722,30 +5722,6 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
             for (int32 c = 0; c < lineSize; ++c) {
                 if (drawX >= 0 && drawX < currentScreen->size.x - 7) {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-#if DO_480
-                    // DCFIXME: vram_s used to avoid creating another texture
-                    uint32 *frameBuffer = (uint32_t *)&vram_s[(drawX*2) + ((y*2)) * 640];
-                    uint32 *frameBuffer2 = (uint32_t *)&vram_s[(drawX*2) + ((y*2)+1) * 640];
-
-                    if ((*curChar < '\t' || *curChar > '\n') && *curChar != ' ') {
-                        uint8 *textStencilPtr = &devTextStencil[8 * *curChar];
-
-                        for (int32 h = 0; h < 8; ++h) {
-                            for (int32 w = 0; w < 8; ++w) {
-                                if (((*textStencilPtr >> w) & 1) != 0) {
-                                    *frameBuffer = color16;
-                                    *frameBuffer2 = color16;
-                                }
-                                ++frameBuffer;
-                                ++frameBuffer2;
-                            }
-
-                            ++textStencilPtr;
-                            frameBuffer += 640 - 8;
-                            frameBuffer2 += 640 - 8;
-                        }
-                    }
-#else
                     // DCFIXME: vram_s used to avoid creating another texture
                     uint16 *frameBuffer = &vram_s[drawX + y * 320];
 
@@ -5764,7 +5740,6 @@ void RSDK::DrawDevString(const char *string, int32 x, int32 y, int32 align, uint
                             frameBuffer += 320 - 8;
                         }
                     }
-#endif
 #else
                     uint16 *frameBuffer = &currentScreen->frameBuffer[drawX + y * currentScreen->pitch];
 

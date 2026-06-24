@@ -1,10 +1,6 @@
 #pragma once
 #define KOS_HARDWARE_RENDERER
 
-#if RETRO_PLATFORM == RETRO_KALLISTIOS
-#define DO_480 0
-#endif
-
 using ShaderEntry = ShaderEntryBase; // DCFIXME
 
 class RenderDevice : public RenderDeviceBase

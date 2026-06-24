@@ -2706,7 +2706,7 @@ void RSDK::DrawLayerVScroll(TileLayer *layer)
 #define recip1k 0.00097656f
 
 void rayIntersect(Vector4f cam, Vector4f forward, Vector4f right, Vector4f up, int screenX, int screenY, float *hitX, float *hitZ) {
-    float px = (float)screenX - ((float)DEFAULT_PIXWIDTH*0.5f);
+    float px = (float)screenX - (320.0f*0.5f);
     float py = 120.0f - (float)screenY;
     float nx = px * recip200;
     float ny = py * recip200;
@@ -2787,7 +2787,7 @@ static RotozoomCamera UnpackRotozoomCamera(ScanlineInfo *&scanline)
     rc.duc = fipr(rc.up.x,      rc.up.y,      rc.up.z,      0, rc.cam.x, rc.cam.y, rc.cam.z, 0);
     rc.dfc = fipr(rc.forward.x, rc.forward.y, rc.forward.z, 0, rc.cam.x, rc.cam.y, rc.cam.z, 0);
 
-    const float aspect = (float)DEFAULT_PIXWIDTH / 240.0f;
+    const float aspect = 320.0f / 240.0f;
     const float fovy   = 47.5f * RSDK_PI / 180.0f;
     rc.f   = 1.0f / tanf(fovy * 0.5f);
     rc.foa = rc.f / aspect;
@@ -2809,10 +2809,10 @@ static void LoadRotozoomMatrix(const RotozoomCamera &rc, float fHoriz, float fVe
     };
 
     const float __attribute__((aligned(32))) screenspace[4][4] = {
-        { (float)DEFAULT_PIXWIDTH * 0.5f,    0.0f, 0.0f, 0.0f },
-        {                           0.0f, -120.0f, 0.0f, 0.0f },
-        {                           0.0f,    0.0f, 0.5f, 0.0f },
-        { (float)DEFAULT_PIXWIDTH * 0.5f,  120.0f, 0.5f, 1.0f },
+        { 320.0f * 0.5f,    0.0f, 0.0f, 0.0f },
+        {          0.0f, -120.0f, 0.0f, 0.0f },
+        {          0.0f,    0.0f, 0.5f, 0.0f },
+        { 320.0f * 0.5f,  120.0f, 0.5f, 1.0f },
     };
 
     mat_load(&screenspace);
@@ -3599,7 +3599,7 @@ static void DrawRotozoomIsland(TileLayer *layer)
     const float camH    = 40.0f;
     const float focalL  = 128.0f;
     const float horizY  = 152.0f;
-    const float centerX = (float)(DEFAULT_PIXWIDTH / 2);
+    const float centerX = 320.0f * 0.5f;
 
     // build combined view-projection-screenspace matrix
     // maps world (x, y, z, 1) -> (sx*w, sy*w, z_clip, w)
@@ -3688,7 +3688,7 @@ static void DrawRotozoomIsland(TileLayer *layer)
             PERSPDIV();
 
             CULL(x, <, 0);
-            CULL(x, >, DEFAULT_PIXWIDTH);
+            CULL(x, >, 320);
             CULL(y, <, clipY1);
             CULL(y, >, clipY2);
 
@@ -4084,7 +4084,7 @@ static void DrawRotozoomPinballBG(TileLayer *layer)
             cantReuse = false;
 
             CULL(x, <, 0);
-            CULL(x, >, DEFAULT_PIXWIDTH);
+            CULL(x, >, 320);
             CULL(y, <, 0);
             CULL(y, >, clipBot);
 
@@ -4401,8 +4401,7 @@ static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
 
                 // screen edge culling
                 if (ul.x < 0 && ur.x < 0 && ll.x < 0 && lr.x < 0) continue;
-                if (ul.x > DEFAULT_PIXWIDTH && ur.x > DEFAULT_PIXWIDTH &&
-                    ll.x > DEFAULT_PIXWIDTH && lr.x > DEFAULT_PIXWIDTH) continue;
+                if (ul.x > 320 && ur.x > 320 && ll.x > 320 && lr.x > 320) continue;
                 if (ul.y > 240 && ur.y > 240 && ll.y > 240 && lr.y > 240) continue;
 
                 // UVs from tile-aligned grid boundaries (exact tile indices)
@@ -4566,7 +4565,7 @@ static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
                         }
 
                         CULL(x, <, 0);
-                        CULL(x, >, DEFAULT_PIXWIDTH);
+                        CULL(x, >, 320);
                         CULL(y, <, 0);
                         CULL(y, >, 240);
 
@@ -4743,7 +4742,7 @@ static void DrawRotozoomPlayfield(TileLayer *layer, bool pinball)
             }
 
             CULL(x, <, 0);
-            CULL(x, >, DEFAULT_PIXWIDTH);
+            CULL(x, >, 320);
             CULL(y, <, 0);
             CULL(y, >, 240);
 
