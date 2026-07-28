@@ -86,7 +86,7 @@ mutex_t io_lock;
 int32 RSDK_main(int32 argc, char **argv, void *linkLogicPtr)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
-#if RSDK_DEBUG
+#if RSDK_DEBUG && defined(RSDK_KOS_GDB_STUB) && RSDK_KOS_GDB_STUB
     gdb_init();
 #endif
     cont_btn_callback(0, CONT_RESET_BUTTONS, [](uint8_t, uint32_t) {

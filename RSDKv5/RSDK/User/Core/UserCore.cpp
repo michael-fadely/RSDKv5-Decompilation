@@ -282,7 +282,14 @@ void RSDK::LoadSettingsINI()
 #endif
 
     // Consoles load the entire file and buffer it, while PC just io's the file when needed
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    // Dreamcast has only 16MB RAM; the Data.rsdk datapack is ~207MB, so buffering
+    // the whole pack is impossible (malloc fails -> NULL write -> reset/bootloop).
+    // Stream files on demand from the GD-ROM instead, like the PC path does.
+    bool32 useBuffer = false;
+#else
     bool32 useBuffer = !(platform == PLATFORM_PC || platform == PLATFORM_DEV);
+#endif
 
     char pathBuffer[0x100];
     sprintf_s(pathBuffer, sizeof(pathBuffer), "%sSettings.ini", SKU::userFileDir);
