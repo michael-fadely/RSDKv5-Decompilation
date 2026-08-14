@@ -242,6 +242,7 @@ bool RenderDevice::Init()
     uint32_t cfg = PVR_GET(PVR_FB_CFG_2);
     cfg &= ~PM_DITHER_BIT;
     PVR_SET(PVR_FB_CFG_2, cfg);
+    PVR_SET(PVR_SCALER_CFG, 0x400)
 
 #if defined(KOS_HARDWARE_RENDERER)
     pvr_set_vertbuf(PVR_LIST_TR_POLY, trDmaBuffer, TR_VERTBUF_SIZE);
