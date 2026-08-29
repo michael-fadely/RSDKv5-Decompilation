@@ -37,9 +37,43 @@ uint16 RSDK::LoadSpriteAnimation(const char *filePath, uint8 scope)
     uint8 sheetIDs[0x18];
     sheetIDs[0] = 0;
 
+#if RETRO_PLATFORM != RETRO_KALLISTIOS
     FileInfo info;
     InitFileInfo(&info);
     if (LoadFile(&info, fullFilePath, FMODE_RB)) {
+#else
+    FileInfo info {};
+    InitFileInfo(&info);
+
+    // attempt to load a replacement animation from the CD filesystem first.
+    // DCFIXME: a centralized file replacement system would be nice
+    sprintf_s(fullFilePath, sizeof(fullFilePath), "%sData/Sprites/%s", RSDK::SKU::userFileDir, filePath);
+
+    bool32 fileOpened = false;
+
+    // DCFIXME: special case to prevent loading performance impact
+    if (strstr(filePath, "UI/ButtonLabel.bin") ||
+        strstr(filePath, "UI/Buttons.bin") ||
+        strstr(filePath, "UI/Picture.bin") ||
+        strstr(filePath, "Global/SuperButtons.bin")) {
+        info.externalFile = true;
+        fileOpened = LoadFile(&info, fullFilePath, FMODE_RB);
+    }
+
+    // if that didn't work, just fall back to Data.rsdk
+    if (!fileOpened) {
+        CloseFile(&info);
+        info = {};
+        InitFileInfo(&info);
+        sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Sprites/%s", filePath);
+        fileOpened = LoadFile(&info, fullFilePath, FMODE_RB);
+    }
+    else {
+        printf("[LoadSpriteAnimation] found replacement file: %s\n", fullFilePath);
+    }
+
+    if (fileOpened) {
+#endif
         uint32 sig = ReadInt32(&info, false);
 
         if (sig != RSDK_SIGNATURE_SPR) {

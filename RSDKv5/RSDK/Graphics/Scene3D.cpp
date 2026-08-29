@@ -524,7 +524,7 @@ uint16 RSDK::LoadMesh(const char *filename, uint8 scope)
         fileOpened = LoadFile(&info, fullFilePath, FMODE_RB);
     }
     else {
-        printf("found replacement file: %s\n", fullFilePath);
+        printf("[LoadMesh] found replacement file: %s\n", fullFilePath);
     }
 
     if (fileOpened) {

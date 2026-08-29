@@ -75,6 +75,10 @@ rm -f -- "$stagedir/Sprites/UI/Zones.gif"
 rm -f -- "$stagedir/Sprites/UI/Buttons.gif"
 rm -f -- "$stagedir/Sprites/UI/Controllers.gif"
 rm -f -- "$stagedir/Sprites/Global/SuperButtons.gif"
+rm -f -- "$stagedir/Sprites/UI/ButtonLabel.bin"
+rm -f -- "$stagedir/Sprites/UI/Buttons.bin"
+rm -f -- "$stagedir/Sprites/UI/Picture.bin"
+rm -f -- "$stagedir/Sprites/Global/SuperButtons.bin"
 
 "$script_dir/model_process.sh"              "$sourcedir" "$stagedir"
 
@@ -92,9 +96,13 @@ rm -f -- "$stagedir/Sprites/Global/SuperButtons.gif"
 "$script_dir/gfx_step_2_todtex.sh"          "$stagedir"
 
 # copy Dreamcast-specific control graphics into staged data dir
-cp "./Controllers.gif"                      "$stagedir/Sprites/UI"
-cp "./Buttons.gif"                          "$stagedir/Sprites/UI"
-cp "./Buttons.gif"                          "$stagedir/Sprites/Global/SuperButtons.gif"
+cp "./Sprites/UI/Buttons.gif"               "$stagedir/Sprites/UI"
+cp "./Sprites/UI/Controllers.gif"           "$stagedir/Sprites/UI"
+cp "./Sprites/Global/SuperButtons.gif"      "$stagedir/Sprites/Global"
+cp "./Sprites/UI/ButtonLabel.bin"           "$stagedir/Sprites/UI"
+cp "./Sprites/UI/Buttons.bin"               "$stagedir/Sprites/UI"
+cp "./Sprites/UI/Picture.bin"               "$stagedir/Sprites/UI"
+cp "./Sprites/Global/SuperButtons.bin"      "$stagedir/Sprites/Global"
 
 "$script_dir/img_step_1_todtex.sh"          "$stagedir"
 

@@ -1089,7 +1089,12 @@ uint16 RSDK::LoadVQSpriteSheet(const char *filename, uint8 scope) {
 uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
 {
 #if RETRO_PLATFORM == RETRO_KALLISTIOS && defined(KOS_HARDWARE_RENDERER)
-    if ((strncmp("SpecialBS", filename, 9) == 0) || (strncmp("TMZ1/Portal", filename, 11) == 0) || (strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) || (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) || (strncmp("Global/", filename, 7) == 0) || (strncmp("UI/", filename, 3) == 0)) {
+    if ((strncmp("SpecialBS", filename, 9) == 0) ||
+        (strncmp("TMZ1/Portal", filename, 11) == 0) ||
+        (strncmp("TMZ1/MonarchBottom.gif", filename, 21) == 0) ||
+        (strncmp("TMZ1/MonarchTop.gif", filename, 18) == 0) ||
+        ((strncmp("Global/", filename, 7) == 0) && !strstr(filename, "/SuperButtons.gif")) ||
+        ((strncmp("UI/", filename, 3) == 0)) && !strstr(filename, "/Buttons.gif") && !strstr(filename, "/Controllers.gif")) {
         uint16_t id = LoadVQSpriteSheet(filename, scope);
         if (id != (uint16_t)-1) {
             return id;
@@ -1131,7 +1136,52 @@ uint16 RSDK::LoadSpriteSheet(const char *filename, uint8 scope)
     GFXSurface *surface = &gfxSurface[id];
     ImageGIF image;
 
+#if RETRO_PLATFORM == RETRO_KALLISTIOS
+    bool32 fileOpened = false;
+
+    // DCFIXME: a centralized file replacement system would be nice
+    // DCFIXME: special case to prevent loading performance impact
+    if (strstr(filename, "Global/SuperButtons.gif") || strstr(filename, "UI/Buttons.gif") || strstr(filename, "UI/Controllers.gif"))
+    {
+        sprintf_s(fullFilePath, sizeof(fullFilePath), "%sData/Sprites/%s", RSDK::SKU::userFileDir, filename);
+
+        FileInfo info = image.info;
+        info.externalFile = true;
+        fileOpened = LoadFile(&info, fullFilePath, FMODE_RB);
+
+        if (fileOpened) {
+            uint32 fourcc = ReadInt32(&info, false);
+
+            if ((fourcc & 0x00FFFFFF) == 0x464947) {
+                // GIF
+                printf("[LoadSpriteSheet] loading replacement gif: %s\n", fullFilePath);
+                Seek_Set(&info, 6);
+                image.width  = ReadInt16(&info);
+                image.height = ReadInt16(&info);
+                image.info = info;
+            }
+            else {
+                if (fourcc == 0x58455444) {
+                    // TEXD
+                    printf("[LoadSpriteSheet] IGNORING TEXD (vq) image: %s\n", fullFilePath);
+                }
+
+                CloseFile(&info);
+                fileOpened = false;
+            }
+        }
+    }
+
+    if (!fileOpened) {
+        // if that didn't work, just fall back to Data.rsdk
+        sprintf_s(fullFilePath, sizeof(fullFilePath), "Data/Sprites/%s", filename);
+        fileOpened = image.Load(fullFilePath, true);
+    }
+
+    if (fileOpened) {
+#else
     if (image.Load(fullFilePath, true)) {
+#endif
         surface->width    = image.width;
         surface->height   = image.height;
         surface->lineSize = 0;
