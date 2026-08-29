@@ -1386,8 +1386,8 @@ void RSDK::InitGameLink()
 void RSDK::ProcessDebugCommands()
 {
 #if !RETRO_USE_ORIGINAL_CODE
-//    if (!customSettings.enableControllerDebugging)
-//        return;
+    if (!customSettings.enableControllerDebugging)
+        return;
 #endif
 
 #if RETRO_PLATFORM == RETRO_KALLISTIOS
