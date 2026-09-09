@@ -5,7 +5,9 @@
 
 #include <RSDK/Core/Stub.hpp>
 
-#include "sonicmania.xbm"
+//#include "sonicmania.xbm"
+//#include "smblk.xbm"
+#include "smwhte.xbm"
 
 void SKU::Vmu::FrameBuffer::Print(std::string str, unsigned lineSpacing, Rect rect) {
     vmufb_print_string_into(this, nullptr, rect.x, rect.y,
@@ -222,6 +224,6 @@ void SKU::InitKallistiOSInputAPI() {
         inputDeviceList[c] = &inputDevices[c];
         inputSlotDevices[c] = &inputDevices[c];
 
-        inputDevices[c].vmu[0].fb.DrawXBM(manialogo_bits, 0);
+        inputDevices[c].vmu[0].fb.DrawXBM(smwhte_bits, 0);
     }
 }
