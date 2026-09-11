@@ -1,6 +1,7 @@
 #ifndef  __KALLISTIOS_SFX_UPDATE
 #define  __KALLISTIOS_SFX_UPDATE
 extern "C" {
+#define __ARCH_TYPES_H
 #include "dc/sound/aica_comm.h"
 
 extern int snd_sh4_to_aica(void *packet, uint32_t size);
