@@ -12,10 +12,6 @@
 // ================
 // STANDARD TYPES
 // ================
-// DCFIXME: typedefs disabled; using arch/types.h instead
-#if defined(_arch_dreamcast)
-#include <arch/types.h>
-#else  // defined(_arch_dreamcast)
 typedef signed char int8;
 typedef unsigned char uint8;
 typedef signed short int16;
@@ -24,7 +20,6 @@ typedef signed int int32;
 typedef unsigned int uint32;
 typedef signed long long int64;
 typedef unsigned long long uint64;
-#endif  // !defined(_arch_dreamcast)
 
 typedef uint32 bool32;
 typedef uint32 color;
