@@ -7,3 +7,6 @@
 [submodule "dependencies/dreamcast/mania-mesh-optimizer"]
 	path = dependencies/dreamcast/mania-mesh-optimizer
 	url = https://github.com/michael-fadely/mania-mesh-optimizer.git
+[submodule "dependencies/dreamcast/sh4zam"]
+	path = dependencies/dreamcast/sh4zam
+	url = https://github.com/gyrovorbis/sh4zam.git
